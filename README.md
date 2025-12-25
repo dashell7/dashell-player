@@ -1,90 +1,220 @@
-# Obsidian Sample Plugin
+# LangPlayer - Advanced Language Learning Media Player for Obsidian
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/langplayer/langplayer)
+[![License](https://img.shields.io/badge/license-0--BSD-green.svg)](LICENSE)
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+English | [简体中文](README_CN.md)
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+LangPlayer is a powerful Obsidian plugin designed for language learners, providing advanced media playback with subtitle synchronization, pronunciation assessment, and vocabulary management features.
 
-## First time developing plugins?
+## ✨ Features
 
-Quick starting guide for new plugin devs:
+### 🎬 Advanced Media Player
+- **YouTube & Local Media Support**: Play YouTube videos or local media files (MP4, MP3, etc.)
+- **Subtitle Sync**: Automatic subtitle loading and synchronization (SRT, VTT formats)
+- **Word-Level Highlighting**: Real-time word highlighting synced with audio playback
+- **Playback Speed Control**: Adjust playback speed (0.5x - 2x) for comfortable learning
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+### 🔄 Learning-Optimized Playback
+- **Sentence Loop**: Repeat individual sentences for focused practice
+  - Configurable loop count (1-10 times)
+  - Auto-play next sentence option
+- **AB Repeat**: Set custom loop points for any section
+- **One-Click Sentence Play**: Click any subtitle to jump and play that sentence
+- **Previous/Next Navigation**: Easily navigate between sentences
 
-## Releasing new releases
+### 🎤 Pronunciation Practice
+- **Voice Recording**: Record your pronunciation with one click
+- **Multiple STT Providers**: 
+  - OpenAI Whisper (text matching)
+  - Azure Speech Services (professional pronunciation assessment)
+  - AssemblyAI support
+- **Detailed Scoring**:
+  - Overall pronunciation score
+  - Accuracy, fluency, and completeness metrics
+  - Word-level error detection
+  - Visual diff comparison
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+### 📚 Vocabulary Management
+- **Click-to-Lookup**: Click any word in subtitles to look it up
+- **Language Learner Integration**: Seamlessly integrates with obsidian-language-learner plugin
+- **Auto-Fill Examples**: Automatically fills example sentences from current subtitle
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+### 🎨 Modern UI
+- **Draggable Subtitle Panel**: Flexible layout with draggable subtitle panel
+- **Customizable Styling**: Adjust font size, weight, and line height
+- **Theme Compatible**: Adapts to your Obsidian theme (light/dark mode)
+- **Responsive Design**: Clean, modern interface optimized for learning
 
-## Adding your plugin to the community plugin list
+## 🚀 Installation
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+### From Obsidian Community Plugins (Recommended)
+1. Open Obsidian Settings
+2. Go to Community Plugins → Browse
+3. Search for "LangPlayer"
+4. Click Install
+5. Enable the plugin
 
-## How to use
+### Manual Installation
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/langplayer/langplayer/releases)
+2. Create folder: `YourVault/.obsidian/plugins/langplayer/`
+3. Copy downloaded files to the folder
+4. Reload Obsidian
+5. Enable LangPlayer in Settings → Community Plugins
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+## ⚙️ Setup
 
-## Manually installing the plugin
+### Basic Setup
+1. **Open LangPlayer**: Click the play icon in the left ribbon or use command palette
+2. **Load Media**: Enter a YouTube URL or select a local media file
+3. **Load Subtitles**: Subtitles are auto-detected for YouTube videos or load a local SRT/VTT file
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+### Voice Recording Setup (Optional)
+To use pronunciation assessment features:
 
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
+#### Option 1: OpenAI (Recommended for beginners)
+1. Get API key from [OpenAI Platform](https://platform.openai.com/api-keys)
+2. Settings → LangPlayer → Speech Provider → OpenAI
+3. Enter your API key
+4. Click "Test Connection"
 
-## Funding URL
+#### Option 2: Azure (Professional pronunciation assessment)
+1. Create Azure Speech Services resource at [Azure Portal](https://portal.azure.com)
+2. Get your Subscription Key and Region
+3. Settings → LangPlayer → Speech Provider → Azure
+4. Enter credentials and select voice
+5. Click "Test Connection"
 
-You can include funding URLs where people who use your plugin can financially support it.
+**Cost**: 
+- OpenAI: ~$0.006/minute
+- Azure: $1/1000 requests (5000 free/month)
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+## 📖 Usage
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
-```
+### Playing Media
+1. **Open Player**: Click ribbon icon or use command "Open Media Player"
+2. **Load Content**: 
+   - Paste YouTube URL, or
+   - Click "Browse Local File"
+3. **Load Subtitles**: Auto-loaded for YouTube, or select local SRT/VTT file
 
-If you have multiple URLs, you can also do:
+### Learning with Subtitles
+- **Click Subtitle**: Jump to that sentence and start playing
+- **Loop Practice**: Click 🔁 button to repeat current sentence
+- **Navigate**: Use ⬅️ Previous / Next ➡️ buttons
+- **Lookup Words**: Click any word in subtitles for dictionary lookup
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
+### Recording Pronunciation
+1. **Select Sentence**: Click or navigate to a subtitle
+2. **Start Recording**: Click 🎤 microphone button
+3. **Speak**: Read the sentence aloud
+4. **Stop & Evaluate**: Get instant feedback with detailed scoring
 
-## API Documentation
+### Using Independent Subtitle Panel
+1. Command Palette → "Open Subtitle Panel"
+2. Drag panel to your preferred location (sidebar, bottom, etc.)
+3. Keep subtitles visible while viewing media in main editor
 
-See https://docs.obsidian.md
+## ⌨️ Keyboard Shortcuts
+
+You can configure these in Obsidian Settings → Hotkeys:
+
+- **Toggle Play/Pause**: Space (when player is focused)
+- **Previous Sentence**: Left Arrow
+- **Next Sentence**: Right Arrow
+- **Toggle Loop**: L
+- **Exit Loop**: Escape
+- **Start Recording**: R
+
+## 🎯 Tips & Best Practices
+
+### For Effective Learning
+1. **Use Loop Practice**: Set loop count to 3-5 times for difficult sentences
+2. **Enable Auto-Play Next**: Continuously practice multiple sentences
+3. **Record Yourself**: Compare your pronunciation with the original
+4. **Slow Down**: Reduce playback speed for challenging content
+5. **Build Vocabulary**: Click unknown words to create vocabulary notes
+
+### For Better Performance
+1. **Use Local Files**: Faster loading than streaming YouTube
+2. **Match Subtitle Timing**: Ensure subtitles match audio for accurate sync
+3. **Close Other Panels**: Focus mode for distraction-free learning
+
+## 🔧 Settings Reference
+
+### Player Settings
+- **Loop Count**: Number of times to repeat each sentence (1-10)
+- **Auto-Play Next**: Automatically play next sentence after loop finishes
+- **Video Fit Mode**: How video fills the player (contain/cover/fill)
+- **Show Inline Subtitles**: Display subtitle list below video (or use independent panel)
+
+### Subtitle Styling
+- **Font Size**: 12-24px (default: 15px)
+- **Font Weight**: Normal to Bold (default: 500)
+- **Line Height**: 1.0-2.5 (default: 1.6)
+
+### Voice Recording
+- **Speech Provider**: Choose OpenAI, Azure, or AssemblyAI
+- **Audio Format**: WAV, WebM, or MP3
+- **Save Audio**: Optionally save recordings to vault
+- **Record Only Mode**: Skip transcription (for practice without feedback)
+
+## 🤝 Integration with Other Plugins
+
+### Language Learner Plugin
+LangPlayer seamlessly integrates with [obsidian-language-learner](https://github.com/guopenghui/obsidian-language-learner):
+- Auto-fill example sentences when looking up words
+- Automatically open word entry panel
+- Sync vocabulary to your language learning database
+
+## 📝 Supported Formats
+
+### Media Files
+- Video: MP4, WebM, OGV
+- Audio: MP3, WAV, OGG, M4A, FLAC, AAC
+- Streaming: YouTube URLs
+
+### Subtitle Files
+- SRT (SubRip)
+- VTT (WebVTT)
+- Bilingual subtitles supported (EN/ZH, etc.)
+
+## 🐛 Troubleshooting
+
+### Microphone Not Found
+See Settings → Enable Voice2Text for diagnostic steps
+
+### Subtitles Out of Sync
+1. Check if subtitle file matches the media
+2. Adjust subtitle offset in player controls
+3. Ensure subtitle file encoding is UTF-8
+
+### YouTube Playback Issues
+1. Check internet connection
+2. Verify YouTube URL is valid
+3. Try using a local copy of the video
+
+### API Errors
+1. Verify API key is correct
+2. Check account has sufficient credits/quota
+3. Test connection in settings
+
+## 📄 License
+
+This project is licensed under the 0-BSD License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built on [Obsidian](https://obsidian.md) plugin API
+- Uses [React Player](https://github.com/cookpete/react-player) for media playback
+- Powered by [Zustand](https://github.com/pmndrs/zustand) for state management
+- Thanks to all contributors and testers!
+
+## 📧 Support
+
+- Report issues: [GitHub Issues](https://github.com/langplayer/langplayer/issues)
+- Documentation: [GitHub Wiki](https://github.com/langplayer/langplayer/wiki)
+
+---
+
+**Happy Learning! 🎓**

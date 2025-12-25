@@ -1,0 +1,373 @@
+import { create } from 'zustand';
+import type { SubtitleCue, SubtitleConfig } from '../types';
+
+/**
+ * 媒体播放状态
+ */
+interface MediaState {
+	// 播放状态
+	currentTime: number;
+	duration: number;
+	playing: boolean;
+	volume: number;
+	playbackRate: number;
+	
+	// 字幕状态
+	subtitles: SubtitleCue[];
+	activeIndex: number;  // 当前高亮的字幕索引（-1 表示无）
+	activeWordIndex: number;  // 当前高亮的单词索引（-1 表示无）
+	subtitleConfig: SubtitleConfig;
+	
+	// 循环状态
+	loopEnabled: boolean;
+	loopStart: number;
+	loopEnd: number;
+	
+	// 单句播放（播放一次）
+	segmentPlayEnabled: boolean;
+	segmentPlayEnd: number;
+	
+	// 单句循环播放
+	segmentLoopEnabled: boolean;
+	segmentLoopTotal: number; // 目标播放次数（如3次就是播放3遍）
+	segmentLoopCurrent: number; // 当前已播放次数
+	segmentLoopIndex: number; // 当前循环的字幕索引
+	
+	// AB 复读状态
+	abRepeatEnabled: boolean;
+	pointA: number | null;
+	pointB: number | null;
+}
+
+/**
+ * Store Actions
+ */
+interface MediaActions {
+	// 播放控制
+	setCurrentTime: (time: number) => void;
+	setDuration: (duration: number) => void;
+	setPlaying: (playing: boolean) => void;
+	setVolume: (volume: number) => void;
+	setPlaybackRate: (rate: number) => void;
+	
+	// 字幕管理
+	setSubtitles: (subtitles: SubtitleCue[]) => void;
+	setActiveIndex: (index: number) => void;
+	setActiveWordIndex: (index: number) => void;
+	updateSubtitleConfig: (config: Partial<SubtitleConfig>) => void;
+	
+	// 单句循环
+	enableLoop: (start: number, end: number) => void;
+	disableLoop: () => void;
+	toggleLoop: () => void;
+
+	// 单句播放
+	playSegment: (start: number, end: number) => void;
+
+	// 单句循环播放
+	startSegmentLoop: (start: number, end: number, count: number, index: number) => void;
+	stopSegmentLoop: () => void;
+	incrementLoopCount: () => void;
+	playNextSegment: () => void;
+	
+	// AB 复读
+	setPointA: (time: number) => void;
+	setPointB: (time: number) => void;
+	enableABRepeat: () => void;
+	disableABRepeat: () => void;
+	clearABPoints: () => void;
+	
+	// 重置
+	reset: () => void;
+}
+
+/**
+ * 初始状态
+ */
+const initialState: MediaState = {
+	currentTime: 0,
+	duration: 0,
+	playing: false,
+	volume: 0.8,
+	playbackRate: 1.0,
+	
+	subtitles: [],
+	activeIndex: -1,
+	activeWordIndex: -1,
+	subtitleConfig: {
+		fontSize: 16,
+		fontColor: '#FFFFFF',
+		backgroundColor: 'rgba(0, 0, 0, 0.7)',
+		position: 'bottom',
+		showEnglish: true,
+		showChinese: true,
+		showIndexAndTime: false, // 默认隐藏编号和时间，仅在设置中开启
+	},
+	
+	loopEnabled: false,
+	loopStart: 0,
+	loopEnd: 0,
+	
+	// 单句播放（播放一次）
+	segmentPlayEnabled: false,
+	segmentPlayEnd: 0,
+	
+	// 单句循环播放
+	segmentLoopEnabled: false,
+	segmentLoopTotal: 3,
+	segmentLoopCurrent: 0,
+	segmentLoopIndex: -1,
+	
+	abRepeatEnabled: false,
+	pointA: null,
+	pointB: null,
+};
+
+/**
+ * Media Store - 全局媒体状态管理
+ * 使用 Zustand 实现高性能状态管理
+ */
+export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
+	...initialState,
+	
+	// ===== 播放控制 =====
+	setCurrentTime: (time: number) => {
+		set({ currentTime: time });
+	},
+	
+	setDuration: (duration: number) => {
+		set({ duration });
+	},
+	
+	setPlaying: (playing: boolean) => {
+		set({ playing });
+	},
+	
+	setVolume: (volume: number) => {
+		set({ volume: Math.max(0, Math.min(1, volume)) });
+	},
+	
+	setPlaybackRate: (rate: number) => {
+		set({ playbackRate: Math.max(0.25, Math.min(2, rate)) });
+	},
+	
+	// ===== 字幕管理 =====
+	setSubtitles: (subtitles: SubtitleCue[]) => {
+		console.log('[MediaStore] Loading subtitles:', subtitles.length);
+		set({ subtitles, activeIndex: -1 });
+	},
+	
+	setActiveIndex: (index: number) => {
+		const { activeIndex, subtitles } = get();
+		
+		// 避免不必要的更新
+		if (activeIndex === index) return;
+		
+		// 验证索引有效性
+		if (index >= 0 && index < subtitles.length) {
+			set({ activeIndex: index, activeWordIndex: -1 }); // 切换字幕时重置单词索引
+		} else if (index === -1) {
+			set({ activeIndex: -1, activeWordIndex: -1 });
+		}
+	},
+	
+	setActiveWordIndex: (index: number) => {
+		set({ activeWordIndex: index });
+	},
+	
+	updateSubtitleConfig: (config: Partial<SubtitleConfig>) => {
+		set((state) => ({
+			subtitleConfig: { ...state.subtitleConfig, ...config },
+		}));
+	},
+	
+	// ===== 单句循环 =====
+	enableLoop: (start: number, end: number) => {
+		console.log('[MediaStore] Enable loop:', start, '-', end);
+		set({
+			loopEnabled: true,
+			loopStart: start,
+			loopEnd: end,
+		});
+	},
+	
+	disableLoop: () => {
+		console.log('[MediaStore] Disable loop');
+		set({
+			loopEnabled: false,
+			loopStart: 0,
+			loopEnd: 0,
+		});
+	},
+	
+	toggleLoop: () => {
+		const { loopEnabled } = get();
+		if (loopEnabled) {
+			get().disableLoop();
+		} else {
+			// 如果有当前字幕，启用当前字幕的循环
+			const { activeIndex, subtitles } = get();
+			if (activeIndex >= 0 && activeIndex < subtitles.length) {
+				const cue = subtitles[activeIndex];
+				if (cue) {
+					get().enableLoop(cue.start, cue.end);
+				}
+			}
+		}
+	},
+	
+	// 单句播放
+	playSegment: (start: number, end: number) => {
+		console.log('[MediaStore] Play segment:', start, '-', end);
+		// 1. 如果正在循环，先停止循环
+		if (get().loopEnabled) {
+			get().disableLoop();
+		}
+		
+		// 2. 设置单句播放状态
+		set({
+			segmentPlayEnabled: true,
+			segmentPlayEnd: end,
+			currentTime: start, // 设置开始时间（UI可能会用）
+			playing: true,      // 确保开始播放
+		});
+	},
+
+	// 单句循环播放
+	startSegmentLoop: (start: number, end: number, count: number, index: number = -1) => {
+		console.log('[MediaStore] Start segment loop:', start, '-', end, 'Count:', count, 'Index:', index);
+		// 1. 停止其他模式
+		if (get().loopEnabled) get().disableLoop();
+		if (get().segmentPlayEnabled) set({ segmentPlayEnabled: false });
+		
+		// 2. 设置状态
+		set({
+			segmentLoopEnabled: true,
+			segmentLoopTotal: count,
+			segmentLoopCurrent: 0,
+			segmentLoopIndex: index,
+			// 复用 segmentPlayEnd 作为结束点，或者我们需要一个新的 end 状态？
+			// 为了简单，我们复用 segmentPlayEnd，但最好区分清楚。
+			// 这里我们用一个新的逻辑：loopStart/loopEnd 是无限循环用的。
+			// segmentPlayEnd 是单句播放用的。
+			// 我们应该复用 loopStart/loopEnd 吗？
+			// 让我们复用 loopStart/loopEnd 作为循环区间，segmentLoopEnabled 控制是否有次数限制。
+			loopStart: start,
+			loopEnd: end,
+			currentTime: start,
+			playing: true,
+		});
+	},
+	
+	stopSegmentLoop: () => {
+		console.log('[MediaStore] Stop segment loop');
+		set({
+			segmentLoopEnabled: false,
+			segmentLoopTotal: 3,
+			segmentLoopCurrent: 0,
+			segmentLoopIndex: -1,
+			// 清除循环区间
+			loopStart: 0,
+			loopEnd: 0,
+		});
+	},
+	
+	incrementLoopCount: () => {
+		const { segmentLoopCurrent } = get();
+		set({ segmentLoopCurrent: segmentLoopCurrent + 1 });
+	},
+	
+	playNextSegment: () => {
+		const { subtitles, segmentLoopIndex, segmentLoopTotal } = get();
+		
+		if (segmentLoopIndex === -1 || !subtitles || subtitles.length === 0) {
+			console.warn('[MediaStore] Cannot play next: no current segment or empty subtitles');
+			get().stopSegmentLoop();
+			return;
+		}
+		
+		const nextIndex = segmentLoopIndex + 1;
+		
+		if (nextIndex >= subtitles.length) {
+			console.log('[MediaStore] Reached end of subtitles, stopping');
+			get().stopSegmentLoop();
+			return;
+		}
+		
+		const nextCue = subtitles[nextIndex];
+		if (!nextCue) {
+			console.log('[MediaStore] Next subtitle not found');
+			get().stopSegmentLoop();
+			return;
+		}
+		
+		console.log('[MediaStore] Playing next segment:', nextCue.text);
+		get().startSegmentLoop(nextCue.start, nextCue.end, segmentLoopTotal, nextIndex);
+	},
+
+	// ===== AB 复读 =====
+	setPointA: (time: number) => {
+		console.log('[MediaStore] Set Point A:', time);
+		set({ pointA: time });
+	},
+	
+	setPointB: (time: number) => {
+		console.log('[MediaStore] Set Point B:', time);
+		const { pointA } = get();
+		
+		// 确保 B 点在 A 点之后
+		if (pointA !== null && time > pointA) {
+			set({ pointB: time });
+		} else {
+			set({ pointB: time });
+		}
+	},
+	
+	enableABRepeat: () => {
+		const { pointA, pointB } = get();
+		
+		if (pointA !== null && pointB !== null && pointB > pointA) {
+			console.log('[MediaStore] Enable AB Repeat:', pointA, '-', pointB);
+			set({ abRepeatEnabled: true });
+		}
+	},
+	
+	disableABRepeat: () => {
+		console.log('[MediaStore] Disable AB Repeat');
+		set({ abRepeatEnabled: false });
+	},
+	
+	clearABPoints: () => {
+		console.log('[MediaStore] Clear AB Points');
+		set({
+			pointA: null,
+			pointB: null,
+			abRepeatEnabled: false,
+		});
+	},
+	
+	// ===== 重置 =====
+	reset: () => {
+		console.log('[MediaStore] Reset state');
+		set(initialState);
+	},
+}));
+
+/**
+ * 选择器 - 用于性能优化
+ */
+export const selectCurrentSubtitle = (state: MediaState & MediaActions): SubtitleCue | null => {
+	const { subtitles, activeIndex } = state;
+	if (activeIndex >= 0 && activeIndex < subtitles.length) {
+		return subtitles[activeIndex] || null;
+	}
+	return null;
+};
+
+export const selectIsLooping = (state: MediaState & MediaActions): boolean => {
+	return state.loopEnabled;
+};
+
+export const selectIsABRepeating = (state: MediaState & MediaActions): boolean => {
+	return state.abRepeatEnabled && state.pointA !== null && state.pointB !== null;
+};

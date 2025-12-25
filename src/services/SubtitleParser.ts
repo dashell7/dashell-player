@@ -1,0 +1,372 @@
+import type { SubtitleCue, SubtitleFormat } from '../types';
+
+/**
+ * 字幕解析器服务
+ * 支持 SRT 和 VTT 格式
+ */
+export class SubtitleParser {
+	/**
+	 * 检测字幕格式
+	 */
+	static detectFormat(text: string): SubtitleFormat {
+		const trimmed = text.trim();
+		
+		if (trimmed.startsWith('WEBVTT')) {
+			return 'vtt';
+		}
+		
+		// SRT 格式：数字开头
+		const firstLine = trimmed.split('\n')[0];
+		if (firstLine && /^\d+\s*$/m.test(firstLine)) {
+			return 'srt';
+		}
+		
+		// ASS/SSA 格式
+		if (trimmed.includes('[Script Info]')) {
+			return 'ass';
+		}
+		
+		return 'unknown';
+	}
+	
+	/**
+	 * 解析字幕文本
+	 */
+	static parse(text: string, format?: SubtitleFormat): SubtitleCue[] {
+		if (!text || text.trim().length === 0) {
+			return [];
+		}
+		
+		const detectedFormat = format || this.detectFormat(text);
+		
+		switch (detectedFormat) {
+			case 'srt':
+				return this.parseSRT(text);
+			case 'vtt':
+				return this.parseVTT(text);
+			case 'ass':
+				console.warn('[SubtitleParser] ASS format not fully supported yet');
+				return [];
+			default:
+				console.error('[SubtitleParser] Unknown subtitle format');
+				return [];
+		}
+	}
+	
+	/**
+	 * 解析 SRT 格式字幕
+	 * 格式示例：
+	 * 1
+	 * 00:00:01,000 --> 00:00:04,000
+	 * This is the first subtitle
+	 */
+	static parseSRT(text: string): SubtitleCue[] {
+		const cues: SubtitleCue[] = [];
+		
+		// 按空行分割字幕块
+		const blocks = text.split(/\n\s*\n/).filter(block => block.trim());
+		
+		for (let i = 0; i < blocks.length; i++) {
+			const block = blocks[i];
+			if (!block) continue;
+			
+			const lines = block.split('\n').map(line => line.trim());
+			
+			if (lines.length < 3) continue;
+			
+			// 第一行：序号
+			const firstLine = lines[0];
+			if (!firstLine) continue;
+			const index = parseInt(firstLine, 10);
+			if (isNaN(index)) continue;
+			
+			// 第二行：时间范围
+			const secondLine = lines[1];
+			if (!secondLine) continue;
+			const timeMatch = secondLine.match(/(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})/);
+			if (!timeMatch || !timeMatch[1] || !timeMatch[2]) continue;
+			
+			const start = this.parseTimestamp(timeMatch[1]);
+			const end = this.parseTimestamp(timeMatch[2]);
+			
+			// 第三行及之后：字幕文本
+			const text = lines.slice(2).join('\n');
+			
+			const { textEn, textZh } = this.separateLanguages(text);
+			
+			cues.push({
+				id: `srt-${index}`,
+				index: i,
+				start,
+				end,
+				text,
+				textEn,
+				textZh,
+			});
+		}
+		
+		return cues;
+	}
+	
+	/**
+	 * 解析 VTT 格式字幕
+	 * 格式示例：
+	 * WEBVTT
+	 * 
+	 * 00:00:01.000 --> 00:00:04.000
+	 * This is the first subtitle
+	 */
+	static parseVTT(text: string): SubtitleCue[] {
+		const cues: SubtitleCue[] = [];
+		
+		// 移除 WEBVTT 头部和注释
+		text = text.replace(/^WEBVTT.*?\n/, '');
+		text = text.replace(/NOTE.*?\n\n/g, '');
+		
+		// 按空行分割字幕块
+		const blocks = text.split(/\n\s*\n/).filter(block => block.trim());
+		
+		for (let i = 0; i < blocks.length; i++) {
+			const block = blocks[i];
+			if (!block) continue;
+			
+			const lines = block.split('\n').map(line => line.trim());
+			
+			// 跳过空行
+			if (lines.length === 0) continue;
+			
+			// 查找时间行
+			let timeLineIndex = -1;
+			for (let j = 0; j < lines.length; j++) {
+				const line = lines[j];
+				if (line && line.includes('-->')) {
+					timeLineIndex = j;
+					break;
+				}
+			}
+			
+			if (timeLineIndex === -1) continue;
+			
+			// 解析时间
+			const timeLine = lines[timeLineIndex];
+			if (!timeLine) continue;
+			const timeMatch = timeLine.match(/(\d{2}:\d{2}:\d{2}\.\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2}\.\d{3})/);
+			if (!timeMatch || !timeMatch[1] || !timeMatch[2]) continue;
+			
+			const start = this.parseTimestamp(timeMatch[1]);
+			const end = this.parseTimestamp(timeMatch[2]);
+			
+			// 字幕文本（时间行之后的所有行）
+			const textLines = lines.slice(timeLineIndex + 1);
+			const text = textLines.join('\n');
+			
+			const { textEn, textZh } = this.separateLanguages(text);
+			
+			// ID（时间行之前的内容，如果有）
+			const id = timeLineIndex > 0 ? (lines[timeLineIndex - 1] || `vtt-${i}`) : `vtt-${i}`;
+			
+			cues.push({
+				id,
+				index: i,
+				start,
+				end,
+				text,
+				textEn,
+				textZh,
+			});
+		}
+		
+		return cues;
+	}
+
+	/**
+	 * 分离中英文字幕
+	 */
+	private static separateLanguages(text: string): { textEn?: string; textZh?: string } {
+		// 如果文本包含换行符，尝试按行分离
+		if (text.includes('\n')) {
+			const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+			const enLines: string[] = [];
+			const zhLines: string[] = [];
+			
+			for (const line of lines) {
+				// 检测是否包含中文字符
+				if (/[\u4e00-\u9fa5]/.test(line)) {
+					zhLines.push(line);
+				} else {
+					enLines.push(line);
+				}
+			}
+			
+			// 如果成功分离出中文和英文
+			if (zhLines.length > 0 && enLines.length > 0) {
+				return {
+					textEn: enLines.join(' '),
+					textZh: zhLines.join(' ')
+				};
+			}
+			
+			// 如果全是中文
+			if (zhLines.length > 0 && enLines.length === 0) {
+				return { textZh: zhLines.join(' ') };
+			}
+			
+			// 如果全是英文
+			if (zhLines.length === 0 && enLines.length > 0) {
+				return { textEn: enLines.join(' ') };
+			}
+		} 
+		// 如果只有一行
+		else {
+			// 检测是否包含中文
+			if (/[\u4e00-\u9fa5]/.test(text)) {
+				// 尝试检测是否混合了中英文（例如 "English 中文"）
+				// 这种比较难完美分割，简单起见，如果包含较多中文则视为中文，否则尝试分割
+				
+				// 简单的分割策略：如果一行中包含中文，但开头是英文单词，尝试分割
+				// 很多双语字幕在一行时是：English Text  中文文本
+				const match = text.match(/^([a-zA-Z0-9\s.,;:!?'"()-]+)\s+([\u4e00-\u9fa5].*)$/);
+				if (match) {
+					return {
+						textEn: (match[1] || '').trim(),
+						textZh: (match[2] || '').trim()
+					};
+				}
+				
+				// 无法明确分割，视为中文（或混合）
+				// 但为了保证显示效果，如果包含中文，且没有 textEn，那么在 SubtitleOverlay 中可能会只显示 textZh
+				// 我们需要根据情况决定。
+				// 策略：如果包含中文，就放入 textZh，textEn 为空？
+				// 不，如果 textEn 为空，textZh 也会显示。
+				// 但如果 textEn 为空，textZh 里的英文无法点击查词吗？
+				// SubtitleOverlay 里 textZh 是纯文本显示。
+				
+				// 如果这一行主要是中文，放 textZh
+				return { textZh: text };
+			} else {
+				// 纯英文
+				return { textEn: text };
+			}
+		}
+		
+		return {};
+	}
+	
+	/**
+	 * 解析时间戳为秒数
+	 * 支持格式：
+	 * - SRT: 00:00:01,000 (HH:MM:SS,mmm)
+	 * - VTT: 00:00:01.000 (HH:MM:SS.mmm)
+	 */
+	private static parseTimestamp(timestamp: string): number {
+		// 统一格式：替换逗号为点号
+		timestamp = timestamp.replace(',', '.');
+		
+		// 解析 HH:MM:SS.mmm
+		const match = timestamp.match(/(\d{2}):(\d{2}):(\d{2})\.(\d{3})/);
+		if (!match || !match[1] || !match[2] || !match[3] || !match[4]) return 0;
+		
+		const hours = parseInt(match[1], 10);
+		const minutes = parseInt(match[2], 10);
+		const seconds = parseInt(match[3], 10);
+		const milliseconds = parseInt(match[4], 10);
+		
+		return hours * 3600 + minutes * 60 + seconds + milliseconds / 1000;
+	}
+	
+	/**
+	 * 格式化秒数为时间戳
+	 */
+	static formatTimestamp(seconds: number, format: 'srt' | 'vtt' = 'srt'): string {
+		const hours = Math.floor(seconds / 3600);
+		const minutes = Math.floor((seconds % 3600) / 60);
+		const secs = Math.floor(seconds % 60);
+		const ms = Math.floor((seconds % 1) * 1000);
+		
+		const separator = format === 'srt' ? ',' : '.';
+		
+		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}${separator}${ms.toString().padStart(3, '0')}`;
+	}
+	
+	/**
+	 * 验证字幕是否有效
+	 */
+	static validate(cues: SubtitleCue[]): boolean {
+		if (!cues || cues.length === 0) return false;
+		
+		for (const cue of cues) {
+			// 检查基本字段
+			if (!cue.id || cue.start < 0 || cue.end <= cue.start || !cue.text) {
+				return false;
+			}
+		}
+		
+		return true;
+	}
+	
+	/**
+	 * 查找指定时间的字幕索引（二分查找）
+	 * 这个方法将在 useMediaSync 中使用
+	 */
+	static findIndexAtTime(cues: SubtitleCue[], time: number): number {
+		if (!cues || cues.length === 0) return -1;
+		
+		// 二分查找
+		let left = 0;
+		let right = cues.length - 1;
+		let result = -1;
+		
+		while (left <= right) {
+			const mid = Math.floor((left + right) / 2);
+			const cue = cues[mid];
+			
+			if (!cue) break;
+			
+			if (time >= cue.start && time < cue.end) {
+				// 找到匹配的字幕
+				return mid;
+			} else if (time < cue.start) {
+				// 在左侧
+				right = mid - 1;
+			} else {
+				// 在右侧
+				left = mid + 1;
+				// 记录最后一个开始时间小于当前时间的索引
+				if (time >= cue.start) {
+					result = mid;
+				}
+			}
+		}
+		
+		// 如果没有完全匹配，返回最接近的
+		return result;
+	}
+	
+	/**
+	 * 合并双语字幕
+	 * 将英文和中文字幕合并为一个数组
+	 */
+	static mergeBilingual(
+		enCues: SubtitleCue[],
+		zhCues: SubtitleCue[]
+	): SubtitleCue[] {
+		const merged: SubtitleCue[] = [];
+		
+		// 使用英文字幕为基准
+		for (const enCue of enCues) {
+			// 查找对应的中文字幕（时间最接近的）
+			const zhCue = zhCues.find(
+				zh => Math.abs(zh.start - enCue.start) < 0.5  // 允许 0.5 秒误差
+			);
+			
+			merged.push({
+				...enCue,
+				textEn: enCue.text,
+				textZh: zhCue?.text,
+				text: enCue.text, // 默认显示英文
+			});
+		}
+		
+		return merged;
+	}
+}

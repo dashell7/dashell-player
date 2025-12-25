@@ -16,7 +16,13 @@ const context = await esbuild.context({
 		js: banner,
 	},
 	entryPoints: ["src/main.ts"],
+	loader: {
+		'.tsx': 'tsx',
+		'.ts': 'ts',
+	},
 	bundle: true,
+	jsx: 'automatic',
+	jsxImportSource: 'react',
 	external: [
 		"obsidian",
 		"electron",
