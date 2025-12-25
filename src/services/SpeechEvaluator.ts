@@ -264,31 +264,31 @@ export class SpeechEvaluator {
 			return {
 				grade: 'A',
 				color: '#28a745',
-				message: 'Excellent! Nearly perfect pronunciation.',
+				message: '太棒了！发音接近完美。',
 			};
 		} else if (score >= 80) {
 			return {
 				grade: 'B',
 				color: '#17a2b8',
-				message: 'Very good! Minor improvements needed.',
+				message: '非常好！发音清晰易懂。',
 			};
 		} else if (score >= 70) {
 			return {
 				grade: 'C',
 				color: '#ffc107',
-				message: 'Good effort. Practice more on the red parts.',
+				message: '不错！部分发音仍需改进。',
 			};
 		} else if (score >= 60) {
 			return {
 				grade: 'D',
 				color: '#fd7e14',
-				message: 'Needs improvement. Focus on accuracy.',
+				message: '一般。请针对问题单词多加练习。',
 			};
 		} else {
 			return {
 				grade: 'F',
 				color: '#dc3545',
-				message: 'Keep practicing! Try speaking slower and clearer.',
+				message: '继续加油！尝试放慢语速，咬字更清晰些。',
 			};
 		}
 	}

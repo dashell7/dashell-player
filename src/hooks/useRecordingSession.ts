@@ -75,7 +75,7 @@ export function useRecordingSession(plugin: LinguaFlowPlugin): UseRecordingSessi
 		}
 	}, [start, recordingBlobUrl, activeIndex, subtitles]);
 
-	const transcribeAndEvaluate = async (audioBlob: Blob, referenceSubtitle: SubtitleCue) => {
+	const transcribeAndEvaluate = useCallback(async (audioBlob: Blob, referenceSubtitle: SubtitleCue) => {
 		console.log('[RecordingSession] transcribeAndEvaluate started');
 		setIsTranscribing(true);
 		setSessionError(null);
@@ -187,7 +187,7 @@ export function useRecordingSession(plugin: LinguaFlowPlugin): UseRecordingSessi
 			setIsTranscribing(false);
 			console.log('[RecordingSession] ✅ transcribeAndEvaluate completed');
 		}
-	};
+	}, [plugin.settings]);
 
 	const stopRecording = useCallback(async () => {
 		console.log('[RecordingSession] Stopping recording...');
@@ -203,8 +203,7 @@ export function useRecordingSession(plugin: LinguaFlowPlugin): UseRecordingSessi
 
 			console.log('[RecordingSession] Audio blob size:', audioBlob.size, 'bytes');
 			const blobUrl = URL.createObjectURL(audioBlob);
-			setRecordingBlobUrl(blobUrl);
-
+			
 			// 自动转录
 			const canTranscribe = 
 				(plugin.settings.speechProvider === 'openai' || plugin.settings.speechProvider === 'custom') ||
@@ -213,6 +212,17 @@ export function useRecordingSession(plugin: LinguaFlowPlugin): UseRecordingSessi
 			console.log('[RecordingSession] Speech provider:', plugin.settings.speechProvider);
 			console.log('[RecordingSession] Can transcribe:', canTranscribe);
 			console.log('[RecordingSession] Target subtitle:', targetSubtitle ? targetSubtitle.text : 'None');
+			
+			// 关键修复：先设置转录状态，再设置 Blob URL
+			// 这样当 UI 监听到 Blob URL 更新并尝试显示弹窗时，isTranscribing 已经是 true 了
+			// 避免弹窗因为 !evaluation && !isTranscribing 而直接返回 null
+			if (canTranscribe && targetSubtitle) {
+				console.log('[RecordingSession] Setting isTranscribing = true BEFORE setting blobUrl');
+				setIsTranscribing(true);
+			}
+
+			console.log('[RecordingSession] Setting recordingBlobUrl:', blobUrl.substring(0, 50) + '...');
+			setRecordingBlobUrl(blobUrl);
 			
 			if (canTranscribe && targetSubtitle) {
 				console.log('[RecordingSession] Starting transcription and evaluation...');

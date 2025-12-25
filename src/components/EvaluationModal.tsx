@@ -1,4 +1,6 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
+import DiffMatchPatch from 'diff-match-patch';
 import { SpeechEvaluator, type EvaluationResult } from '../services/SpeechEvaluator';
 import type { SubtitleCue, PlayerRef } from '../types';
 import { useMediaStore } from '../store/mediaStore';
@@ -18,6 +20,16 @@ const Icons = {
 	X: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>,
 };
 
+const ErrorTypeMap: Record<string, string> = {
+	'None': '正确',
+	'Omission': '漏读',
+	'Insertion': '多读',
+	'Mispronunciation': '发音错误',
+	'UnexpectedBreak': '停顿异常',
+	'MissingBreak': '缺少停顿',
+	'Monotone': '语调平淡',
+};
+
 interface EvaluationModalProps {
 	evaluation: EvaluationResult | null;
 	transcription: string | null;
@@ -25,15 +37,92 @@ interface EvaluationModalProps {
 	playerRef: React.RefObject<PlayerRef>;
 	targetSubtitle: SubtitleCue | null;
 	onClose: () => void;
+	onRetry?: () => void; // 新增重试回调
 	isVisible: boolean;
+	isTranscribing?: boolean;
 }
 
 /**
- * 评分结果浮动弹窗
- * 
- * 在录音结束后显示评分结果和建议
+ * 单词对比组件 - 使用 diff-match-patch 算法提供精准差异
+ * 使用 React.memo 优化性能
  */
-export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, playerRef, targetSubtitle, onClose, isVisible }: EvaluationModalProps) {
+const SimpleDiffView = React.memo(({ original, transcribed }: { original: string, transcribed: string }) => {
+	// 预处理原文：过滤中文行
+	const cleanOriginal = original
+		.split(/\n/)
+		.filter(line => !/[\u4e00-\u9fa5]/.test(line))
+		.join(' ');
+
+	// 标准化处理函数
+	const normalize = (t: string) => t.toLowerCase().replace(/[.,!?;:'"]/g, '').replace(/\s+/g, ' ').trim();
+	
+	const text1 = normalize(cleanOriginal);
+	const text2 = normalize(transcribed);
+	
+	// 使用 diff-match-patch 计算差异
+	const dmp = new DiffMatchPatch();
+	const diffs = dmp.diff_main(text1, text2);
+	dmp.diff_cleanupSemantic(diffs);
+	
+	return (
+		<div className="linguaflow-diff-text-container">
+			{diffs.map((diff, i) => {
+				const [op, text] = diff;
+				let className = 'linguaflow-diff-word';
+				
+				if (op === 0) { // Equal
+					className += ' correct';
+				} else if (op === 1) { // Insert (多读)
+					className += ' extra';
+				} else if (op === -1) { // Delete (漏读)
+					className += ' missing';
+				}
+				
+				return <span key={i} className={className}>{text}</span>;
+			})}
+		</div>
+	);
+}, (prevProps, nextProps) => prevProps.original === nextProps.original && prevProps.transcribed === nextProps.transcribed);
+
+/**
+ * Azure 词级评估视图 - 精准显示发音错误
+ * 使用 React.memo 优化性能
+ */
+const AzureWordView = React.memo(({ words }: { words: { word: string, score: number, errorType: string }[] }) => {
+	return (
+		<div className="linguaflow-diff-text-container">
+			{words.map((w, i) => {
+				let className = 'linguaflow-diff-word';
+				
+				// 根据 Azure 错误类型应用样式
+				if (w.errorType === 'None') {
+					className += ' correct';
+				} else if (w.errorType === 'Mispronunciation') {
+					className += ' warning';
+				} else if (w.errorType === 'Omission') {
+					className += ' missing';
+				} else if (w.errorType === 'Insertion') {
+					className += ' extra';
+				}
+				
+				return (
+					<span 
+						key={i} 
+						className={className} 
+						title={`${ErrorTypeMap[w.errorType] || w.errorType} (${w.score}分)`}
+					>
+						{w.word}{' '}
+					</span>
+				);
+			})}
+		</div>
+	);
+}, (prevProps, nextProps) => JSON.stringify(prevProps.words) === JSON.stringify(nextProps.words));
+
+/**
+ * 评分结果浮动弹窗
+ */
+export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, playerRef, targetSubtitle, onClose, onRetry, isVisible, isTranscribing = false }: EvaluationModalProps) {
 	const [recordingAudio, setRecordingAudio] = React.useState<HTMLAudioElement | null>(null);
 	const [isRecordingPlaying, setIsRecordingPlaying] = React.useState(false);
 	const [recordingCurrentTime, setRecordingCurrentTime] = React.useState(0);
@@ -104,15 +193,36 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 		}
 	};
 
-	// 如果不可见或没有评分，不渲染
-	if (!isVisible || !evaluation) {
+	console.log('[EvaluationModal] Render Check:', { 
+		isVisible, 
+		hasEvaluation: !!evaluation, 
+		isTranscribing,
+		recordingBlobUrl: !!recordingBlobUrl,
+		targetSubtitle: !!targetSubtitle
+	});
+
+	// 如果不可见，不渲染
+	if (!isVisible) {
+		console.log('[EvaluationModal] Not rendering: isVisible is false');
 		return null;
 	}
 
-	// 计算等级（必须在条件检查之后）
-	const grade = SpeechEvaluator.getGrade(evaluation.finalScore || evaluation.score);
+	// 如果没有评分且不在转录中，不渲染
+	if (!evaluation && !isTranscribing) {
+		console.warn('[EvaluationModal] Not rendering: No evaluation and not transcribing');
+		return null;
+	}
 
-	return (
+	console.log('[EvaluationModal] RENDERING MODAL via Portal');
+
+	// 计算等级（如果有评分）
+	const grade = evaluation ? SpeechEvaluator.getGrade(evaluation.finalScore || evaluation.score) : {
+		grade: '...',
+		color: '#888',
+		message: '正在分析中...'
+	};
+
+	return createPortal(
 		<div className="linguaflow-modal-overlay" onClick={onClose}>
 			<div className="linguaflow-modal-content" onClick={(e) => e.stopPropagation()}>
 				<div className="linguaflow-modal-header">
@@ -120,16 +230,69 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 						<span className="linguaflow-modal-icon">{Icons.BarChart}</span>
 						<h3>录音评分</h3>
 					</div>
+					<button className="linguaflow-modal-close" onClick={onClose}>
+						{Icons.X}
+					</button>
 				</div>
 
 				<div className="linguaflow-modal-body">
-					{/* 得分圆环 */}
-					<div className="linguaflow-score-circle-large" style={{ borderColor: grade.color }}>
-						<div className="linguaflow-score-value-large" style={{ color: grade.color }}>
-							{evaluation.finalScore || evaluation.score}
+					{/* 得分和详细数据横向布局 */}
+					<div className="linguaflow-score-stats-container">
+						{/* 得分圆环 */}
+						<div className="linguaflow-score-circle-large" style={{ borderColor: grade.color }}>
+							<div className="linguaflow-score-value-large" style={{ color: grade.color }}>
+								{evaluation ? (evaluation.finalScore || evaluation.score) : '...'}
+							</div>
+							<div className="linguaflow-score-grade-large" style={{ color: grade.color }}>
+								{grade.grade}
+							</div>
 						</div>
-						<div className="linguaflow-score-grade-large" style={{ color: grade.color }}>
-							{grade.grade}
+
+						{/* 详细数据 */}
+						<div className="linguaflow-stats-grid">
+							{isTranscribing ? (
+								<>
+									<div className="linguaflow-stat-item">
+										<span className="linguaflow-stat-label">正在分析...</span>
+										<span className="linguaflow-stat-value">⏳</span>
+									</div>
+									<div className="linguaflow-stat-item">
+										<span className="linguaflow-stat-label">正在评分...</span>
+										<span className="linguaflow-stat-value">⏳</span>
+									</div>
+									<div className="linguaflow-stat-item">
+										<span className="linguaflow-stat-label">请稍候...</span>
+										<span className="linguaflow-stat-value">⏳</span>
+									</div>
+								</>
+							) : evaluation ? (
+								<>
+									<div className="linguaflow-stat-item">
+										<span className="linguaflow-stat-label">文本准确度</span>
+										<span className="linguaflow-stat-value">{evaluation.score}分</span>
+									</div>
+									<div className="linguaflow-stat-item">
+										<span className="linguaflow-stat-label">正确词数</span>
+										<span className="linguaflow-stat-value">{evaluation.correctWords}/{evaluation.totalWords}</span>
+									</div>
+									{evaluation.azureAssessment && (
+										<>
+											<div className="linguaflow-stat-item">
+												<span className="linguaflow-stat-label">发音质量</span>
+												<span className="linguaflow-stat-value">{evaluation.azureAssessment.pronunciationScore.toFixed(1)}分</span>
+											</div>
+											<div className="linguaflow-stat-item">
+												<span className="linguaflow-stat-label">流利度</span>
+												<span className="linguaflow-stat-value">{evaluation.azureAssessment.fluencyScore.toFixed(1)}分</span>
+											</div>
+											<div className="linguaflow-stat-item">
+												<span className="linguaflow-stat-label">完整度</span>
+												<span className="linguaflow-stat-value">{evaluation.azureAssessment.completenessScore.toFixed(1)}分</span>
+											</div>
+										</>
+									)}
+								</>
+							) : null}
 						</div>
 					</div>
 
@@ -152,7 +315,7 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 										<span className="linguaflow-audio-icon">{Icons.Radio}</span>
 										原音频
 									</div>
-									<div className="linguaflow-audio-player-custom">
+									<div className="linguaflow-audio-player-simple">
 										<button 
 											className="linguaflow-audio-play-btn"
 											onClick={handlePlayOriginal}
@@ -162,14 +325,6 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 										</button>
 										<div className="linguaflow-audio-time">
 											{formatTime(targetSubtitle.start)} / {formatTime(targetSubtitle.end)}
-										</div>
-										<div className="linguaflow-audio-controls">
-											<button className="linguaflow-audio-volume-btn" title="音量">
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-											</button>
-											<button className="linguaflow-audio-more-btn" title="更多">
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-											</button>
 										</div>
 									</div>
 								</div>
@@ -182,7 +337,7 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 										<span className="linguaflow-audio-icon">{Icons.Mic}</span>
 										你的录音
 									</div>
-									<div className="linguaflow-audio-player-custom">
+									<div className="linguaflow-audio-player-simple">
 										<button 
 											className="linguaflow-audio-play-btn"
 											onClick={handleToggleRecording}
@@ -193,135 +348,87 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 										<div className="linguaflow-audio-time">
 											{formatTime(recordingCurrentTime)} / {formatTime(recordingDuration)}
 										</div>
-										<div className="linguaflow-audio-controls">
-											<button className="linguaflow-audio-volume-btn" title="音量">
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-											</button>
-											<button className="linguaflow-audio-more-btn" title="更多">
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-											</button>
-										</div>
 									</div>
 								</div>
 							)}
 						</div>
 					</div>
 
-					{/* 转录文本 */}
-					{transcription && (
-						<div className="linguaflow-modal-section">
-							<h4>
-								<span className="linguaflow-section-icon">{Icons.FileText}</span>
-								识别内容
-							</h4>
-							<div className="linguaflow-transcription-box">
-								{transcription}
-							</div>
-						</div>
-					)}
-
-					{/* 统计信息 */}
+					{/* 发音检视区域 */}
 					<div className="linguaflow-modal-section">
 						<h4>
-							<span className="linguaflow-section-icon">{Icons.TrendingUp}</span>
-							详细数据
+							<span className="linguaflow-section-icon">{Icons.FileText}</span>
+							发音检视
 						</h4>
-						<div className="linguaflow-stats-grid">
-							<div className="linguaflow-stat-item">
-								<span className="linguaflow-stat-label">文本准确度</span>
-								<span className="linguaflow-stat-value">{evaluation.score}分</span>
+						
+						{targetSubtitle && (
+							<div className="linguaflow-original-text">
+								{targetSubtitle.text}
 							</div>
-							<div className="linguaflow-stat-item">
-								<span className="linguaflow-stat-label">正确词数</span>
-								<span className="linguaflow-stat-value">{evaluation.correctWords} / {evaluation.totalWords}</span>
-							</div>
-							
-							{/* Azure 评分 */}
-							{evaluation.azureAssessment && (
-								<>
-									<div className="linguaflow-stat-item">
-										<span className="linguaflow-stat-label">发音质量</span>
-										<span className="linguaflow-stat-value">{evaluation.azureAssessment.pronunciationScore.toFixed(1)}分</span>
-									</div>
-									<div className="linguaflow-stat-item">
-										<span className="linguaflow-stat-label">流利度</span>
-										<span className="linguaflow-stat-value">{evaluation.azureAssessment.fluencyScore.toFixed(1)}分</span>
-									</div>
-									<div className="linguaflow-stat-item">
-										<span className="linguaflow-stat-label">完整度</span>
-										<span className="linguaflow-stat-value">{evaluation.azureAssessment.completenessScore.toFixed(1)}分</span>
-									</div>
-								</>
+						)}
+						
+						<div className="linguaflow-diff-view">
+							<div className="linguaflow-diff-label">识别结果:</div>
+							{evaluation?.azureAssessment ? (
+								<AzureWordView words={evaluation.azureAssessment.wordDetails} />
+							) : evaluation?.diffHtml ? (
+								<div dangerouslySetInnerHTML={{ __html: evaluation.diffHtml }} />
+							) : transcription ? (
+								<SimpleDiffView 
+									original={targetSubtitle?.text || ''} 
+									transcribed={transcription} 
+								/>
+							) : (
+								<div className="linguaflow-diff-placeholder">暂无识别结果</div>
 							)}
 						</div>
 					</div>
 
-					{/* Azure 词级错误（如果有） */}
-					{evaluation.azureAssessment && evaluation.azureAssessment.wordDetails.filter(w => w.errorType !== 'None').length > 0 && (
+					{/* 错误详情列表 */}
+					{evaluation?.azureAssessment && evaluation.azureAssessment.wordDetails.filter(w => w.errorType !== 'None').length > 0 && (
 						<div className="linguaflow-modal-section">
 							<h4>
-								<span className="linguaflow-section-icon linguaflow-icon-warning">{Icons.AlertTriangle}</span>
+								<span className="linguaflow-section-icon">{Icons.AlertTriangle}</span>
 								发音问题
 							</h4>
 							<ul className="linguaflow-error-list">
 								{evaluation.azureAssessment.wordDetails
 									.filter(w => w.errorType !== 'None')
 									.map((word, idx) => (
-										<li key={idx}>
-											<strong>{word.word}</strong>: {word.errorType} 
-											<span className="linguaflow-word-score-badge">({word.score.toFixed(1)}分)</span>
+										<li key={idx} className="linguaflow-error-item">
+											<span className={`linguaflow-error-tag ${word.errorType.toLowerCase()}`}>
+												{ErrorTypeMap[word.errorType] || word.errorType}
+											</span>
+											<span className="linguaflow-error-word">{word.word}</span>: 
+											<span className="linguaflow-error-score">发音错误({word.score.toFixed(1)}分)</span>
 										</li>
-									))
-								}
+									))}
 							</ul>
-						</div>
-					)}
-
-					{/* OpenAI Diff 视图 */}
-					{evaluation.diffHtml && (
-						<div className="linguaflow-modal-section">
-							<h4>
-								<span className="linguaflow-section-icon">{Icons.Search}</span>
-								对比详情
-							</h4>
-							<div className="linguaflow-diff-legend">
-								<div className="linguaflow-diff-legend-item">
-									<div className="linguaflow-diff-legend-dot correct"></div>
-									<span>正确</span>
-								</div>
-								<div className="linguaflow-diff-legend-item">
-									<div className="linguaflow-diff-legend-dot missing"></div>
-									<span>缺失</span>
-								</div>
-								<div className="linguaflow-diff-legend-item">
-									<div className="linguaflow-diff-legend-dot extra"></div>
-									<span>多余</span>
-								</div>
-							</div>
-							<div 
-								className="linguaflow-diff-view"
-								dangerouslySetInnerHTML={{ __html: evaluation.diffHtml }}
-							/>
 						</div>
 					)}
 				</div>
 
 				<div className="linguaflow-modal-footer">
-					<button className="linguaflow-modal-btn-primary" onClick={onClose}>
-						知道了
-					</button>
+					<div className="linguaflow-modal-buttons">
+						{onRetry && (
+							<button className="linguaflow-modal-btn-secondary" onClick={onRetry}>
+								重试
+							</button>
+						)}
+						<button className="linguaflow-modal-btn-primary" onClick={onClose}>
+							知道了
+						</button>
+					</div>
 				</div>
 			</div>
-		</div>
+		</div>,
+		document.body
 	);
 }
 
-/**
- * 格式化时间（分:秒）
- */
 function formatTime(seconds: number): string {
 	// 处理无效值（Infinity, NaN, 负数等）
-	if (!isFinite(seconds) || seconds < 0) {
+	if (!Number.isFinite(seconds) || seconds < 0) {
 		return '0:00';
 	}
 	

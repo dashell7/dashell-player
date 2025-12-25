@@ -6,21 +6,28 @@ import { parseTimestamp, isYouTubeUrl } from './utils/fileUtils';
 import { useMediaStore } from './store/mediaStore';
 import { LinguaFlowSettings, DEFAULT_SETTINGS, LinguaFlowSettingTab } from './settings';
 import { MediaInputModal } from './modals/MediaInputModal';
+import { SubtitleLoader } from './services/SubtitleLoader';
+import { TextProcessor } from './components/OptimizedWord';
 import * as React from 'react';
 
 /**
- * LinguaFlow 插件主类
+ * LangPlayer 插件主类
  * 提供媒体播放、字幕同步、语言学习功能
  */
 export default class LinguaFlowPlugin extends Plugin {
 	settings: LinguaFlowSettings;
 	playerRef: React.RefObject<PlayerRef> = React.createRef();
+	subtitleLoader: SubtitleLoader;
 
 	async onload() {
-		console.log('[LinguaFlow] Loading plugin');
+		console.log('[LangPlayer] Loading plugin');
 
 		// 加载设置
 		await this.loadSettings();
+
+		// 初始化字幕加载器（带缓存功能）
+		this.subtitleLoader = new SubtitleLoader(this);
+		console.log('[LangPlayer] Subtitle loader initialized');
 
 		// 注册自定义视图
 		this.registerView(
@@ -176,6 +183,9 @@ export default class LinguaFlowPlugin extends Plugin {
 		
 		// 关闭所有 LinguaFlow 视图
 		this.app.workspace.detachLeavesOfType(LINGUA_FLOW_VIEW);
+		
+		// 清理缓存
+		TextProcessor.clearCache();
 	}
 
 	/**

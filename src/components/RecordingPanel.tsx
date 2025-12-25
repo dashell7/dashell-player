@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { useMemo, useCallback } from 'react';
 import { SpeechEvaluator } from '../services/SpeechEvaluator';
 import { useMediaStore } from '../store/mediaStore';
 import type { EvaluationResult } from '../services/SpeechEvaluator';
@@ -37,15 +38,21 @@ export function RecordingPanel({ plugin, session }: RecordingPanelProps) {
 		targetSubtitle
 	} = session;
 	
-	// 从插件设置获取 API Key（优先使用新字段）
-	const apiKey = plugin.settings.sttApiKey || plugin.settings.openaiApiKey;
+	// 从插件设置获取 API Key（优先使用新字段）- 缓存
+	const apiKey = useMemo(() => 
+		plugin.settings.sttApiKey || plugin.settings.openaiApiKey,
+		[plugin.settings.sttApiKey, plugin.settings.openaiApiKey]
+	);
 	
 	// 获取当前字幕 (用于显示跟读文本)
 	const subtitles = useMediaStore(state => state.subtitles);
 	const activeIndex = useMediaStore(state => state.activeIndex);
 	
-	// 优先显示 targetSubtitle，否则显示 activeIndex
-	const currentSubtitle = targetSubtitle || (activeIndex >= 0 ? subtitles[activeIndex] : null);
+	// 优先显示 targetSubtitle，否则显示 activeIndex - 缓存
+	const currentSubtitle = useMemo(() => 
+		targetSubtitle || (activeIndex >= 0 ? subtitles[activeIndex] : null),
+		[targetSubtitle, activeIndex, subtitles]
+	);
 
 	/**
 	 * 开始录音
@@ -62,13 +69,13 @@ export function RecordingPanel({ plugin, session }: RecordingPanelProps) {
 	};
 
 	/**
-	 * 格式化时间
+	 * 格式化时间 - 使用 useCallback 避免重复创建
 	 */
-	const formatDuration = (seconds: number): string => {
+	const formatDuration = useCallback((seconds: number): string => {
 		const mins = Math.floor(seconds / 60);
 		const secs = Math.floor(seconds % 60);
 		return `${mins}:${secs.toString().padStart(2, '0')}`;
-	};
+	}, []);
 	
 	const error = sessionError || (recorderError?.message);
 

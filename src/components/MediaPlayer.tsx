@@ -3,6 +3,9 @@ import ReactPlayer from 'react-player';
 import { PlayerRef, PlayerState } from '../types';
 import { formatTime } from '../utils/fileUtils';
 
+// 常量 - 避免重复创建
+const PLAYBACK_RATES = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
 interface MediaPlayerProps {
 	url: string;
 	onReady?: () => void;
@@ -166,7 +169,7 @@ export const MediaPlayer = forwardRef<PlayerRef, MediaPlayerProps>(
 						{/* 播放速度 */}
 						<div className="linguaflow-rate-control">
 							<label>速度: </label>
-							{[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
+							{PLAYBACK_RATES.map((rate) => (
 								<button
 									key={String(rate)}
 									className={`linguaflow-rate-btn ${

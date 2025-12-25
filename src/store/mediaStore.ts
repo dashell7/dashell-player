@@ -37,6 +37,10 @@ interface MediaState {
 	abRepeatEnabled: boolean;
 	pointA: number | null;
 	pointB: number | null;
+
+	// 影子跟读状态
+	shadowingEnabled: boolean;
+	shadowingPauseFactor: number; // 暂停时长倍率 (如 1.0, 1.5)
 }
 
 /**
@@ -77,6 +81,12 @@ interface MediaActions {
 	disableABRepeat: () => void;
 	clearABPoints: () => void;
 	
+	// 影子跟读
+	toggleShadowing: () => void;
+	enableShadowing: () => void;
+	disableShadowing: () => void;
+	setShadowingPauseFactor: (factor: number) => void;
+
 	// 重置
 	reset: () => void;
 }
@@ -121,6 +131,10 @@ const initialState: MediaState = {
 	abRepeatEnabled: false,
 	pointA: null,
 	pointB: null,
+
+	// 影子跟读
+	shadowingEnabled: false,
+	shadowingPauseFactor: 1.0, // 默认1.0倍时长
 };
 
 /**
@@ -158,20 +172,26 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	},
 	
 	setActiveIndex: (index: number) => {
-		const { activeIndex, subtitles } = get();
+		const state = get();
 		
-		// 避免不必要的更新
-		if (activeIndex === index) return;
+		// 避免不必要的更新 - 早期返回
+		if (state.activeIndex === index) return;
 		
 		// 验证索引有效性
-		if (index >= 0 && index < subtitles.length) {
+		if (index >= 0 && index < state.subtitles.length) {
 			set({ activeIndex: index, activeWordIndex: -1 }); // 切换字幕时重置单词索引
 		} else if (index === -1) {
-			set({ activeIndex: -1, activeWordIndex: -1 });
+			// 只有在当前不是 -1 时才更新
+			if (state.activeIndex !== -1 || state.activeWordIndex !== -1) {
+				set({ activeIndex: -1, activeWordIndex: -1 });
+			}
 		}
 	},
 	
 	setActiveWordIndex: (index: number) => {
+		const state = get();
+		// 避免不必要的更新
+		if (state.activeWordIndex === index) return;
 		set({ activeWordIndex: index });
 	},
 	
@@ -184,6 +204,12 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	// ===== 单句循环 =====
 	enableLoop: (start: number, end: number) => {
 		console.log('[MediaStore] Enable loop:', start, '-', end);
+		
+		// 互斥：关闭其他模式
+		if (get().segmentLoopEnabled) get().stopSegmentLoop();
+		if (get().abRepeatEnabled) get().disableABRepeat();
+		if (get().shadowingEnabled) get().disableShadowing();
+		
 		set({
 			loopEnabled: true,
 			loopStart: start,
@@ -220,9 +246,10 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	playSegment: (start: number, end: number) => {
 		console.log('[MediaStore] Play segment:', start, '-', end);
 		// 1. 如果正在循环，先停止循环
-		if (get().loopEnabled) {
-			get().disableLoop();
-		}
+		if (get().loopEnabled) get().disableLoop();
+		if (get().segmentLoopEnabled) get().stopSegmentLoop();
+		if (get().abRepeatEnabled) get().disableABRepeat();
+		if (get().shadowingEnabled) get().disableShadowing();
 		
 		// 2. 设置单句播放状态
 		set({
@@ -239,6 +266,8 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		// 1. 停止其他模式
 		if (get().loopEnabled) get().disableLoop();
 		if (get().segmentPlayEnabled) set({ segmentPlayEnabled: false });
+		if (get().abRepeatEnabled) get().disableABRepeat();
+		if (get().shadowingEnabled) get().disableShadowing();
 		
 		// 2. 设置状态
 		set({
@@ -307,11 +336,19 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 
 	// ===== AB 复读 =====
 	setPointA: (time: number) => {
+		if (typeof time !== 'number' || isNaN(time) || time < 0) {
+			console.warn('[MediaStore] Invalid time for Point A:', time);
+			return;
+		}
 		console.log('[MediaStore] Set Point A:', time);
 		set({ pointA: time });
 	},
 	
 	setPointB: (time: number) => {
+		if (typeof time !== 'number' || isNaN(time) || time < 0) {
+			console.warn('[MediaStore] Invalid time for Point B:', time);
+			return;
+		}
 		console.log('[MediaStore] Set Point B:', time);
 		const { pointA } = get();
 		
@@ -319,7 +356,7 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		if (pointA !== null && time > pointA) {
 			set({ pointB: time });
 		} else {
-			set({ pointB: time });
+			console.warn('[MediaStore] Point B must be greater than Point A');
 		}
 	},
 	
@@ -328,6 +365,12 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		
 		if (pointA !== null && pointB !== null && pointB > pointA) {
 			console.log('[MediaStore] Enable AB Repeat:', pointA, '-', pointB);
+			
+			// 互斥：关闭其他模式
+			if (get().segmentLoopEnabled) get().stopSegmentLoop();
+			if (get().loopEnabled) get().disableLoop();
+			if (get().shadowingEnabled) get().disableShadowing();
+			
 			set({ abRepeatEnabled: true });
 		}
 	},
@@ -346,6 +389,35 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		});
 	},
 	
+	// ===== 影子跟读 =====
+	toggleShadowing: () => {
+		const { shadowingEnabled } = get();
+		if (shadowingEnabled) {
+			get().disableShadowing();
+		} else {
+			get().enableShadowing();
+		}
+	},
+	
+	enableShadowing: () => {
+		console.log('[MediaStore] Enable Shadowing');
+		// 互斥：关闭循环播放
+		if (get().segmentLoopEnabled) get().stopSegmentLoop();
+		if (get().loopEnabled) get().disableLoop();
+		if (get().abRepeatEnabled) get().disableABRepeat();
+		
+		set({ shadowingEnabled: true });
+	},
+	
+	disableShadowing: () => {
+		console.log('[MediaStore] Disable Shadowing');
+		set({ shadowingEnabled: false });
+	},
+	
+	setShadowingPauseFactor: (factor: number) => {
+		set({ shadowingPauseFactor: factor });
+	},
+
 	// ===== 重置 =====
 	reset: () => {
 		console.log('[MediaStore] Reset state');

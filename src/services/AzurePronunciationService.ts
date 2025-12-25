@@ -223,6 +223,15 @@ export class AzurePronunciationService {
 		console.log('[AzurePronunciation] Audio size:', audioBlob.size, 'bytes');
 		console.log('[AzurePronunciation] Audio type:', audioBlob.type);
 
+		// 预检查音频质量
+		if (audioBlob.size < 1000) {
+			throw new Error('录音文件太小（< 1KB），可能录音时间太短或没有录到声音。请确保：\n1. 录音时间 > 2秒\n2. 麦克风权限已开启\n3. 说话音量足够大');
+		}
+		
+		if (audioBlob.size > 10 * 1024 * 1024) {
+			throw new Error('录音文件太大（> 10MB），可能录音时间过长。建议单句录音时长控制在 10 秒以内。');
+		}
+
 		try {
 			// 转换音频为 WAV PCM 格式
 			const wavBlob = await this.convertToWav(audioBlob);
@@ -325,7 +334,33 @@ export class AzurePronunciationService {
 		
 		if (!best) {
 			console.error('[AzurePronunciation] Invalid response:', result);
-			throw new Error('No recognition result from Azure API. Please check audio quality and reference text.');
+			console.error('[AzurePronunciation] Full response structure:', JSON.stringify(result, null, 2));
+			
+			// 检查常见问题
+			const errorMessages: string[] = [];
+			errorMessages.push('Azure 无法识别您的录音');
+			
+			if (result.RecognitionStatus === 'NoMatch') {
+				errorMessages.push('- 可能原因：录音内容与参考文本不匹配');
+			}
+			if (result.RecognitionStatus === 'InitialSilenceTimeout') {
+				errorMessages.push('- 可能原因：录音时间太短或开始时太安静');
+			}
+			if (result.RecognitionStatus === 'BabbleTimeout') {
+				errorMessages.push('- 可能原因：背景噪音太大');
+			}
+			if (result.RecognitionStatus === 'Error') {
+				errorMessages.push('- 可能原因：音频格式或质量问题');
+			}
+			
+			// 添加通用建议
+			errorMessages.push('\n请检查：');
+			errorMessages.push('1. 录音时间是否足够（建议 > 2秒）');
+			errorMessages.push('2. 音量是否足够大且清晰');
+			errorMessages.push('3. 是否按照参考文本朗读');
+			errorMessages.push('4. 周围环境是否安静');
+			
+			throw new Error(errorMessages.join('\n'));
 		}
 
 		const assessment = best.PronunciationAssessment || best; // 关键修复：如果找不到嵌套对象，就直接用 best 对象

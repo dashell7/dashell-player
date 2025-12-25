@@ -241,7 +241,9 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 	const recordingSession = useRecordingSession(plugin);
 
 	// 启用高性能媒体同步
-	useMediaSync(playerRef, ready, plugin);
+	// 当正在录音或显示评分弹窗时，阻塞自动化逻辑（如影子跟读的自动跳转）
+	const isBlocked = recordingSession.isRecording || showEvaluationModal;
+	useMediaSync(playerRef, ready, plugin, isBlocked);
 
 	// 双击重置为默认高度
 	const handleDoubleClick = () => {
@@ -313,33 +315,138 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		useMediaStore.getState().reset();
 	}, [source]);
 
-	// 监听评分结果，自动弹出评分弹窗
+	// 监听录音状态变化并优化弹窗显示时机
 	React.useEffect(() => {
-		console.log('[LinguaFlowView] Evaluation effect triggered:', {
-			hasEvaluation: !!recordingSession.evaluation,
+		console.log('[LinguaFlowView] State update:', {
 			isRecording: recordingSession.isRecording,
+			hasBlob: !!recordingSession.recordingBlobUrl,
+			error: recordingSession.sessionError,
 			isTranscribing: recordingSession.isTranscribing,
-			evaluation: recordingSession.evaluation,
-			sessionError: recordingSession.sessionError
+			showModal: showEvaluationModal
 		});
 		
-		if (recordingSession.evaluation && !recordingSession.isRecording && !recordingSession.isTranscribing) {
-			console.log('[LinguaFlowView] ✅ All conditions met, showing evaluation modal');
-			setShowEvaluationModal(true);
-		} else {
-			console.log('[LinguaFlowView] ❌ Conditions not met for modal:', {
-				hasEvaluation: !!recordingSession.evaluation,
-				notRecording: !recordingSession.isRecording,
-				notTranscribing: !recordingSession.isTranscribing
-			});
+		// 优化：录音停止后立即显示弹窗（即使还在转录中）
+		if (!recordingSession.isRecording && recordingSession.recordingBlobUrl && !recordingSession.sessionError) {
+			if (!showEvaluationModal) {
+				console.log('[LinguaFlowView] Triggering Modal Open');
+				setShowEvaluationModal(true);
+			}
+		} else if (recordingSession.sessionError) {
+			console.log('[LinguaFlowView] Session Error:', recordingSession.sessionError);
+			setShowEvaluationModal(false);
+			// 只有当错误是新的时才提示（避免重复提示）
+			new Notice(`录音失败: ${recordingSession.sessionError}`);
 		}
-		
-		// 如果有错误，显示提示
+	}, [
+		recordingSession.isRecording, 
+		recordingSession.recordingBlobUrl, 
+		recordingSession.sessionError,
+		// 添加 isTranscribing 作为依赖，确保状态更新时能重新评估
+		recordingSession.isTranscribing
+	]);
+
+	// 监听错误状态
+	React.useEffect(() => {
 		if (recordingSession.sessionError) {
 			console.error('[LinguaFlowView] Session error:', recordingSession.sessionError);
-			new Notice(`录音处理失败: ${recordingSession.sessionError}`);
 		}
-	}, [recordingSession.evaluation, recordingSession.isRecording, recordingSession.isTranscribing, recordingSession.sessionError]);
+	}, [recordingSession.sessionError]);
+
+	// 添加全局键盘快捷键支持
+	React.useEffect(() => {
+		const handleKeyDown = (e: KeyboardEvent) => {
+			// 如果正在输入，不触发快捷键
+			if (document.activeElement?.tagName === 'INPUT' || 
+				document.activeElement?.tagName === 'TEXTAREA' ||
+				(document.activeElement as HTMLElement)?.isContentEditable) {
+				return;
+			}
+
+			// 检查是否已经在处理事件（避免重复触发）
+			if (e.defaultPrevented) return;
+
+			// 获取当前状态
+			const state = useMediaStore.getState();
+			const player = playerRef.current;
+
+			if (!player) return;
+
+			switch (e.key) {
+				case ' ': // Space: 播放/暂停
+					e.preventDefault();
+					if (state.playing) {
+						player.pauseVideo();
+						setPlaying(false);
+					} else {
+						player.playVideo();
+						setPlaying(true);
+					}
+					break;
+				
+				case 'ArrowLeft': // Left: 快退 5s
+					e.preventDefault();
+					const currentTimeL = player.getCurrentTime();
+					player.seekTo(Math.max(0, currentTimeL - 5));
+					break;
+				
+				case 'ArrowRight': // Right: 快进 5s
+					e.preventDefault();
+					const currentTimeR = player.getCurrentTime();
+					player.seekTo(currentTimeR + 5);
+					break;
+
+				case '[': // [: 上一句字幕
+					if (state.activeIndex > 0) {
+						const prevCue = state.subtitles[state.activeIndex - 1];
+						if (prevCue) {
+							player.seekTo(prevCue.start);
+							state.setActiveIndex(state.activeIndex - 1);
+						}
+					}
+					break;
+
+				case ']': // ]: 下一句字幕
+					if (state.activeIndex < state.subtitles.length - 1) {
+						const nextCue = state.subtitles[state.activeIndex + 1];
+						if (nextCue) {
+							player.seekTo(nextCue.start);
+							state.setActiveIndex(state.activeIndex + 1);
+						}
+					}
+					break;
+
+				case 'r':
+				case 'R': // r/R: 录音
+					e.preventDefault();
+					if (recordingSession.isRecording) {
+						recordingSession.stopRecording();
+					} else if (state.activeIndex >= 0) {
+						const cue = state.subtitles[state.activeIndex];
+						if (cue) {
+							// 录音前暂停播放
+							if (state.playing) {
+								player.pauseVideo();
+								setPlaying(false);
+							}
+							recordingSession.startRecording(cue);
+						}
+					}
+					break;
+			}
+		};
+
+		window.addEventListener('keydown', handleKeyDown);
+		return () => {
+			window.removeEventListener('keydown', handleKeyDown);
+		};
+	}, [playerRef, recordingSession, setPlaying]); // 依赖项
+
+	// 监听错误状态
+	React.useEffect(() => {
+		if (recordingSession.sessionError) {
+			console.error('[LinguaFlowView] Session error:', recordingSession.sessionError);
+		}
+	}, [recordingSession.sessionError]);
 
 	if (!source) {
 		return (
@@ -381,12 +488,9 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 				{source.type === 'youtube' && (
 					<span className="linguaflow-badge">YouTube</span>
 				)}
-				{source.type === 'local' && (
-					<span className="linguaflow-badge">Local File</span>
-				)}
 			</div>
 
-			{/* 播放器区域 */}
+			{/* 播放器区域 - 包含控制栏覆盖层 */}
 			<div 
 				className="linguaflow-player-section" 
 				style={{ height: `${playerHeight}px`, minHeight: '200px' }}
@@ -437,7 +541,7 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 				)}
 			</div>
 
-			{/* 固定的控制栏 - 总是在视频下方 */}
+			{/* 固定的控制栏 - 在播放器下方 */}
 			{ready && subtitles.length > 0 && plugin && (
 				<SubtitleControls
 					currentCue={currentSubtitle}
@@ -540,7 +644,26 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 				playerRef={playerRef}
 				targetSubtitle={recordingSession.targetSubtitle}
 				isVisible={showEvaluationModal}
+				isTranscribing={recordingSession.isTranscribing}
 				onClose={() => setShowEvaluationModal(false)}
+				onRetry={() => {
+					// 重新开始录音
+					const cue = recordingSession.targetSubtitle;
+					if (cue) {
+						setShowEvaluationModal(false);
+						
+						// 确保视频暂停
+						if (playerRef.current && isPlaying) {
+							playerRef.current.pauseVideo();
+							setPlaying(false);
+						}
+						
+						// 延迟一点点开始，体验更好
+						setTimeout(() => {
+							recordingSession.startRecording(cue);
+						}, 100);
+					}
+				}}
 			/>
 		</div>
 	);

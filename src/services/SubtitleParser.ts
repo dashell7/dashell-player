@@ -305,11 +305,34 @@ export class SubtitleParser {
 	}
 	
 	/**
-	 * 查找指定时间的字幕索引（二分查找）
-	 * 这个方法将在 useMediaSync 中使用
+	 * 查找指定时间的字幕索引（支持优化查找）
+	 * @param hintIndex - 上一次的索引，用于优化顺序查找
 	 */
-	static findIndexAtTime(cues: SubtitleCue[], time: number): number {
+	static findIndexAtTime(cues: SubtitleCue[], time: number, hintIndex: number = -1): number {
 		if (!cues || cues.length === 0) return -1;
+		
+		// 优化：检查 hintIndex 及其后一个
+		if (hintIndex >= 0 && hintIndex < cues.length) {
+			const current = cues[hintIndex];
+			// 检查当前字幕
+			if (current && time >= current.start && time < current.end) {
+				return hintIndex;
+			}
+			
+			// 检查下一个字幕（顺序播放最常见情况）
+			const nextIndex = hintIndex + 1;
+			if (nextIndex < cues.length) {
+				const next = cues[nextIndex];
+				if (next && time >= next.start && time < next.end) {
+					return nextIndex;
+				}
+				// 检查是否在两个字幕之间的空隙（当前结束之后，下一个开始之前）
+				if (current && next && time >= current.end && time < next.start) {
+					// 这种情况下，没有激活的字幕
+					return -1; 
+				}
+			}
+		}
 		
 		// 二分查找
 		let left = 0;

@@ -159,7 +159,6 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 				? 'audio/webm'
 				: 'audio/mp4';
 			
-			streamRef.current = stream;
 			const mediaRecorder = new MediaRecorder(stream, {
 				mimeType,
 				audioBitsPerSecond: 128000,

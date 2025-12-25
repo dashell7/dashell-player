@@ -18,15 +18,39 @@ import type LinguaFlowPlugin from '../main';
  * @param playerRef - 播放器引用
  * @param enabled - 是否启用同步（默认 true）
  * @param plugin - 插件实例（用于访问设置）
+ * @param isBlocked - 是否阻塞自动化逻辑（如正在录音或显示弹窗时）
  */
 export function useMediaSync(
 	playerRef: React.RefObject<PlayerRef>,
 	enabled: boolean = true,
-	plugin?: LinguaFlowPlugin
+	plugin?: LinguaFlowPlugin,
+	isBlocked: boolean = false
 ) {
 	const rafIdRef = useRef<number | null>(null);
 	const lastTimeRef = useRef<number>(-1);
+	const lastStoreUpdateTimeRef = useRef<number>(0);
 	
+	// 缓存解析后的单词，避免每帧重复 split
+	const lastSubtitleIdRef = useRef<string | null>(null);
+	const cachedWordsRef = useRef<string[]>([]);
+	
+	// 影子跟读状态引用
+	const isShadowingWaitingRef = useRef<boolean>(false);
+	const lastShadowingSubtitleIndexRef = useRef<number>(-1);
+	const shadowingTimeoutRef = useRef<number | null>(null);
+
+	// 当被阻塞时（如开始录音），清理定时器并重置等待状态
+	useEffect(() => {
+		if (isBlocked) {
+			if (shadowingTimeoutRef.current) {
+				console.log('[useMediaSync] 🚫 Blocked: Clearing shadowing timeout');
+				window.clearTimeout(shadowingTimeoutRef.current);
+				shadowingTimeoutRef.current = null;
+			}
+			isShadowingWaitingRef.current = false;
+		}
+	}, [isBlocked]);
+
 	const {
 		setCurrentTime,
 		subtitles,
@@ -64,12 +88,18 @@ export function useMediaSync(
 				
 				lastTimeRef.current = currentTime;
 				
-				// 更新 Store 中的当前时间
-				setCurrentTime(currentTime);
+				// 更新 Store 中的当前时间（节流到 ~10fps，减少 React 重渲染开销）
+				const now = Date.now();
+				if (now - lastStoreUpdateTimeRef.current > 100) {
+					setCurrentTime(currentTime);
+					lastStoreUpdateTimeRef.current = now;
+				}
 				
-				// ===== 字幕同步（使用二分查找） =====
+				// ===== 字幕同步（使用二分查找 + 顺序优化） =====
 				if (subtitles.length > 0) {
-					const newIndex = SubtitleParser.findIndexAtTime(subtitles, currentTime);
+					// 获取当前索引作为 hint，优化顺序播放时的查找性能
+					const currentIndex = useMediaStore.getState().activeIndex;
+					const newIndex = SubtitleParser.findIndexAtTime(subtitles, currentTime, currentIndex);
 					setActiveIndex(newIndex);
 					
 					// ===== 单词级高亮（仅对当前激活的字幕） =====
@@ -77,21 +107,26 @@ export function useMediaSync(
 						const currentCue = subtitles[newIndex];
 						if (currentCue) {
 							// 前瞻补偿：让高亮稍微提前一点 (0.35s)，抵消视觉延迟
-							// 这会让跟随感觉更"跟手"
 							const SYNC_LOOKAHEAD = 0.35;
 							
 							// 计算字幕内的相对时间（应用补偿）
 							const relativeTime = (currentTime + SYNC_LOOKAHEAD) - currentCue.start;
 							const duration = currentCue.end - currentCue.start;
 							
-							// 获取英文字幕文本（如果有）
-							const textForHighlight = currentCue.textEn || currentCue.text || '';
+							// 优化：使用缓存的单词列表，避免每帧执行 split
+							if (lastSubtitleIdRef.current !== currentCue.id) {
+								// 获取英文字幕文本（如果有）
+								const textForHighlight = currentCue.textEn || currentCue.text || '';
+								
+								// 分割单词
+								const tokens = textForHighlight.split(/(\s+|[.,;:!?'"()[\]{}])/);
+								cachedWordsRef.current = tokens.filter(token => 
+									token.trim() && !/^\s+$/.test(token) && !/^[.,;:!?'"()[\]{}]$/.test(token)
+								);
+								lastSubtitleIdRef.current = currentCue.id;
+							}
 							
-							// 分割单词（简单分割，与 renderClickableText 逻辑一致）
-							const tokens = textForHighlight.split(/(\s+|[.,;:!?'"()[\]{}])/);
-							const words = tokens.filter(token => 
-								token.trim() && !/^\s+$/.test(token) && !/^[.,;:!?'"()[\]{}]$/.test(token)
-							);
+							const words = cachedWordsRef.current;
 							
 							if (words.length > 0 && duration > 0) {
 								// 平均分配每个单词的时间
@@ -110,17 +145,98 @@ export function useMediaSync(
 					}
 				}
 				
-				// ===== 循环控制 (有限循环优先) =====
+				// ===== 影子跟读 (Shadowing) =====
+				const { shadowingEnabled, shadowingPauseFactor, activeIndex } = useMediaStore.getState();
+				
+				// 关键修复：如果被阻塞（录音中/弹窗中），跳过跟读逻辑
+				if (!isBlocked && shadowingEnabled && activeIndex >= 0 && activeIndex < subtitles.length) {
+					const currentCue = subtitles[activeIndex];
+					// 只有当：
+					// 1. 还没在等待中
+					// 2. 当前字幕不是刚刚完成的那一句（避免在刚跳转时重复触发）
+					// 3. 播放时间到达结尾
+					if (currentCue && !isShadowingWaitingRef.current && 
+						lastShadowingSubtitleIndexRef.current !== activeIndex &&
+						currentTime >= currentCue.end - 0.1) { // 提前0.1秒触发，更平滑
+						
+						console.log(`[useMediaSync] 🗣️ Shadowing: End of sentence detected (${activeIndex})`);
+						
+						// 1. 暂停播放
+						player.pauseVideo();
+						useMediaStore.getState().setPlaying(false);
+						
+						// 2. 设置等待状态
+						isShadowingWaitingRef.current = true;
+						lastShadowingSubtitleIndexRef.current = activeIndex;
+						
+						// 动态计算暂停时长：句子时长 * 倍率，且不小于 1.5秒
+						const sentenceDuration = currentCue.end - currentCue.start;
+						const dynamicPauseDuration = Math.max(1500, sentenceDuration * 1000 * shadowingPauseFactor);
+						
+						console.log(`[useMediaSync] 🗣️ Shadowing: Waiting ${dynamicPauseDuration.toFixed(0)}ms (Sentence: ${sentenceDuration.toFixed(1)}s, Factor: ${shadowingPauseFactor})`);
+						
+						// 3. 设置定时器播放下一句
+						if (shadowingTimeoutRef.current) window.clearTimeout(shadowingTimeoutRef.current);
+						
+						shadowingTimeoutRef.current = window.setTimeout(() => {
+							console.log('[useMediaSync] 🗣️ Shadowing: Playing next');
+							const nextIndex = activeIndex + 1;
+							
+							if (nextIndex < subtitles.length) {
+								const nextCue = subtitles[nextIndex];
+								if (nextCue && playerRef.current) {
+									playerRef.current.seekTo(nextCue.start, 'seconds');
+									playerRef.current.playVideo();
+									useMediaStore.getState().setPlaying(true);
+								}
+							} else {
+								console.log('[useMediaSync] 🗣️ Shadowing: End of all subtitles');
+							}
+							
+							// 重置等待状态
+							isShadowingWaitingRef.current = false;
+							shadowingTimeoutRef.current = null;
+						}, dynamicPauseDuration);
+					}
+				} else if (!shadowingEnabled) {
+					// 如果关闭了影子跟读，重置相关状态
+					if (isShadowingWaitingRef.current) {
+						isShadowingWaitingRef.current = false;
+						if (shadowingTimeoutRef.current) {
+							window.clearTimeout(shadowingTimeoutRef.current);
+							shadowingTimeoutRef.current = null;
+						}
+					}
+				}
+
+				// ===== 循环控制 (互斥) =====
 				const { 
 					segmentLoopEnabled, 
 					segmentLoopTotal, 
 					segmentLoopCurrent,
 					loopStart: segStart, 
-					loopEnd: segEnd 
+					loopEnd: segEnd,
+					loopEnabled,
+					loopStart,
+					loopEnd,
+					abRepeatEnabled,
+					pointA,
+					pointB
 				} = useMediaStore.getState();
 
-				// 有限循环优先检查（单句循环播放）
-				if (segmentLoopEnabled && currentTime >= segEnd) {
+				// 1. AB 复读 (优先级最高)
+				if (abRepeatEnabled && pointA !== null && pointB !== null) {
+					if (currentTime >= pointB) {
+						console.log('[useMediaSync] AB Repeat: jumping to A', pointA);
+						player.seekTo(pointA, 'seconds');
+					}
+					// 如果播放位置在 AB 区间外，跳回 A 点
+					else if (currentTime < pointA) {
+						player.seekTo(pointA, 'seconds');
+					}
+				}
+				// 2. 有限循环优先检查（单句循环播放）
+				else if (segmentLoopEnabled && currentTime >= segEnd) {
 					/**
 					 * 循环逻辑说明：
 					 * - segmentLoopTotal: 目标播放总次数（如 3 次）
@@ -150,7 +266,7 @@ export function useMediaSync(
 						}
 					}
 				}
-				// 无限循环检查 (只在没有有限循环时才执行)
+				// 3. 无限循环检查 (只在没有 AB 和有限循环时才执行)
 				else if (loopEnabled && currentTime >= loopEnd) {
 					console.log('[useMediaSync] ♾️ Infinite Loop: jumping to start', loopStart);
 					player.seekTo(loopStart, 'seconds');
@@ -163,19 +279,6 @@ export function useMediaSync(
 					player.pauseVideo();
 					// 关闭单句播放状态
 					useMediaStore.setState({ segmentPlayEnabled: false });
-				}
-				
-				// ===== AB 复读控制 =====
-				if (abRepeatEnabled && pointA !== null && pointB !== null) {
-					if (currentTime >= pointB) {
-						console.log('[useMediaSync] AB Repeat: jumping to A', pointA);
-						player.seekTo(pointA, 'seconds');
-					}
-					
-					// 如果播放位置在 AB 区间外，跳回 A 点
-					if (currentTime < pointA) {
-						player.seekTo(pointA, 'seconds');
-					}
 				}
 				
 			} catch (error) {
@@ -208,6 +311,7 @@ export function useMediaSync(
 		abRepeatEnabled,
 		pointA,
 		pointB,
+		isBlocked
 	]);
 }
 

@@ -5,6 +5,7 @@ import type { SubtitleCue, PlayerRef } from '../types';
 import type { UseRecordingSessionReturn } from '../hooks/useRecordingSession';
 import type LinguaFlowPlugin from '../main';
 import { SubtitleControls } from './SubtitleControls';
+import { ClickableText } from './OptimizedWord';
 
 interface SubtitleOverlayProps {
   playerRef: React.RefObject<PlayerRef>;
@@ -56,39 +57,7 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const renderClickableText = (text: string, shouldHighlight: boolean, wordIndex: number) => {
-    // 使用正则分割，保留空格和标点符号
-    const tokens = text.split(/(\s+)/);
-    
-    let wordCount = 0;
-    
-    return (
-      <span className="stns">
-        {tokens.map((token, tokenIndex) => {
-          // 如果是空白字符，直接返回
-          if (/^\s+$/.test(token)) {
-            return <React.Fragment key={tokenIndex}>{token}</React.Fragment>;
-          }
-          
-          // 这是一个单词
-          const highlight = shouldHighlight && wordCount === wordIndex;
-          wordCount++;
-          
-          return (
-            <React.Fragment key={tokenIndex}>
-              <span
-                className={`linguaflow-clickable-word ${highlight ? 'linguaflow-word-highlight' : ''}`}
-                onClick={(e) => onWordClick(token, e)}
-                title={`查询: ${token}`}
-              >
-                {token}
-              </span>
-            </React.Fragment>
-          );
-        })}
-      </span>
-    );
-  };
+  // 使用优化的 ClickableText 组件
 
   return (
     <div
@@ -124,7 +93,12 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
       <div className="linguaflow-subtitle-item-text">
         {cue.textEn && showEnglish && (
           <div className="linguaflow-subtitle-item-en">
-            {renderClickableText(cue.textEn, isActive, activeWordIndex)}
+            <ClickableText
+              text={cue.textEn}
+              isActive={isActive}
+              activeWordIndex={activeWordIndex}
+              onWordClick={onWordClick}
+            />
           </div>
         )}
         {cue.textZh && showChinese && (
@@ -132,7 +106,12 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
         )}
         {!cue.textEn && !cue.textZh && (
           <div className="linguaflow-subtitle-item-main">
-            {renderClickableText(cue.text, isActive, activeWordIndex)}
+            <ClickableText
+              text={cue.text}
+              isActive={isActive}
+              activeWordIndex={activeWordIndex}
+              onWordClick={onWordClick}
+            />
           </div>
         )}
       </div>
@@ -165,6 +144,8 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   const segmentLoopEnabled = useMediaStore(state => state.segmentLoopEnabled);
   const segmentLoopCurrent = useMediaStore(state => state.segmentLoopCurrent);
   const segmentLoopTotal = useMediaStore(state => state.segmentLoopTotal);
+  const loopStart = useMediaStore(state => state.loopStart);
+  const loopEnd = useMediaStore(state => state.loopEnd);
   const playbackRate = useMediaStore(state => state.playbackRate);
   const setPlaybackRate = useMediaStore(state => state.setPlaybackRate);
   // 使用 store 的播放状态，确保与播放器完全同步
@@ -186,30 +167,62 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
     }
   }, [currentSubtitle, isManuallyLocked]);
   
-  // 智能滚动到当前字幕（优化版：减少不必要的滚动）
+  // 智能滚动到当前字幕 - 始终保持在第二行位置
   useEffect(() => {
-    if (activeItemRef.current && listRef.current) {
+    // 检查是否处于单句循环模式
+    if (segmentLoopEnabled) {
+      const state = useMediaStore.getState();
+      // 使用 epsilon 比较浮点数，防止精度问题
+      const epsilon = 0.01;
+      const loopingCue = subtitles.find(s => 
+        Math.abs(s.start - state.loopStart) < epsilon && 
+        Math.abs(s.end - state.loopEnd) < epsilon
+      );
+      
+      // 如果找到了正在循环的字幕，且当前激活的不是它，则不滚动
+      // 这防止了循环跳转时瞬间匹配到上一句导致的跳动
+      if (loopingCue && loopingCue.index !== activeIndex) {
+        // console.log('[SubtitleOverlay] Skipping scroll: Segment loop active and index mismatch');
+        return;
+      }
+    }
+
+    // console.log('[SubtitleOverlay] Scroll Effect Triggered', { activeIndex, isManuallyLocked });
+    
+    // 只在未手动锁定时自动滚动
+    if (!isManuallyLocked && activeItemRef.current && listRef.current) {
       const container = listRef.current;
       const item = activeItemRef.current;
       
-      const containerRect = container.getBoundingClientRect();
-      const itemRect = item.getBoundingClientRect();
+      // 获取单个字幕项的高度
+      const itemHeight = item.offsetHeight;
       
-      // 定义安全区域（顶部和底部各留 20% 的缓冲空间）
-      const bufferTop = containerRect.top + containerRect.height * 0.2;
-      const bufferBottom = containerRect.bottom - containerRect.height * 0.2;
+      // 修正：要显示在第二行，意味着我们需要滚动到"上一条字幕"的顶部位置
+      // 如果没有上一条（第一句），就滚动到0
       
-      // 只在字幕即将离开可视区域时才滚动
-      if (itemRect.top < bufferTop) {
-        // 字幕在上方，滚动到顶部附近（而不是中心）
-        item.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } else if (itemRect.bottom > bufferBottom) {
-        // 字幕在下方，滚动到底部附近
-        item.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      let targetScrollTop = 0;
+      
+      // 尝试获取上一条字幕元素
+      const prevItem = item.previousElementSibling as HTMLElement;
+      
+      if (prevItem) {
+        // 如果有上一条，滚动到上一条的顶部
+        // 这样上一条会在第一行，当前条就在第二行
+        targetScrollTop = prevItem.offsetTop;
+      } else {
+        // 如果是第一条，滚动到顶部
+        targetScrollTop = 0;
       }
-      // 否则不滚动，保持当前位置
+      
+      // console.log('[SubtitleOverlay] 🎯 Scrolling to Second Line:', { targetScrollTop });
+      
+      // 平滑滚动到目标位置
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
     }
-  }, [activeIndex]);
+  }, [activeIndex, isManuallyLocked, segmentLoopEnabled]); // 添加 segmentLoopEnabled 依赖
   
   // 处理字幕点击 - 选中字幕（使用 useCallback 优化）
   const handleSubtitleClick = useCallback((cue: SubtitleCue) => {
@@ -308,7 +321,7 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   };
   
   // 处理单词点击查词
-  const handleWordClick = async (word: string, e: React.MouseEvent) => {
+  const handleWordClick = useCallback(async (word: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
     // 清理单词（去除标点符号）
@@ -380,7 +393,7 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice('查词失败: ' + errorMessage);
     }
-  };
+  }, [plugin]);
   
   // 将文本渲染为可点击的单词（带高亮）
   const renderClickableText = (text: string, isCurrentSubtitle: boolean = false, currentWordIndex: number = -1) => {
@@ -473,19 +486,12 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
       
       {/* 字幕列表 */}
       {showList && subtitles.length > 0 && (
-        <div className="linguaflow-subtitle-list" ref={listRef}>
-          <div className="linguaflow-subtitle-list-header">
-            <h3>字幕列表</h3>
-            <span className="linguaflow-subtitle-count">
-              {subtitles.length} 条字幕
-            </span>
-          </div>
-          
-          <div className="linguaflow-subtitle-items">
+        <div className="linguaflow-subtitle-list">
+          <div className="linguaflow-subtitle-items" ref={listRef}>
             {subtitles.map((cue, index) => {
               const isLoopingThis = segmentLoopEnabled && 
-                useMediaStore.getState().loopStart === cue.start && 
-                useMediaStore.getState().loopEnd === cue.end;
+                loopStart === cue.start && 
+                loopEnd === cue.end;
 
               // 判断是否正在录制此句
               const isRecordingThis = !!(recordingSession?.isRecording && 
@@ -505,11 +511,11 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
                   showEnglish={showEnglish}
                   showChinese={showChinese}
                   showIndexAndTime={showIndexAndTime}
-                  activeWordIndex={activeWordIndex}
+                  activeWordIndex={index === activeIndex ? activeWordIndex : -1}
                   onSubtitleClick={handleSubtitleClick}
                   onSubtitleDblClick={handleSubtitleDblClick}
                   onWordClick={handleWordClick}
-                  activeItemRef={index === activeIndex ? activeItemRef : undefined}
+                  activeItemRef={activeItemRef}
                 />
               );
             })}

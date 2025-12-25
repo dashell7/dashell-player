@@ -80,6 +80,8 @@ interface SubtitlePanelContentProps {
 	plugin: LinguaFlowPlugin;
 }
 
+import { ClickableText } from '../components/OptimizedWord';
+
 const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) => {
 	const subtitles = useMediaStore(state => state.subtitles);
 	const activeIndex = useMediaStore(state => state.activeIndex);
@@ -100,25 +102,53 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 	const [selectedCue, setSelectedCue] = React.useState<SubtitleCue | null>(null);
 	const [isManuallyLocked, setIsManuallyLocked] = React.useState(false);
 
-	// 智能滚动到当前激活的字幕（优化版）
+	// 智能滚动到当前激活的字幕 - 始终保持在第二行位置
 	React.useEffect(() => {
+		console.log('[SubtitlePanel] Scroll Effect Triggered', {
+			activeIndex,
+			isManuallyLocked,
+			hasActiveItemRef: !!activeItemRef.current,
+			hasListRef: !!listRef.current
+		});
+		
 		if (!isManuallyLocked && activeItemRef.current && listRef.current) {
 			const container = listRef.current;
 			const item = activeItemRef.current;
 			
-			const containerRect = container.getBoundingClientRect();
-			const itemRect = item.getBoundingClientRect();
+			// 获取单个字幕项的高度
+			const itemHeight = item.offsetHeight;
 			
-			// 定义安全区域（顶部和底部各留 20% 的缓冲空间）
-			const bufferTop = containerRect.top + containerRect.height * 0.2;
-			const bufferBottom = containerRect.bottom - containerRect.height * 0.2;
+			// 修正：要显示在第二行，意味着我们需要滚动到"上一条字幕"的顶部位置
+			// 如果没有上一条（第一句），就滚动到0
 			
-			// 只在字幕即将离开可视区域时才滚动
-			if (itemRect.top < bufferTop) {
-				item.scrollIntoView({ behavior: 'smooth', block: 'start' });
-			} else if (itemRect.bottom > bufferBottom) {
-				item.scrollIntoView({ behavior: 'smooth', block: 'end' });
+			let targetScrollTop = 0;
+			
+			// 尝试获取上一条字幕元素
+			const prevItem = item.previousElementSibling as HTMLElement;
+			
+			if (prevItem) {
+				// 如果有上一条，滚动到上一条的顶部
+				// 这样上一条会在第一行，当前条就在第二行
+				targetScrollTop = prevItem.offsetTop;
+			} else {
+				// 如果是第一条，滚动到顶部
+				targetScrollTop = 0;
 			}
+			
+			console.log('[SubtitlePanel] 🎯 Scrolling to Second Line:', {
+				activeIndex,
+				itemHeight,
+				itemOffsetTop: item.offsetTop,
+				prevItemOffsetTop: prevItem?.offsetTop,
+				targetScrollTop,
+				currentScrollTop: container.scrollTop
+			});
+			
+			// 平滑滚动到目标位置
+			container.scrollTo({
+				top: targetScrollTop,
+				behavior: 'smooth'
+			});
 		}
 	}, [activeIndex, isManuallyLocked]);
 
@@ -222,42 +252,6 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 		}
 	};
 
-	// 渲染可点击的文本（支持逐词高亮和单词查询）
-	const renderClickableText = (text: string, isActive: boolean, wordIndex: number) => {
-		// 使用正则分割，保留空格和标点符号
-		const tokens = text.split(/(\s+)/);
-		
-		let wordCount = 0;
-		
-		return (
-			<span className="stns">
-				{tokens.map((token, index) => {
-					// 如果是空白字符，直接返回
-					if (/^\s+$/.test(token)) {
-						return <React.Fragment key={index}>{token}</React.Fragment>;
-					}
-					
-					// 这是一个单词
-					const shouldHighlight = isActive && wordCount === wordIndex;
-					const currentWordIndex = wordCount;
-					wordCount++;
-					
-					return (
-						<React.Fragment key={index}>
-							<span
-								className={`linguaflow-clickable-word ${shouldHighlight ? 'linguaflow-word-highlight' : ''}`}
-								onClick={(e) => handleWordClick(token, e)}
-								title={`查询: ${token}`}
-							>
-								{token}
-							</span>
-						</React.Fragment>
-					);
-				})}
-			</span>
-		);
-	};
-
 	if (subtitles.length === 0) {
 		return (
 			<div className="linguaflow-subtitle-panel-empty">
@@ -271,15 +265,8 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 	return (
 		<div className="linguaflow-subtitle-panel-content">
 			{/* 字幕列表 */}
-			<div className="linguaflow-subtitle-list-scrollable" ref={listRef}>
-				<div className="linguaflow-subtitle-list-header">
-					<h3>字幕列表</h3>
-					<span className="linguaflow-subtitle-count">
-						{subtitles.length} 条字幕
-					</span>
-				</div>
-
-				<div className="linguaflow-subtitle-items">
+			<div className="linguaflow-subtitle-list-scrollable">
+				<div className="linguaflow-subtitle-items" ref={listRef}>
 					{subtitles.map((cue, index) => {
 						const isLoopingThis = segmentLoopEnabled && 
 							useMediaStore.getState().loopStart === cue.start && 
@@ -319,7 +306,12 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 								<div className="linguaflow-subtitle-item-text">
 									{cue.textEn && showEnglish && (
 										<div className="linguaflow-subtitle-item-en">
-											{renderClickableText(cue.textEn, index === activeIndex, activeWordIndex)}
+											<ClickableText
+												text={cue.textEn}
+												isActive={index === activeIndex}
+												activeWordIndex={activeWordIndex}
+												onWordClick={handleWordClick}
+											/>
 										</div>
 									)}
 									{cue.textZh && showChinese && (
@@ -327,7 +319,12 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 									)}
 									{!cue.textEn && !cue.textZh && (
 										<div className="linguaflow-subtitle-item-main">
-											{renderClickableText(cue.text, index === activeIndex, activeWordIndex)}
+											<ClickableText
+												text={cue.text}
+												isActive={index === activeIndex}
+												activeWordIndex={activeWordIndex}
+												onWordClick={handleWordClick}
+											/>
 										</div>
 									)}
 								</div>
