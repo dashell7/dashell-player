@@ -158,7 +158,10 @@ export class SubtitleParser {
 			
 			// 字幕文本（时间行之后的所有行）
 			const textLines = lines.slice(timeLineIndex + 1);
-			const text = textLines.join('\n');
+			let text = textLines.join('\n');
+			
+			// 清理 VTT 特有的标记
+			text = this.cleanVTTText(text);
 			
 			const { textEn, textZh } = this.separateLanguages(text);
 			
@@ -179,6 +182,31 @@ export class SubtitleParser {
 		return cues;
 	}
 
+	/**
+	 * 清理 VTT 文本中的标记
+	 * 移除：
+	 * - 内联时间戳：<00:00:00.000>
+	 * - 样式标签：<c>, </c>, <v>, </v>, <i>, </i>, <b>, </b>, <u>, </u>
+	 * - 语音标签：<v speaker>
+	 */
+	private static cleanVTTText(text: string): string {
+		return text
+			// 移除内联时间戳 <00:00:00.000>
+			.replace(/<\d{2}:\d{2}:\d{2}\.\d{3}>/g, '')
+			// 移除样式标签 <c>, </c>, <i>, </i>, <b>, </b>, <u>, </u>
+			.replace(/<\/?[cibu]>/g, '')
+			// 移除带类名的样式标签 <c.classname>
+			.replace(/<c\.[^>]+>/g, '')
+			// 移除语音标签 <v speaker>, </v>
+			.replace(/<v\s+[^>]+>/g, '')
+			.replace(/<\/v>/g, '')
+			// 移除其他可能的标签
+			.replace(/<[^>]+>/g, '')
+			// 清理多余空格
+			.replace(/\s+/g, ' ')
+			.trim();
+	}
+	
 	/**
 	 * 分离中英文字幕
 	 */

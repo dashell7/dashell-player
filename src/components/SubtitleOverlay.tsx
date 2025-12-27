@@ -28,6 +28,7 @@ interface SubtitleItemProps {
   showEnglish: boolean;
   showChinese: boolean;
   showIndexAndTime: boolean;
+  wordByWordHighlight: boolean;
   activeWordIndex: number;
   onSubtitleClick: (cue: SubtitleCue) => void;
   onSubtitleDblClick: (cue: SubtitleCue) => void;
@@ -39,6 +40,7 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
   cue, 
   index, 
   isActive,
+  wordByWordHighlight,
   isLooping,
   isRecording,
   isSelected,
@@ -92,10 +94,10 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
       
       <div className="linguaflow-subtitle-item-text">
         {cue.textEn && showEnglish && (
-          <div className="linguaflow-subtitle-item-en">
+          <div className={`linguaflow-subtitle-item-en ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
             <ClickableText
               text={cue.textEn}
-              isActive={isActive}
+              isActive={isActive && wordByWordHighlight}
               activeWordIndex={activeWordIndex}
               onWordClick={onWordClick}
             />
@@ -105,10 +107,10 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
           <div className="linguaflow-subtitle-item-zh">{cue.textZh}</div>
         )}
         {!cue.textEn && !cue.textZh && (
-          <div className="linguaflow-subtitle-item-main">
+          <div className={`linguaflow-subtitle-item-main ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
             <ClickableText
               text={cue.text}
-              isActive={isActive}
+              isActive={isActive && wordByWordHighlight}
               activeWordIndex={activeWordIndex}
               onWordClick={onWordClick}
             />
@@ -140,6 +142,7 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   const showEnglish = useMediaStore(state => state.subtitleConfig.showEnglish);
   const showChinese = useMediaStore(state => state.subtitleConfig.showChinese);
   const showIndexAndTime = useMediaStore(state => state.subtitleConfig.showIndexAndTime);
+  const wordByWordHighlight = useMediaStore(state => state.subtitleConfig.wordByWordHighlight);
   
   const segmentLoopEnabled = useMediaStore(state => state.segmentLoopEnabled);
   const segmentLoopCurrent = useMediaStore(state => state.segmentLoopCurrent);
@@ -157,8 +160,20 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   
   // 选中的字幕（用于控制栏）
   const [selectedCue, setSelectedCue] = useState<SubtitleCue | null>(null);
-  // 是否手动锁定选择（用户点击选中后锁定，不自动跟随播放）
   const [isManuallyLocked, setIsManuallyLocked] = useState(false);
+  
+  // 监控时间跳跃，自动解锁字幕
+  const lastTimeRef = useRef<number>(0);
+  const currentTime = useMediaStore(state => state.currentTime);
+  useEffect(() => {
+    const timeDiff = Math.abs(currentTime - lastTimeRef.current);
+    // 如果时间跳跃超过2秒，认为是用户拖动时间轴，自动解锁
+    if (timeDiff > 2 && isManuallyLocked) {
+      console.log('[SubtitleOverlay] 🎯 Large time jump detected:', timeDiff, 's - Unlocking');
+      setIsManuallyLocked(false);
+    }
+    lastTimeRef.current = currentTime;
+  }, [currentTime, isManuallyLocked]);
   
   // 自动跟随当前播放的字幕（如果没有手动锁定）
   useEffect(() => {
@@ -189,32 +204,34 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
 
     // console.log('[SubtitleOverlay] Scroll Effect Triggered', { activeIndex, isManuallyLocked });
     
-    // 只在未手动锁定时自动滚动
-    if (!isManuallyLocked && activeItemRef.current && listRef.current) {
+    // 始终自动滚动到第二行，不受锁定状态影响
+    if (activeItemRef.current && listRef.current) {
       const container = listRef.current;
       const item = activeItemRef.current;
       
-      // 获取单个字幕项的高度
+      // 获取单个字幕项的高度和容器高度
       const itemHeight = item.offsetHeight;
-      
-      // 修正：要显示在第二行，意味着我们需要滚动到"上一条字幕"的顶部位置
-      // 如果没有上一条（第一句），就滚动到0
+      const containerHeight = container.clientHeight;
       
       let targetScrollTop = 0;
-      
-      // 尝试获取上一条字幕元素
-      const prevItem = item.previousElementSibling as HTMLElement;
-      
-      if (prevItem) {
-        // 如果有上一条，滚动到上一条的顶部
-        // 这样上一条会在第一行，当前条就在第二行
-        targetScrollTop = prevItem.offsetTop;
+      const isRightLayout = plugin?.settings.subtitleLayout === 'right';
+
+      if (isRightLayout) {
+        // 右侧布局：将当前字幕置于容器高度的 40% 处
+        targetScrollTop = item.offsetTop - (containerHeight * 0.4);
       } else {
-        // 如果是第一条，滚动到顶部
-        targetScrollTop = 0;
+        // 底部布局：保持第二行 (旧逻辑)
+        // 尝试获取上一条字幕元素
+        const prevItem = item.previousElementSibling as HTMLElement;
+        if (prevItem) {
+          targetScrollTop = prevItem.offsetTop;
+        } else {
+          targetScrollTop = 0;
+        }
       }
       
-      // console.log('[SubtitleOverlay] 🎯 Scrolling to Second Line:', { targetScrollTop });
+      // 确保不越界
+      if (targetScrollTop < 0) targetScrollTop = 0;
       
       // 平滑滚动到目标位置
       container.scrollTo({
@@ -222,42 +239,62 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
         behavior: 'smooth'
       });
     }
-  }, [activeIndex, isManuallyLocked, segmentLoopEnabled]); // 添加 segmentLoopEnabled 依赖
+  }, [activeIndex, segmentLoopEnabled]); // 移除 isManuallyLocked 依赖
   
   // 处理字幕点击 - 选中字幕（使用 useCallback 优化）
   const handleSubtitleClick = useCallback((cue: SubtitleCue) => {
     console.log('[SubtitleOverlay] Click - Select:', cue.start);
     
-    // 如果点击的是当前选中的字幕，或者是当前播放的字幕，则解锁（跟随播放）
-    if (selectedCue?.id === cue.id || currentSubtitle?.id === cue.id) {
-      setIsManuallyLocked(false);
-      console.log('[SubtitleOverlay] Unlocked - Will follow current subtitle');
+    // 如果点击的是当前选中的字幕，切换播放/暂停
+    if (selectedCue?.id === cue.id) {
+      const isPlaying = useMediaStore.getState().playing;
+      if (isPlaying && playerRef.current) {
+        // 正在播放 → 暂停
+        playerRef.current.pauseVideo();
+        useMediaStore.getState().setPlaying(false);
+        console.log('[SubtitleOverlay] Toggled to pause');
+      } else if (playerRef.current) {
+        // 已暂停 → 播放
+        playerRef.current.playVideo();
+        useMediaStore.getState().setPlaying(true);
+        console.log('[SubtitleOverlay] Toggled to play');
+      }
+      // 保持锁定状态
     } else {
-      // 否则锁定到点击的字幕
+      // 点击其他字幕：锁定并处理播放状态
       setSelectedCue(cue);
       setIsManuallyLocked(true);
       console.log('[SubtitleOverlay] Locked to:', cue.start);
+      
+      // 如果视频正在播放，暂停并跳转到该字幕
+      const isPlaying = useMediaStore.getState().playing;
+      if (isPlaying && playerRef.current) {
+        playerRef.current.pauseVideo();
+        useMediaStore.getState().setPlaying(false);
+        playerRef.current.seekTo(cue.start);
+        console.log('[SubtitleOverlay] Paused and seeked to:', cue.start);
+      } else if (playerRef.current) {
+        // 如果已暂停，只跳转不播放
+        playerRef.current.seekTo(cue.start);
+        console.log('[SubtitleOverlay] Seeked to (paused):', cue.start);
+      }
     }
-  }, [selectedCue?.id, currentSubtitle?.id]);
+  }, [selectedCue?.id, playerRef]);
   
   // 处理字幕双击 - 跳转播放并解锁（使用 useCallback 优化）
   const handleSubtitleDblClick = useCallback((cue: SubtitleCue) => {
-    console.log('[SubtitleOverlay] Double Click - Jump to:', cue.start);
+    console.log('[SubtitleOverlay] Double Click - Jump and play:', cue.start);
     setSelectedCue(cue);
     setIsManuallyLocked(false); // 双击后解锁，跟随播放
     if (playerRef.current) {
       playerRef.current.seekTo(cue.start);
-      console.log('[SubtitleOverlay] Seeked to:', cue.start);
+      playerRef.current.playVideo(); // ✅ 添加播放
+      useMediaStore.getState().setPlaying(true); // ✅ 更新状态
+      console.log('[SubtitleOverlay] Seeked to:', cue.start, 'and playing');
     } else {
       console.warn('[SubtitleOverlay] Player ref is null');
     }
   }, [playerRef]);
-  
-  // 处理字幕双击 - 单句播放
-  const handleSubtitleDoubleClick = (cue: SubtitleCue) => {
-    console.log('[SubtitleOverlay] Double click - Play segment');
-    handlePlaySegment(cue);
-  };
   
   // 处理单句播放
   const handlePlaySegment = (cue: SubtitleCue, e?: React.MouseEvent) => {
@@ -511,11 +548,12 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
                   showEnglish={showEnglish}
                   showChinese={showChinese}
                   showIndexAndTime={showIndexAndTime}
+                  wordByWordHighlight={wordByWordHighlight}
                   activeWordIndex={index === activeIndex ? activeWordIndex : -1}
                   onSubtitleClick={handleSubtitleClick}
                   onSubtitleDblClick={handleSubtitleDblClick}
                   onWordClick={handleWordClick}
-                  activeItemRef={activeItemRef}
+                  activeItemRef={index === activeIndex ? activeItemRef : undefined}
                 />
               );
             })}

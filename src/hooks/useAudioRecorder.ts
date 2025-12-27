@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
  * 录音状态
@@ -407,6 +407,14 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 			console.log('[useAudioRecorder] Recording resumed');
 		}
 	}, [duration]);
+
+	// 组件卸载时清理资源（防止内存泄漏）
+	useEffect(() => {
+		return () => {
+			console.log('[useAudioRecorder] Component unmounting, cleaning up...');
+			cleanup();
+		};
+	}, [cleanup]);
 
 	return {
 		state,

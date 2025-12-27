@@ -18,24 +18,16 @@ export function getResourceUrl(file: TFile, vault: Vault): string {
 }
 
 /**
- * 检查 URL 是否为 YouTube 链接
- * @param url - 要检查的 URL
- * @returns 是否为 YouTube 链接
- */
-export function isYouTubeUrl(url: string): boolean {
-	const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
-	return youtubeRegex.test(url);
-}
-
-/**
- * 检查文件是否为支持的媒体格式
+ * 检查文件是否为媒体文件
  * @param file - 文件对象
  * @returns 是否为媒体文件
  */
 export function isMediaFile(file: TFile): boolean {
 	const mediaExtensions = [
-		'mp4', 'webm', 'ogv', // 视频
-		'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', // 音频
+		// 视频格式
+		'mp4', 'mkv', 'webm', 'ogv', 'avi', 'mov', 'flv', 'wmv', 'm4v', '3gp',
+		// 音频格式
+		'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
 	];
 	
 	return mediaExtensions.includes(file.extension.toLowerCase());

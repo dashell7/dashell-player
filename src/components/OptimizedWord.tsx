@@ -147,12 +147,16 @@ prevIndexRef.current = -1;
 }, [text]);
 
 return (
-<div className="stns">
+<div style={{ display: 'inline', lineHeight: 'inherit' }}>
 {parsedWords.map((parsed, idx) => {
-// 空格和标点直接显示
-if (!parsed.isWord) {
-return <React.Fragment key={idx}>{parsed.text}</React.Fragment>;
-}
+				// 空格和标点
+				if (!parsed.isWord) {
+					return (
+						<span key={idx} className="linguaflow-punctuation">
+							{parsed.text}
+						</span>
+					);
+				}
 
 // 单词渲染为 span，并绑定 ref
 return (

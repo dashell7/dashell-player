@@ -139,12 +139,6 @@ export const MediaPlayer = forwardRef<PlayerRef, MediaPlayerProps>(
 									crossOrigin: 'anonymous',
 								},
 							},
-							youtube: {
-								playerVars: {
-									showinfo: 1,
-									modestbranding: 1,
-								},
-							},
 						}}
 					/>
 				</div>

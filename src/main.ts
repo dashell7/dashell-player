@@ -2,13 +2,14 @@ import { Plugin, WorkspaceLeaf, Notice, TFile } from 'obsidian';
 import { LinguaFlowView } from './views/LinguaFlowView';
 import { SubtitlePanelView, SUBTITLE_PANEL_VIEW_TYPE } from './views/SubtitlePanelView';
 import { LINGUA_FLOW_VIEW, type MediaSource, type ProtocolParams, type PlayerRef } from './types';
-import { parseTimestamp, isYouTubeUrl } from './utils/fileUtils';
+import { parseTimestamp } from './utils/fileUtils';
 import { useMediaStore } from './store/mediaStore';
 import { LinguaFlowSettings, DEFAULT_SETTINGS, LinguaFlowSettingTab } from './settings';
 import { MediaInputModal } from './modals/MediaInputModal';
 import { SubtitleLoader } from './services/SubtitleLoader';
 import { TextProcessor } from './components/OptimizedWord';
 import * as React from 'react';
+import { logger, LogLevel } from './utils/logger';
 
 /**
  * LangPlayer 插件主类
@@ -24,6 +25,14 @@ export default class LinguaFlowPlugin extends Plugin {
 
 		// 加载设置
 		await this.loadSettings();
+
+		// 初始化日志系统
+		if (this.settings.debugMode) {
+			logger.enableDebug();
+			logger.info('Main', 'Debug mode enabled');
+		} else {
+			logger.disableAll();
+		}
 
 		// 初始化字幕加载器（带缓存功能）
 		this.subtitleLoader = new SubtitleLoader(this);
@@ -42,7 +51,7 @@ export default class LinguaFlowPlugin extends Plugin {
 		);
 
 		// 注册 Ribbon 图标
-		this.addRibbonIcon('play-circle', 'Open LinguaFlow Player', () => {
+		this.addRibbonIcon('play-circle', 'Open LangPlayer', () => {
 			// 打开媒体输入对话框
 			new MediaInputModal(this.app, this).open();
 		});
@@ -90,6 +99,101 @@ export default class LinguaFlowPlugin extends Plugin {
 			callback: () => {
 				useMediaStore.getState().disableLoop();
 				new Notice('⏹️ 已退出循环');
+			},
+		});
+
+		// 注册命令：上一句字幕
+		this.addCommand({
+			id: 'previous-subtitle',
+			name: 'Previous subtitle',
+			hotkeys: [{ modifiers: [], key: 'ArrowLeft' }],
+			callback: () => {
+				useMediaStore.getState().playPreviousSegment();
+			},
+		});
+
+		// 注册命令：下一句字幕
+		this.addCommand({
+			id: 'next-subtitle',
+			name: 'Next subtitle',
+			hotkeys: [{ modifiers: [], key: 'ArrowRight' }],
+			callback: () => {
+				useMediaStore.getState().playNextSegment();
+			},
+		});
+
+		// 注册命令：开启/关闭复读（句子循环）
+		this.addCommand({
+			id: 'toggle-sentence-repeat',
+			name: 'Toggle sentence repeat',
+			hotkeys: [{ modifiers: [], key: 'ArrowDown' }],
+			callback: () => {
+				const store = useMediaStore.getState();
+				if (store.segmentLoopEnabled) {
+					store.stopSegmentLoop();
+					new Notice('⏹️ 复读已关闭');
+				} else {
+					const { activeIndex, subtitles } = store;
+					if (activeIndex >= 0 && activeIndex < subtitles.length) {
+						const currentCue = subtitles[activeIndex];
+						if (currentCue) {
+							store.startSegmentLoop(currentCue.start, currentCue.end, 3, activeIndex);
+							new Notice('🔁 复读已启用');
+						}
+					} else {
+						new Notice('⚠️ 请先选择字幕');
+					}
+				}
+			},
+		});
+
+		// 注册命令：设置 A 点（AB 循环起点）
+		this.addCommand({
+			id: 'set-point-a',
+			name: 'Set point A (AB repeat)',
+			hotkeys: [{ modifiers: [], key: 'A' }],
+			callback: () => {
+				const currentTime = useMediaStore.getState().currentTime;
+				useMediaStore.getState().setPointA(currentTime);
+				new Notice(`🅰️ A点已设置: ${currentTime.toFixed(2)}s`);
+			},
+		});
+
+		// 注册命令：设置 B 点（AB 循环终点）
+		this.addCommand({
+			id: 'set-point-b',
+			name: 'Set point B (AB repeat)',
+			hotkeys: [{ modifiers: [], key: 'B' }],
+			callback: () => {
+				const currentTime = useMediaStore.getState().currentTime;
+				const pointA = useMediaStore.getState().pointA;
+				if (pointA === null || currentTime <= pointA) {
+					new Notice('⚠️ B点必须在A点之后');
+					return;
+				}
+				useMediaStore.getState().setPointB(currentTime);
+				new Notice(`🅱️ B点已设置: ${currentTime.toFixed(2)}s`);
+			},
+		});
+
+		// 注册命令：启用/关闭 AB 循环
+		this.addCommand({
+			id: 'toggle-ab-repeat',
+			name: 'Toggle AB repeat',
+			hotkeys: [{ modifiers: [], key: 'R' }],
+			callback: () => {
+				const store = useMediaStore.getState();
+				if (store.abRepeatEnabled) {
+					store.disableABRepeat();
+					new Notice('⏹️ AB循环已关闭');
+				} else {
+					if (store.pointA !== null && store.pointB !== null) {
+						store.enableABRepeat();
+						new Notice('🔁 AB循环已启用');
+					} else {
+						new Notice('⚠️ 请先设置A点和B点');
+					}
+				}
 			},
 		});
 
@@ -159,7 +263,7 @@ export default class LinguaFlowPlugin extends Plugin {
 				if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
 					menu.addItem((item) => {
 						item
-							.setTitle('Play in LinguaFlow')
+							.setTitle('Play in LangPlayer')
 							.setIcon('play-circle')
 							.onClick(() => {
 								this.openUrl(url);
@@ -249,8 +353,32 @@ export default class LinguaFlowPlugin extends Plugin {
 			// 使用已存在的面板
 			leaf = leaves[0] || null;
 		} else {
-			// 创建新面板（在右侧边栏打开）
-			leaf = workspace.getRightLeaf(false);
+			// 根据设置选择打开位置
+			const location = this.settings.subtitlePanelLocation || 'tab'; // 默认使用 tab
+			console.log('[LangPlayer] Opening subtitle panel in location:', location);
+			
+			switch (location) {
+				case 'right':
+					// 右侧边栏
+					leaf = workspace.getRightLeaf(false);
+					break;
+				case 'left':
+					// 左侧边栏
+					leaf = workspace.getLeftLeaf(false);
+					break;
+				case 'tab':
+					// 新标签页（可自由拖动）
+					leaf = workspace.getLeaf('tab');
+					break;
+				case 'split':
+					// 分割视图
+					leaf = workspace.getLeaf('split', 'vertical');
+					break;
+				default:
+					// 默认：新标签页
+					leaf = workspace.getLeaf('tab');
+			}
+			
 			if (leaf) {
 				await leaf.setViewState({
 					type: SUBTITLE_PANEL_VIEW_TYPE,
@@ -285,7 +413,7 @@ export default class LinguaFlowPlugin extends Plugin {
 	}
 
 	/**
-	 * 打开 URL（YouTube 或其他）
+	 * 打开 URL（远程媒体）
 	 * @param url - 媒体 URL
 	 * @param timestamp - 起始时间（秒）
 	 * @param title - 标题
@@ -295,7 +423,7 @@ export default class LinguaFlowPlugin extends Plugin {
 			const view = await this.activateView();
 			
 			const source: MediaSource = {
-				type: isYouTubeUrl(url) ? 'youtube' : 'url',
+				type: 'url',
 				url,
 				displayName: title || url,
 				timestamp,
@@ -327,7 +455,7 @@ export default class LinguaFlowPlugin extends Plugin {
 
 		// 判断是本地文件还是 URL
 		if (params.src.startsWith('http://') || params.src.startsWith('https://')) {
-			// URL（YouTube 或其他）
+			// 远程 URL
 			await this.openUrl(params.src, timestamp, params.title);
 		} else {
 			// 本地文件路径
@@ -349,10 +477,55 @@ export default class LinguaFlowPlugin extends Plugin {
 	}
 
 	/**
+	 * 加载外部字幕文件
+	 */
+	async loadExternalSubtitle() {
+		// 创建文件选择器
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.srt,.vtt,.ass,text/srt,text/vtt,text/ass';
+		
+		input.addEventListener('change', async (e) => {
+			const files = (e.target as HTMLInputElement).files;
+			if (files && files.length > 0) {
+				const file = files[0];
+				if (file) {
+					try {
+						// 读取文件内容
+						const text = await file.text();
+						
+						// 使用 SubtitleLoader 的 loadFromText 方法
+						const result = await this.subtitleLoader.loadFromText(text, file.name);
+						
+						if (result && result.cues.length > 0) {
+							// 将字幕加载到状态管理
+							useMediaStore.getState().setSubtitles(result.cues);
+							new Notice(`已加载 ${result.cues.length} 条字幕`);
+						} else {
+							new Notice('无法解析字幕文件');
+						}
+					} catch (error) {
+						console.error('[LinguaFlow] Error loading subtitle:', error);
+						const errorMsg = error instanceof Error ? error.message : String(error);
+						new Notice('加载字幕失败: ' + errorMsg);
+					}
+				}
+			}
+		});
+		
+		input.click();
+	}
+
+	/**
 	 * 检查文件是否为媒体文件
 	 */
 	private isMediaFile(file: TFile): boolean {
-		const mediaExtensions = ['mp4', 'webm', 'ogv', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac'];
+		const mediaExtensions = [
+			// 视频格式
+			'mp4', 'mkv', 'webm', 'ogv', 'avi', 'mov', 'flv', 'wmv', 'm4v', '3gp',
+			// 音频格式
+			'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
+		];
 		return mediaExtensions.includes(file.extension.toLowerCase());
 	}
 

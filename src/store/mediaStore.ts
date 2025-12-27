@@ -73,6 +73,7 @@ interface MediaActions {
 	stopSegmentLoop: () => void;
 	incrementLoopCount: () => void;
 	playNextSegment: () => void;
+	playPreviousSegment: () => void;
 	
 	// AB 复读
 	setPointA: (time: number) => void;
@@ -112,6 +113,7 @@ const initialState: MediaState = {
 		showEnglish: true,
 		showChinese: true,
 		showIndexAndTime: false, // 默认隐藏编号和时间，仅在设置中开启
+		wordByWordHighlight: false, // 默认关闭逐字高亮（整行高亮）
 	},
 	
 	loopEnabled: false,
@@ -307,31 +309,103 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	},
 	
 	playNextSegment: () => {
-		const { subtitles, segmentLoopIndex, segmentLoopTotal } = get();
+		const { subtitles, segmentLoopIndex, segmentLoopTotal, activeIndex } = get();
 		
-		if (segmentLoopIndex === -1 || !subtitles || subtitles.length === 0) {
-			console.warn('[MediaStore] Cannot play next: no current segment or empty subtitles');
-			get().stopSegmentLoop();
+		if (!subtitles || subtitles.length === 0) {
+			console.warn('[MediaStore] Cannot play next: No subtitles');
 			return;
 		}
 		
-		const nextIndex = segmentLoopIndex + 1;
+		// 使用当前索引（如果在循环模式则用 segmentLoopIndex，否则用 activeIndex）
+		const currentIndex = segmentLoopIndex !== -1 ? segmentLoopIndex : activeIndex;
+		const nextIndex = currentIndex + 1;
 		
 		if (nextIndex >= subtitles.length) {
-			console.log('[MediaStore] Reached end of subtitles, stopping');
-			get().stopSegmentLoop();
+			console.log('[MediaStore] Reached end of subtitles');
 			return;
 		}
 		
 		const nextCue = subtitles[nextIndex];
 		if (!nextCue) {
-			console.log('[MediaStore] Next subtitle not found');
-			get().stopSegmentLoop();
+			console.warn('[MediaStore] Next cue not found');
 			return;
 		}
 		
 		console.log('[MediaStore] Playing next segment:', nextCue.text);
-		get().startSegmentLoop(nextCue.start, nextCue.end, segmentLoopTotal, nextIndex);
+		
+		// 如果在循环模式，停止当前循环并启动新的循环
+		if (segmentLoopIndex !== -1) {
+			set({
+				segmentLoopEnabled: false,
+				segmentLoopCurrent: 0,
+			});
+			get().startSegmentLoop(nextCue.start, nextCue.end, segmentLoopTotal, nextIndex);
+		} else {
+			// 否则直接跳转并更新 activeIndex
+			console.log('[MediaStore] Not in loop mode, jumping directly to nextIndex:', nextIndex);
+			set({ activeIndex: nextIndex });
+			// 需要 playerRef 来 seekTo，这里通过 plugin.playerRef 访问
+			const plugin = (window as any).app?.plugins?.plugins?.langplayer;
+			console.log('[MediaStore] Plugin found:', !!plugin, 'playerRef:', !!plugin?.playerRef?.current);
+			if (plugin?.playerRef?.current) {
+				console.log('[MediaStore] Seeking to:', nextCue.start);
+				plugin.playerRef.current.seekTo(nextCue.start);
+			} else {
+				console.warn('[MediaStore] Player not available!');
+			}
+		}
+	},
+	
+	playPreviousSegment: () => {
+		const { subtitles, segmentLoopIndex, segmentLoopTotal, activeIndex } = get();
+		
+		console.log('[MediaStore] playPreviousSegment called. activeIndex:', activeIndex, 'segmentLoopIndex:', segmentLoopIndex, 'subtitles.length:', subtitles?.length);
+		
+		if (!subtitles || subtitles.length === 0) {
+			console.warn('[MediaStore] Cannot play previous: No subtitles');
+			return;
+		}
+		
+		// 使用当前索引（如果在循环模式则用 segmentLoopIndex，否则用 activeIndex）
+		const currentIndex = segmentLoopIndex !== -1 ? segmentLoopIndex : activeIndex;
+		const prevIndex = currentIndex - 1;
+		
+		console.log('[MediaStore] currentIndex:', currentIndex, '→ prevIndex:', prevIndex);
+		
+		if (prevIndex < 0) {
+			console.log('[MediaStore] Reached beginning of subtitles');
+			return;
+		}
+		
+		const prevCue = subtitles[prevIndex];
+		if (!prevCue) {
+			console.warn('[MediaStore] Previous cue not found');
+			return;
+		}
+		
+		console.log('[MediaStore] Playing previous segment:', prevCue.text);
+		
+		// 如果在循环模式，停止当前循环并启动新的循环
+		if (segmentLoopIndex !== -1) {
+			set({
+				segmentLoopEnabled: false,
+				segmentLoopCurrent: 0,
+			});
+			get().startSegmentLoop(prevCue.start, prevCue.end, segmentLoopTotal, prevIndex);
+		} else {
+			// 否则直接跳转并更新 activeIndex
+			console.log('[MediaStore] Not in loop mode, jumping directly to prevIndex:', prevIndex);
+			set({ activeIndex: prevIndex });
+			// 需要 playerRef 来 seekTo，这里通过 plugin.playerRef 访问
+			const plugin = (window as any).app?.plugins?.plugins?.langplayer;
+			console.log('[MediaStore] Plugin found:', !!plugin, 'playerRef:', !!plugin?.playerRef?.current);
+			if (plugin?.playerRef?.current) {
+				console.log('[MediaStore] Seeking to:', prevCue.start);
+				plugin.playerRef.current.seekTo(prevCue.start);
+			} else {
+				console.warn('[MediaStore] Player not available!');
+			}
+		}
 	},
 
 	// ===== AB 复读 =====

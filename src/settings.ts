@@ -32,6 +32,7 @@ export interface LinguaFlowSettings {
 	loopCount: number;                  // 单句循环次数（播放几次）
 	autoPlayNext: boolean;              // 循环完成后自动播放下一句
 	playerHeight: number;               // 播放器高度（像素）
+	subtitleWidth: number;              // 右侧布局时字幕宽度（像素）
 	videoFit: 'contain' | 'cover' | 'fill';  // 视频填充模式
 	showInlineSubtitles: boolean;       // 是否在视频下方显示字幕列表
 
@@ -40,6 +41,9 @@ export interface LinguaFlowSettings {
 	subtitleFontWeight: string;         // 字幕字重
 	subtitleLineHeight: number;         // 字幕行高
 	showIndexAndTime: boolean;          // 是否显示字幕编号和时间
+	wordByWordHighlight: boolean;       // 逐字高亮（true）或整行高亮（false）
+	subtitlePanelLocation: 'right' | 'left' | 'tab' | 'split'; // 字幕面板打开位置
+	subtitleLayout: 'bottom' | 'right'; // 内嵌字幕布局：底部或右侧
 
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: boolean;  // 查词时是否自动打开录入面板
@@ -48,6 +52,19 @@ export interface LinguaFlowSettings {
 	openaiApiKey: string;               // 已废弃，使用 sttApiKey
 	azureSubscriptionKey: string;       // 已废弃，使用 sttApiKey
 	azureRegion: string;                // 已废弃，使用 sttBaseUrl
+
+	// 快捷键设置 (Key name or Modifier+Key)
+	hotkeys: {
+		prevSubtitle: string;
+		nextSubtitle: string;
+		rewind: string;
+		fastForward: string;
+		playPause: string;
+		record: string;
+	};
+
+	// 调试模式（开发者选项）
+	debugMode: boolean;
 }
 
 /**
@@ -69,6 +86,7 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	loopCount: 3, // 默认循环3次（播放3遍）
 	autoPlayNext: false, // 默认不自动播放下一句
 	playerHeight: 400, // 默认播放器高度 400px
+	subtitleWidth: 400, // 默认字幕宽度 400px
 	videoFit: 'cover', // 默认填充模式：填满容器无黑边
 	showInlineSubtitles: false, // 默认不显示内嵌字幕列表（使用独立面板）
 	// 字幕样式设置
@@ -76,12 +94,27 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	subtitleFontWeight: '500', // 默认字重
 	subtitleLineHeight: 1.6, // 默认行高
 	showIndexAndTime: false, // 默认隐藏编号和时间
+	wordByWordHighlight: false, // 默认关闭逐字高亮（整行高亮）
+	subtitlePanelLocation: 'tab', // 默认在新标签页打开（可拖动）
+	subtitleLayout: 'bottom', // 默认底部布局
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: true, // 默认打开录入面板
 	// 兼容性字段
 	openaiApiKey: '',
 	azureSubscriptionKey: '',
 	azureRegion: 'eastus',
+	// 默认快捷键
+	hotkeys: {
+		prevSubtitle: 'ArrowLeft',
+		nextSubtitle: 'ArrowRight',
+		rewind: 'Shift+ArrowLeft',
+		fastForward: 'Shift+ArrowRight',
+		playPause: ' ',
+		record: 'r'
+	},
+
+	// 默认关闭调试模式
+	debugMode: false
 };
 
 /**
@@ -135,6 +168,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			this.displaySubtitleTab(contentContainer);
 		} else if (this.activeTab === 'integration') {
 			this.displayIntegrationTab(contentContainer);
+		} else if (this.activeTab === 'developer') {
+			this.displayDeveloperTab(contentContainer);
 		}
 	}
 
@@ -479,6 +514,37 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 					useMediaStore.getState().updateSubtitleConfig({ showIndexAndTime: value });
 				})
 			);
+
+		new Setting(containerEl)
+			.setName('逐字高亮')
+			.setDesc('启用后字幕将逐字高亮显示；关闭后整行高亮')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.wordByWordHighlight ?? true)
+				.onChange(async (value) => {
+					this.plugin.settings.wordByWordHighlight = value;
+					await this.plugin.saveSettings();
+					// 同步更新 store
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ wordByWordHighlight: value });
+					new Notice(value ? '✅ 逐字高亮已启用' : '⏹️ 整行高亮已启用');
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('字幕面板位置')
+			.setDesc('选择打开字幕面板的位置（重新打开面板后生效）')
+			.addDropdown(dropdown => dropdown
+				.addOption('tab', '新标签页（可自由拖动）')
+				.addOption('split', '分割视图')
+				.addOption('right', '右侧边栏')
+				.addOption('left', '左侧边栏')
+				.setValue(this.plugin.settings.subtitlePanelLocation)
+				.onChange(async (value: 'right' | 'left' | 'tab' | 'split') => {
+					this.plugin.settings.subtitlePanelLocation = value;
+					await this.plugin.saveSettings();
+					new Notice('字幕面板位置已更新，重新打开面板后生效');
+				})
+			);
 	}
 
 	// 集成标签页
@@ -495,6 +561,45 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				})
 			);
 
+	}
+
+	// 开发者标签页
+	private displayDeveloperTab(containerEl: HTMLElement): void {
+		// 标题和说明
+		containerEl.createEl('h3', { text: '调试选项' });
+		containerEl.createEl('p', {
+			text: '⚠️ 这些选项仅用于开发和调试。启用后可能影响性能。',
+			cls: 'setting-item-description'
+		});
+
+		// 调试模式开关
+		new Setting(containerEl)
+			.setName('调试模式')
+			.setDesc('启用后将显示详细的调试日志。重新加载插件后生效。')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.debugMode)
+				.onChange(async (value) => {
+					this.plugin.settings.debugMode = value;
+					await this.plugin.saveSettings();
+					
+					// 动态更新 logger 级别
+					const { logger, LogLevel } = require('./utils/logger');
+					if (value) {
+						logger.enableDebug();
+						new Notice('✅ 调试模式已启用，请重新加载插件以应用更改');
+					} else {
+						logger.disableAll();
+						new Notice('✅ 调试模式已关闭，请重新加载插件以应用更改');
+					}
+				})
+			);
+
+		// 性能监控（未来功能）
+		containerEl.createEl('h3', { text: '性能监控' });
+		containerEl.createEl('p', {
+			text: '🚧 功能开发中...',
+			cls: 'setting-item-description'
+		});
 	}
 
 	/**

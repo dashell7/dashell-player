@@ -1,0 +1,10 @@
+{
+	"id": "langplayer",
+	"name": "LangPlayer",
+	"version": "1.5.0",
+	"minAppVersion": "0.15.0",
+	"description": "Advanced media player for language learning with subtitle sync, sentence loop, pronunciation assessment, and vocabulary management.",
+	"author": "LangPlayer Team",
+	"authorUrl": "https://github.com/langplayer",
+	"isDesktopOnly": false
+}

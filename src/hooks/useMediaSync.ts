@@ -88,6 +88,9 @@ export function useMediaSync(
 				
 				lastTimeRef.current = currentTime;
 				
+				// 【性能优化】一次性获取所有需要的 state，避免每帧多次调用 getState()
+				const state = useMediaStore.getState();
+				
 				// 更新 Store 中的当前时间（节流到 ~10fps，减少 React 重渲染开销）
 				const now = Date.now();
 				if (now - lastStoreUpdateTimeRef.current > 100) {
@@ -97,8 +100,8 @@ export function useMediaSync(
 				
 				// ===== 字幕同步（使用二分查找 + 顺序优化） =====
 				if (subtitles.length > 0) {
-					// 获取当前索引作为 hint，优化顺序播放时的查找性能
-					const currentIndex = useMediaStore.getState().activeIndex;
+					// 使用已获取的 state，不再调用 getState()
+					const currentIndex = state.activeIndex;
 					const newIndex = SubtitleParser.findIndexAtTime(subtitles, currentTime, currentIndex);
 					setActiveIndex(newIndex);
 					
@@ -106,11 +109,8 @@ export function useMediaSync(
 					if (newIndex >= 0 && newIndex < subtitles.length) {
 						const currentCue = subtitles[newIndex];
 						if (currentCue) {
-							// 前瞻补偿：让高亮稍微提前一点 (0.35s)，抵消视觉延迟
-							const SYNC_LOOKAHEAD = 0.35;
-							
-							// 计算字幕内的相对时间（应用补偿）
-							const relativeTime = (currentTime + SYNC_LOOKAHEAD) - currentCue.start;
+							// 计算字幕内的相对时间（无前瞻补偿）
+							const relativeTime = currentTime - currentCue.start;
 							const duration = currentCue.end - currentCue.start;
 							
 							// 优化：使用缓存的单词列表，避免每帧执行 split
@@ -146,7 +146,8 @@ export function useMediaSync(
 				}
 				
 				// ===== 影子跟读 (Shadowing) =====
-				const { shadowingEnabled, shadowingPauseFactor, activeIndex } = useMediaStore.getState();
+				// 【性能优化】使用已获取的 state
+				const { shadowingEnabled, shadowingPauseFactor, activeIndex } = state;
 				
 				// 关键修复：如果被阻塞（录音中/弹窗中），跳过跟读逻辑
 				if (!isBlocked && shadowingEnabled && activeIndex >= 0 && activeIndex < subtitles.length) {
@@ -210,6 +211,7 @@ export function useMediaSync(
 				}
 
 				// ===== 循环控制 (互斥) =====
+				// 【性能优化】从已获取的 state 解构，避免重复调用
 				const { 
 					segmentLoopEnabled, 
 					segmentLoopTotal, 
@@ -222,7 +224,7 @@ export function useMediaSync(
 					abRepeatEnabled,
 					pointA,
 					pointB
-				} = useMediaStore.getState();
+				} = state;
 
 				// 1. AB 复读 (优先级最高)
 				if (abRepeatEnabled && pointA !== null && pointB !== null) {
@@ -294,9 +296,15 @@ export function useMediaSync(
 		
 		// 清理函数
 		return () => {
+			console.log('[useMediaSync] Cleaning up sync loop and timers');
 			if (rafIdRef.current !== null) {
 				cancelAnimationFrame(rafIdRef.current);
 				rafIdRef.current = null;
+			}
+			// 清理影子跟读定时器
+			if (shadowingTimeoutRef.current) {
+				window.clearTimeout(shadowingTimeoutRef.current);
+				shadowingTimeoutRef.current = null;
 			}
 		};
 	}, [

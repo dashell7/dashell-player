@@ -3,7 +3,7 @@ export const LINGUA_FLOW_VIEW = 'linguaflow-view';
 
 // 媒体源类型
 export interface MediaSource {
-	type: 'local' | 'youtube' | 'url';
+	type: 'local' | 'url';
 	url: string;
 	displayName?: string;
 	timestamp?: number; // 起始时间（秒）
@@ -57,8 +57,9 @@ export interface SubtitleConfig {
 	fontSize: number;
 	fontColor: string;
 	backgroundColor: string;
-	position: 'top' | 'bottom' | 'center';
+	position: 'top' | 'center' | 'bottom';
 	showEnglish: boolean;
 	showChinese: boolean;
-	showIndexAndTime: boolean; // 是否显示编号和时间
+	showIndexAndTime: boolean; // 显示序号和时间
+	wordByWordHighlight: boolean; // 逐字高亮（true）或整行高亮（false）
 }

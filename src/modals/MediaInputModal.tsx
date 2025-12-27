@@ -3,7 +3,7 @@ import type LinguaFlowPlugin from '../main';
 
 /**
  * 媒体输入对话框
- * 允许用户输入YouTube链接或本地文件路径
+ * 允许用户输入本地文件路径或远程媒体URL
  */
 export class MediaInputModal extends Modal {
 	plugin: LinguaFlowPlugin;
@@ -25,10 +25,10 @@ export class MediaInputModal extends Modal {
 		// 输入框
 		const inputSetting = new Setting(contentEl)
 			.setName('媒体源')
-			.setDesc('输入 YouTube 链接、本地文件路径，或拖放文件到这里');
+			.setDesc('输入本地文件路径或远程媒体URL');
 
 		inputSetting.addText(text => {
-			text.setPlaceholder('https://youtube.com/watch?v=... 或 videos/lesson.mp4')
+			text.setPlaceholder('videos/lesson.mp4 或 https://example.com/video.mp4')
 				.setValue(this.inputValue)
 				.onChange(value => {
 					this.inputValue = value.trim();
@@ -73,7 +73,7 @@ export class MediaInputModal extends Modal {
 
 		// 提示信息
 		contentEl.createEl('div', {
-			text: '💡 支持 YouTube 链接、本地视频路径',
+			text: '💡 支持本地视频路径和远程媒体URL',
 			cls: 'linguaflow-modal-hint'
 		});
 	}
@@ -90,15 +90,15 @@ export class MediaInputModal extends Modal {
 		try {
 			// 判断是 URL 还是本地文件
 			if (this.inputValue.startsWith('http://') || this.inputValue.startsWith('https://')) {
-				// YouTube 或其他 URL
+				// 远程 URL
 				await this.plugin.openUrl(this.inputValue);
-				new Notice('正在加载视频...');
+				new Notice('正在加载媒体...');
 			} else {
 				// 本地文件路径
 				const file = this.app.vault.getAbstractFileByPath(this.inputValue);
 				if (file instanceof TFile) {
 					await this.plugin.openFile(file);
-					new Notice('正在加载视频...');
+					new Notice('正在加载媒体...');
 				} else {
 					new Notice('找不到文件: ' + this.inputValue);
 					return;
@@ -127,10 +127,19 @@ export class MediaInputModal extends Modal {
 			if (files && files.length > 0) {
 				const file = files[0];
 				if (file) {
-					// 这里我们只能提示用户将文件添加到 vault
-					new Notice('请将文件添加到 Obsidian vault 中，然后输入相对路径');
-					// 可以尝试显示文件名作为提示
-					this.inputValue = file.name;
+					try {
+						// 直接从文件创建 URL（支持库外文件）
+						const fileUrl = URL.createObjectURL(file);
+						
+						// 直接加载文件
+						await this.plugin.openUrl(fileUrl, undefined, file.name);
+						new Notice(`正在加载: ${file.name}`);
+						this.close();
+					} catch (error) {
+						console.error('[MediaInputModal] Error loading file:', error);
+						const errorMsg = error instanceof Error ? error.message : String(error);
+						new Notice('加载失败: ' + errorMsg);
+					}
 				}
 			}
 		});

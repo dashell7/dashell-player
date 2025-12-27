@@ -10,8 +10,9 @@ LangPlayer is a powerful Obsidian plugin designed for language learners, providi
 ## ✨ Features
 
 ### 🎬 Advanced Media Player
-- **YouTube & Local Media Support**: Play YouTube videos or local media files (MP4, MP3, etc.)
-- **Subtitle Sync**: Automatic subtitle loading and synchronization (SRT, VTT formats)
+- **Local Media Support**: Play local media files (MP4, MP3, WAV, OGG, etc.)
+- **Remote Media Support**: Play media files from remote URLs
+- **Subtitle Sync**: Manual subtitle loading and synchronization (SRT, VTT formats)
 - **Word-Level Highlighting**: Real-time word highlighting synced with audio playback
 - **Playback Speed Control**: Adjust playback speed (0.5x - 2x) for comfortable learning
 
@@ -66,8 +67,8 @@ LangPlayer is a powerful Obsidian plugin designed for language learners, providi
 
 ### Basic Setup
 1. **Open LangPlayer**: Click the play icon in the left ribbon or use command palette
-2. **Load Media**: Enter a YouTube URL or select a local media file
-3. **Load Subtitles**: Subtitles are auto-detected for YouTube videos or load a local SRT/VTT file
+2. **Load Media**: Enter a local file path or remote media URL
+3. **Load Subtitles**: Load a local SRT/VTT subtitle file
 
 ### Voice Recording Setup (Optional)
 To use pronunciation assessment features:
@@ -94,9 +95,10 @@ To use pronunciation assessment features:
 ### Playing Media
 1. **Open Player**: Click ribbon icon or use command "Open Media Player"
 2. **Load Content**: 
-   - Paste YouTube URL, or
+   - Enter local file path (e.g., videos/lesson.mp4), or
+   - Enter remote media URL, or
    - Click "Browse Local File"
-3. **Load Subtitles**: Auto-loaded for YouTube, or select local SRT/VTT file
+3. **Load Subtitles**: Select local SRT/VTT file
 
 ### Learning with Subtitles
 - **Click Subtitle**: Jump to that sentence and start playing
@@ -136,7 +138,7 @@ You can configure these in Obsidian Settings → Hotkeys:
 5. **Build Vocabulary**: Click unknown words to create vocabulary notes
 
 ### For Better Performance
-1. **Use Local Files**: Faster loading than streaming YouTube
+1. **Use Local Files**: Faster loading than remote streaming
 2. **Match Subtitle Timing**: Ensure subtitles match audio for accurate sync
 3. **Close Other Panels**: Focus mode for distraction-free learning
 
@@ -172,7 +174,7 @@ LangPlayer seamlessly integrates with [obsidian-language-learner](https://github
 ### Media Files
 - Video: MP4, WebM, OGV
 - Audio: MP3, WAV, OGG, M4A, FLAC, AAC
-- Streaming: YouTube URLs
+- Remote: Any accessible media URL
 
 ### Subtitle Files
 - SRT (SubRip)
@@ -189,10 +191,11 @@ See Settings → Enable Voice2Text for diagnostic steps
 2. Adjust subtitle offset in player controls
 3. Ensure subtitle file encoding is UTF-8
 
-### YouTube Playback Issues
+### Remote Media Playback Issues
 1. Check internet connection
-2. Verify YouTube URL is valid
-3. Try using a local copy of the video
+2. Verify the media URL is accessible
+3. Ensure the media format is supported
+4. Try downloading and using a local copy
 
 ### API Errors
 1. Verify API key is correct

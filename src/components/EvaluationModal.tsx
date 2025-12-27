@@ -193,27 +193,15 @@ export function EvaluationModal({ evaluation, transcription, recordingBlobUrl, p
 		}
 	};
 
-	console.log('[EvaluationModal] Render Check:', { 
-		isVisible, 
-		hasEvaluation: !!evaluation, 
-		isTranscribing,
-		recordingBlobUrl: !!recordingBlobUrl,
-		targetSubtitle: !!targetSubtitle
-	});
-
 	// 如果不可见，不渲染
 	if (!isVisible) {
-		console.log('[EvaluationModal] Not rendering: isVisible is false');
 		return null;
 	}
 
 	// 如果没有评分且不在转录中，不渲染
 	if (!evaluation && !isTranscribing) {
-		console.warn('[EvaluationModal] Not rendering: No evaluation and not transcribing');
 		return null;
 	}
-
-	console.log('[EvaluationModal] RENDERING MODAL via Portal');
 
 	// 计算等级（如果有评分）
 	const grade = evaluation ? SpeechEvaluator.getGrade(evaluation.finalScore || evaluation.score) : {

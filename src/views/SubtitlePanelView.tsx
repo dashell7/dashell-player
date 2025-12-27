@@ -4,6 +4,7 @@ import * as ReactDOM from 'react-dom/client';
 import type LinguaFlowPlugin from '../main';
 import { useMediaStore, selectCurrentSubtitle } from '../store/mediaStore';
 import type { SubtitleCue, PlayerRef } from '../types';
+import type { UseRecordingSessionReturn } from '../hooks/useRecordingSession';
 
 export const SUBTITLE_PANEL_VIEW_TYPE = 'linguaflow-subtitle-panel';
 
@@ -81,8 +82,12 @@ interface SubtitlePanelContentProps {
 }
 
 import { ClickableText } from '../components/OptimizedWord';
+import { useRecordingSession } from '../hooks/useRecordingSession';
 
 const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) => {
+	// 创建独立的录音会话
+	const recordingSession = useRecordingSession(plugin);
+	
 	const subtitles = useMediaStore(state => state.subtitles);
 	const activeIndex = useMediaStore(state => state.activeIndex);
 	const activeWordIndex = useMediaStore(state => state.activeWordIndex);
@@ -92,15 +97,38 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 	const showEnglish = useMediaStore(state => state.subtitleConfig.showEnglish);
 	const showChinese = useMediaStore(state => state.subtitleConfig.showChinese);
 	const showIndexAndTime = useMediaStore(state => state.subtitleConfig.showIndexAndTime);
+	const wordByWordHighlight = useMediaStore(state => state.subtitleConfig.wordByWordHighlight);
 	
 	const segmentLoopEnabled = useMediaStore(state => state.segmentLoopEnabled);
+	const segmentLoopCurrent = useMediaStore(state => state.segmentLoopCurrent);
+	const segmentLoopTotal = useMediaStore(state => state.segmentLoopTotal);
+	const loopStart = useMediaStore(state => state.loopStart);
+	const loopEnd = useMediaStore(state => state.loopEnd);
 	const setActiveIndex = useMediaStore(state => state.setActiveIndex);
+	
+	// 调试：监控activeIndex变化
+	React.useEffect(() => {
+		console.log('[SubtitlePanel] activeIndex changed:', activeIndex, 'wordIndex:', activeWordIndex);
+	}, [activeIndex, activeWordIndex]);
 	
 	const listRef = React.useRef<HTMLDivElement>(null);
 	const activeItemRef = React.useRef<HTMLDivElement>(null);
 	
 	const [selectedCue, setSelectedCue] = React.useState<SubtitleCue | null>(null);
 	const [isManuallyLocked, setIsManuallyLocked] = React.useState(false);
+	
+	// 监控时间跳跃，自动解锁字幕
+	const lastTimeRef = React.useRef<number>(0);
+	const currentTime = useMediaStore(state => state.currentTime);
+	React.useEffect(() => {
+		const timeDiff = Math.abs(currentTime - lastTimeRef.current);
+		// 如果时间跳跃超过2秒，认为是用户拖动时间轴，自动解锁
+		if (timeDiff > 2 && isManuallyLocked) {
+			console.log('[SubtitlePanel] 🎯 Large time jump detected:', timeDiff, 's - Unlocking');
+			setIsManuallyLocked(false);
+		}
+		lastTimeRef.current = currentTime;
+	}, [currentTime, isManuallyLocked]);
 
 	// 智能滚动到当前激活的字幕 - 始终保持在第二行位置
 	React.useEffect(() => {
@@ -111,38 +139,21 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 			hasListRef: !!listRef.current
 		});
 		
-		if (!isManuallyLocked && activeItemRef.current && listRef.current) {
+		// 移除 !isManuallyLocked 条件，让滚动始终生效
+		if (activeItemRef.current && listRef.current) {
 			const container = listRef.current;
 			const item = activeItemRef.current;
 			
-			// 获取单个字幕项的高度
+			// 获取单个字幕项的高度和容器高度
 			const itemHeight = item.offsetHeight;
+			const containerHeight = container.clientHeight;
 			
-			// 修正：要显示在第二行，意味着我们需要滚动到"上一条字幕"的顶部位置
-			// 如果没有上一条（第一句），就滚动到0
+			// 计算目标滚动位置：将当前字幕置于容器高度的 40% 处
+			// 这样上方留有空间显示前一条字幕，下方有更多空间预读后文
+			let targetScrollTop = item.offsetTop - (containerHeight * 0.4);
 			
-			let targetScrollTop = 0;
-			
-			// 尝试获取上一条字幕元素
-			const prevItem = item.previousElementSibling as HTMLElement;
-			
-			if (prevItem) {
-				// 如果有上一条，滚动到上一条的顶部
-				// 这样上一条会在第一行，当前条就在第二行
-				targetScrollTop = prevItem.offsetTop;
-			} else {
-				// 如果是第一条，滚动到顶部
-				targetScrollTop = 0;
-			}
-			
-			console.log('[SubtitlePanel] 🎯 Scrolling to Second Line:', {
-				activeIndex,
-				itemHeight,
-				itemOffsetTop: item.offsetTop,
-				prevItemOffsetTop: prevItem?.offsetTop,
-				targetScrollTop,
-				currentScrollTop: container.scrollTop
-			});
+			// 确保不越界
+			if (targetScrollTop < 0) targetScrollTop = 0;
 			
 			// 平滑滚动到目标位置
 			container.scrollTo({
@@ -150,7 +161,7 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 				behavior: 'smooth'
 			});
 		}
-	}, [activeIndex, isManuallyLocked]);
+	}, [activeIndex]); // 移除 isManuallyLocked 依赖
 
 	// 自动跟随当前播放的字幕
 	React.useEffect(() => {
@@ -159,14 +170,60 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 		}
 	}, [currentSubtitle, isManuallyLocked]);
 
-	// 处理字幕点击
+	// 处理字幕单击 - 选中字幕
 	const handleSubtitleClick = (cue: SubtitleCue) => {
+		console.log('[SubtitlePanel] Click - Select:', cue.start);
+		
+		// 如果点击的是当前选中的字幕，切换播放/暂停
+		if (selectedCue?.id === cue.id) {
+			const isPlaying = useMediaStore.getState().playing;
+			if (isPlaying && plugin.playerRef?.current) {
+				// 正在播放 → 暂停
+				plugin.playerRef.current.pauseVideo();
+				useMediaStore.getState().setPlaying(false);
+				console.log('[SubtitlePanel] Toggled to pause');
+			} else if (plugin.playerRef?.current) {
+				// 已暂停 → 播放
+				plugin.playerRef.current.playVideo();
+				useMediaStore.getState().setPlaying(true);
+				console.log('[SubtitlePanel] Toggled to play');
+			}
+			// 保持锁定状态
+		} else {
+			// 点击其他字幕：锁定并处理播放状态
+			setSelectedCue(cue);
+			setIsManuallyLocked(true);
+			console.log('[SubtitlePanel] Locked to:', cue.start);
+			
+			// 如果视频正在播放，暂停并跳转到该字幕
+			const isPlaying = useMediaStore.getState().playing;
+			if (isPlaying && plugin.playerRef?.current) {
+				plugin.playerRef.current.pauseVideo();
+				useMediaStore.getState().setPlaying(false);
+				plugin.playerRef.current.seekTo(cue.start);
+				console.log('[SubtitlePanel] Paused and seeked to:', cue.start);
+			} else if (plugin.playerRef?.current) {
+				// 如果已暂停，只跳转不播放
+				plugin.playerRef.current.seekTo(cue.start);
+				console.log('[SubtitlePanel] Seeked to (paused):', cue.start);
+			}
+		}
+	};
+
+	// 处理字幕双击 - 跳转播放并解锁
+	const handleSubtitleDoubleClick = (cue: SubtitleCue) => {
+		console.log('[SubtitlePanel] Double Click - Jump and play:', cue.start);
 		setSelectedCue(cue);
-		setIsManuallyLocked(true);
+		setIsManuallyLocked(false); // 双击后解锁，跟随播放
 		
 		// 跳转到该字幕位置
 		if (plugin.playerRef?.current) {
 			plugin.playerRef.current.seekTo(cue.start);
+			plugin.playerRef.current.playVideo(); // ✅ 添加播放
+			useMediaStore.getState().setPlaying(true); // ✅ 更新状态
+			console.log('[SubtitlePanel] Seeked to:', cue.start, 'and playing');
+		} else {
+			console.warn('[SubtitlePanel] Player ref is null');
 		}
 		
 		// 更新activeIndex
@@ -174,6 +231,63 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 		if (index >= 0) {
 			setActiveIndex(index);
 		}
+	};
+
+	// 处理单句播放
+	const handlePlaySegment = (cue: SubtitleCue, e?: React.MouseEvent) => {
+		e?.stopPropagation();
+		console.log('[SubtitlePanel] Play segment:', cue.text);
+		
+		if (plugin.playerRef?.current) {
+			plugin.playerRef.current.seekTo(cue.start);
+			plugin.playerRef.current.playVideo?.();
+			useMediaStore.getState().playSegment(cue.start, cue.end);
+		}
+	};
+
+	// 处理单句循环播放
+	const handleSegmentLoop = (cue: SubtitleCue, e?: React.MouseEvent) => {
+		e?.stopPropagation();
+		
+		const loopCount = plugin.settings.loopCount ?? -1;
+		console.log('[SubtitlePanel] Start segment loop:', cue.text, 'Count:', loopCount, 'Index:', cue.index);
+		
+		if (plugin.playerRef?.current) {
+			plugin.playerRef.current.seekTo(cue.start);
+			plugin.playerRef.current.playVideo?.();
+			useMediaStore.getState().startSegmentLoop(cue.start, cue.end, loopCount, cue.index);
+		}
+	};
+
+	// 处理单句录音
+	const handleRecordSegment = async (cue: SubtitleCue, e?: React.MouseEvent) => {
+		e?.stopPropagation();
+		if (!recordingSession) return;
+		
+		const { isRecording, targetSubtitle, startRecording, stopRecording } = recordingSession;
+		
+		// 如果正在录音且是当前句，则停止
+		if (isRecording && targetSubtitle?.id === cue.id) {
+			await stopRecording();
+		} else {
+			// 否则开始录音
+			if (plugin.playerRef?.current) {
+				plugin.playerRef.current.pauseVideo?.();
+			}
+			// 停止单句循环（如果正在循环）
+			const { segmentLoopEnabled } = useMediaStore.getState();
+			if (segmentLoopEnabled) {
+				useMediaStore.getState().stopSegmentLoop();
+			}
+			
+			await startRecording(cue);
+		}
+	};
+
+	// 退出循环
+	const handleStopLoop = (e?: React.MouseEvent) => {
+		e?.stopPropagation();
+		useMediaStore.getState().stopSegmentLoop();
 	};
 
 	// 格式化时间
@@ -272,6 +386,7 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 							useMediaStore.getState().loopStart === cue.start && 
 							useMediaStore.getState().loopEnd === cue.end;
 						const isSelected = selectedCue?.id === cue.id;
+						const isRecordingThis = recordingSession?.isRecording && recordingSession?.targetSubtitle?.id === cue.id;
 
 						return (
 							<div
@@ -279,8 +394,9 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 								ref={index === activeIndex ? activeItemRef : null}
 								className={`linguaflow-subtitle-item ${
 									index === activeIndex ? 'active' : ''
-								} ${isLoopingThis ? 'looping' : ''} ${isSelected ? 'selected' : ''}`}
+								} ${isLoopingThis ? 'looping' : ''} ${isRecordingThis ? 'recording' : ''} ${isSelected ? 'selected' : ''}`}
 								onClick={() => handleSubtitleClick(cue)}
+								onDoubleClick={() => handleSubtitleDoubleClick(cue)}
 							>
 								<div className="linguaflow-subtitle-item-header">
 									{showIndexAndTime && (
@@ -305,10 +421,10 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 
 								<div className="linguaflow-subtitle-item-text">
 									{cue.textEn && showEnglish && (
-										<div className="linguaflow-subtitle-item-en">
+										<div className={`linguaflow-subtitle-item-en ${index === activeIndex && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
 											<ClickableText
 												text={cue.textEn}
-												isActive={index === activeIndex}
+												isActive={index === activeIndex && wordByWordHighlight}
 												activeWordIndex={activeWordIndex}
 												onWordClick={handleWordClick}
 											/>
@@ -318,10 +434,10 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 										<div className="linguaflow-subtitle-item-zh">{cue.textZh}</div>
 									)}
 									{!cue.textEn && !cue.textZh && (
-										<div className="linguaflow-subtitle-item-main">
+										<div className={`linguaflow-subtitle-item-main ${index === activeIndex && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
 											<ClickableText
 												text={cue.text}
-												isActive={index === activeIndex}
+												isActive={index === activeIndex && wordByWordHighlight}
 												activeWordIndex={activeWordIndex}
 												onWordClick={handleWordClick}
 											/>

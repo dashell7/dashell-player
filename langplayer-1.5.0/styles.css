@@ -20,90 +20,6 @@
 	overflow: hidden;
 }
 
-/* 主内容区 */
-.linguaflow-main-content {
-	flex: 1;
-	display: flex;
-	flex-direction: column;
-	overflow: hidden;
-}
-
-/* 播放器和控制栏容器 */
-.linguaflow-player-wrapper-section {
-	display: flex;
-	flex-direction: column;
-	flex-shrink: 0;
-}
-
-/* 右侧布局 - 播放器在左，字幕在右 */
-.linguaflow-container.linguaflow-layout-right .linguaflow-main-content {
-	flex-direction: row;
-}
-
-/* 右侧布局：播放器和控制栏容器在左侧 */
-.linguaflow-container.linguaflow-layout-right .linguaflow-player-wrapper-section {
-	flex: 1;
-	height: 100%;
-}
-
-/* 右侧布局：播放器区域 */
-.linguaflow-container.linguaflow-layout-right .linguaflow-player-section {
-	flex: 1;
-	height: auto !important;
-	min-height: auto !important;
-}
-
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer {
-	width: 12px; /* 增加可点击区域 */
-	height: 100%;
-	cursor: ew-resize;
-	padding: 0;
-	margin: 0;
-	z-index: 20; /* 提高层级，确保可点击 */
-	position: relative;
-	flex-shrink: 0;
-	background: transparent;
-}
-
-/* 右侧布局：垂直分隔条的视觉指示器 */
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer::before {
-	top: 0;
-	left: 50%;
-	transform: translateX(-50%);
-	width: 2px;
-	height: 100%;
-}
-
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer:hover::before,
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer.resizing::before {
-	width: 3px;
-}
-
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer-line {
-	width: 4px;
-	height: 48px;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer-line::before,
-.linguaflow-container.linguaflow-layout-right .linguaflow-resizer-line::after {
-	width: 1px;
-	height: 12px;
-}
-
-.linguaflow-container.linguaflow-layout-right .linguaflow-subtitle-section {
-	/* width由JS动态设置，这里不固定 */
-	min-width: 200px;
-	/* max-width: 1000px;  <-- 移除限制 */
-	/* 强制设置 flex 属性，防止被 flex: 1 覆盖 */
-	flex: 0 0 auto !important;
-	width: auto; /* 让内联样式生效 */
-	height: auto;
-	overflow-y: auto;
-	overflow-x: hidden; /* 防止横向滚动 */
-}
-
 /* 播放器区域 */
 .linguaflow-player-section {
 	flex-shrink: 0;
@@ -605,9 +521,7 @@
 	border: 2px solid transparent; /* 使用透明边框，保持布局稳定 */
 	border-radius: 6px;
 	cursor: pointer;
-	transition: all 0.2s ease-out; /* 统一的平滑过渡 */
-	line-height: 1.6;
-	opacity: 0.5; /* 非活动字幕淡化 */
+	transition: background 0.2s ease, box-shadow 0.2s ease;
 	background: var(--background-primary);
 }
 
@@ -616,18 +530,10 @@
 	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
 }
 
-/* 激活状态 - 微妙强调设计 */
+/* 激活状态 - 使用 box-shadow 创建左侧边框效果，避免布局变化 */
 .linguaflow-subtitle-list .linguaflow-subtitle-item.active {
-	background: rgba(var(--interactive-accent-rgb, 139, 92, 246), 0.02) !important;
-	box-shadow: inset 2px 0 0 0 var(--interactive-accent), 0 1px 3px rgba(0, 0, 0, 0.05) !important;
-	opacity: 1 !important; /* 活动字幕完全不透明 */
-	transform: translateX(0); /* 确保过渡的起始状态 */
-	transition: all 0.2s ease-out; /* 平滑过渡 */
-}
-
-/* 下一句字幕稍微突出 */
-.linguaflow-subtitle-list .linguaflow-subtitle-item.active + .linguaflow-subtitle-item {
-	opacity: 0.7;
+	background: rgba(var(--interactive-accent-rgb, 139, 92, 246), 0.05) !important;
+	box-shadow: inset 3px 0 0 0 var(--interactive-accent), 0 2px 8px rgba(139, 92, 246, 0.15) !important;
 }
 
 .linguaflow-subtitle-item.looping {
@@ -792,7 +698,6 @@
 	color: var(--text-normal);
 	font-size: 14px;
 	margin-bottom: 4px;
-	transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .linguaflow-subtitle-item-en {
@@ -804,22 +709,7 @@
 	font-size: 13px;
 }
 
-/* 整行高亮样式（禁用逐字高亮时使用） */
-.linguaflow-line-highlight {
-	background: var(--background-modifier-hover) !important;
-	color: var(--interactive-accent) !important;
-	padding: 2px 4px;
-	border-radius: 3px;
-	transition: all 0.2s ease;
-}
-
-/* 标点符号保持原色，不跟随高亮 */
-.linguaflow-line-highlight .linguaflow-punctuation,
-.linguaflow-word-highlight .linguaflow-punctuation {
-	color: var(--text-normal) !important;
-	opacity: 0.8;
-}
-
+/* 退出循环按钮 */
 .linguaflow-exit-loop-btn {
 	padding: 4px 12px;
 	background: #28a745;
@@ -1291,12 +1181,13 @@
 	color: var(--text-muted);
 }
 
-/* 字幕项选中状态 - 微妙强调设计 */
+/* 字幕项选中状态 */
 .linguaflow-subtitle-item.selected {
-	border-color: transparent; /* 移除外边框 */
-	background: rgba(var(--interactive-accent-rgb, 139, 92, 246), 0.02);
-	box-shadow: inset 2px 0 0 0 var(--interactive-accent), 0 1px 3px rgba(0, 0, 0, 0.05);
-	transition: all 0.2s ease-out;
+	border-color: var(--interactive-accent);
+	background: linear-gradient(90deg, 
+		rgba(var(--interactive-accent-rgb, 66, 133, 244), 0.05), 
+		transparent);
+	box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .linguaflow-selected-indicator {
