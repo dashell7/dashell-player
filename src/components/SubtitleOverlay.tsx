@@ -6,8 +6,9 @@ import type { UseRecordingSessionReturn } from '../hooks/useRecordingSession';
 import type LinguaFlowPlugin from '../main';
 import { SubtitleControls } from './SubtitleControls';
 import { ClickableText } from './OptimizedWord';
-import { VirtualScroll } from './VirtualScroll';
+import { VirtualScroll, AutoHeightVirtualScroll } from './VirtualScroll';
 import { shouldEnablePerformanceMode } from '../utils/performanceUtils';
+import { useResizeObserver } from '../hooks/useResizeObserver';
 import type { SupportedLanguage } from '../utils/languageUtils';
 import { isRTLLanguage } from '../utils/languageUtils';
 
@@ -195,6 +196,9 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   const activeWordIndex = useMediaStore(state => state.activeWordIndex);
   const currentSubtitle = useMediaStore(selectCurrentSubtitle);
   
+  // 智能判断是否启用虚拟滚动
+  const useVirtualScroll = subtitles.length > 100 || shouldEnablePerformanceMode();
+  
   // 只订阅需要的字段，避免不必要的重渲染
   const showEnglish = useMediaStore(state => state.subtitleConfig.showEnglish);
   const showChinese = useMediaStore(state => state.subtitleConfig.showChinese);
@@ -214,6 +218,15 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   
   const listRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLDivElement>(null);
+  const virtualListRef = useRef<any>(null);
+  
+  // 使用 ResizeObserver 监听容器高度
+  const { ref: resizeRef, height: containerHeight } = useResizeObserver<HTMLDivElement>();
+  
+  // 合并 ref: 将 resizeRef 和 listRef (如果需要) 结合
+  // 注意：在普通模式下，listRef 用于滚动内部容器。resizeRef 用于测量外部容器。
+  // 外部容器：linguaflow-subtitle-list (resizeRef)
+  // 内部容器：linguaflow-subtitle-items (listRef) 或 AutoHeightVirtualScroll (virtualListRef)
   
   // 选中的字幕（用于控制栏）
   const [selectedCue, setSelectedCue] = useState<SubtitleCue | null>(null);
@@ -268,42 +281,44 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
       return;
     }
 
-    // 始终自动滚动到第二行，不受锁定状态影响
-    if (activeItemRef.current && listRef.current) {
-      const container = listRef.current;
-      const item = activeItemRef.current;
-      
-      // 获取单个字幕项的高度和容器高度
-      const itemHeight = item.offsetHeight;
-      const containerHeight = container.clientHeight;
-      
-      let targetScrollTop = 0;
-      const isRightLayout = plugin?.settings.subtitleLayout === 'right';
-
-      if (isRightLayout) {
-        // 右侧布局：将当前字幕置于容器高度的 40% 处
-        targetScrollTop = item.offsetTop - (containerHeight * 0.4);
-      } else {
-        // 底部布局：保持第二行 (旧逻辑)
-        // 尝试获取上一条字幕元素
-        const prevItem = item.previousElementSibling as HTMLElement;
-        if (prevItem) {
-          targetScrollTop = prevItem.offsetTop;
-        } else {
-          targetScrollTop = 0;
-        }
+    // 智能滚动
+    if (useVirtualScroll) {
+      // 虚拟滚动模式：调用组件暴露的 scrollToIndex
+      if (virtualListRef.current && activeIndex >= 0) {
+        virtualListRef.current.scrollToIndex(activeIndex, 'smooth');
       }
-      
-      // 确保不越界
-      if (targetScrollTop < 0) targetScrollTop = 0;
-      
-      // 平滑滚动到目标位置
-      container.scrollTo({
-        top: targetScrollTop,
-        behavior: 'smooth'
-      });
+    } else {
+      // 普通模式：手动计算滚动位置
+      if (activeItemRef.current && listRef.current) {
+        const container = listRef.current;
+        const item = activeItemRef.current;
+        
+        const itemHeight = item.offsetHeight;
+        const containerHeight = container.clientHeight;
+        
+        let targetScrollTop = 0;
+        const isRightLayout = plugin?.settings.subtitleLayout === 'right';
+
+        if (isRightLayout) {
+          targetScrollTop = item.offsetTop - (containerHeight * 0.4);
+        } else {
+          const prevItem = item.previousElementSibling as HTMLElement;
+          if (prevItem) {
+            targetScrollTop = prevItem.offsetTop;
+          } else {
+            targetScrollTop = 0;
+          }
+        }
+        
+        if (targetScrollTop < 0) targetScrollTop = 0;
+        
+        container.scrollTo({
+          top: targetScrollTop,
+          behavior: 'smooth'
+        });
+      }
     }
-  }, [activeIndex, segmentLoopEnabled, isHovering]); // 添加 isHovering 依赖
+  }, [activeIndex, segmentLoopEnabled, isHovering, useVirtualScroll]); // 添加 useVirtualScroll 依赖
   
   // 处理字幕点击 - 选中字幕（使用 useCallback 优化）
   const handleSubtitleClick = useCallback((cue: SubtitleCue) => {
@@ -635,13 +650,15 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
             className="linguaflow-subtitle-list"
             onMouseEnter={() => setIsHovering(true)}
             onMouseLeave={() => setIsHovering(false)}
+            ref={resizeRef}
           >
-            {useVirtualScroll ? (
+            {useVirtualScroll && containerHeight > 0 ? (
               // 虚拟滚动模式（大量字幕或低性能设备）
-              <VirtualScroll
+              <AutoHeightVirtualScroll
+                ref={virtualListRef}
                 items={subtitles}
-                itemHeight={80} // 预估每个字幕项高度
-                containerHeight={600} // 容器高度
+                estimatedItemHeight={80} // 预估每个字幕项高度
+                containerHeight={containerHeight} // 动态容器高度
                 overscan={5} // 上下各额外渲染5个项目
                 renderItem={renderSubtitleItem}
                 getItemKey={(cue) => cue.id}

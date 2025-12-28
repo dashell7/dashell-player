@@ -217,7 +217,7 @@ interface AutoHeightVirtualScrollProps<T> {
 	className?: string;
 }
 
-export function AutoHeightVirtualScroll<T>({
+export const AutoHeightVirtualScroll = React.forwardRef<any, AutoHeightVirtualScrollProps<any>>(({
 	items,
 	estimatedItemHeight,
 	containerHeight,
@@ -225,11 +225,10 @@ export function AutoHeightVirtualScroll<T>({
 	renderItem,
 	getItemKey,
 	className = ''
-}: AutoHeightVirtualScrollProps<T>) {
+}, ref) => {
 	const containerRef = useRef<HTMLDivElement>(null);
 	const [scrollTop, setScrollTop] = useState(0);
 	const [itemHeights, setItemHeights] = useState<Map<number, number>>(new Map());
-	const measureRef = useRef<HTMLDivElement>(null);
 
 	// 测量项目高度
 	const measureItemHeight = useCallback((index: number, height: number) => {
@@ -257,6 +256,18 @@ export function AutoHeightVirtualScroll<T>({
 			totalHeight: currentPosition
 		};
 	}, [items.length, itemHeights, estimatedItemHeight]);
+
+	// 暴露滚动方法
+	React.useImperativeHandle(ref, () => ({
+		scrollToIndex: (index: number, behavior: ScrollBehavior = 'smooth') => {
+			const top = itemPositions.positions[index] ?? 0;
+			containerRef.current?.scrollTo({
+				top,
+				behavior
+			});
+		},
+		getScrollElement: () => containerRef.current
+	}));
 
 	// 找到可见范围
 	const { startIndex, endIndex } = useMemo(() => {
@@ -296,57 +307,59 @@ export function AutoHeightVirtualScroll<T>({
 		return { startIndex: start, endIndex: end };
 	}, [scrollTop, containerHeight, overscan, itemPositions]);
 
-	// 节流的滚动处理
-	const handleScroll = useMemo(
-		() =>
-			performanceThrottle((e: Event) => {
-				const target = e.target as HTMLDivElement;
-				setScrollTop(target.scrollTop);
-			}, 16),
-		[]
-	);
+  // 节流的滚动处理
+  const handleScroll = useMemo(
+    () =>
+      performanceThrottle((e: Event) => {
+        const target = e.target as HTMLDivElement;
+        setScrollTop(target.scrollTop);
+      }, 16),
+    []
+  );
 
-	useEffect(() => {
-		const container = containerRef.current;
-		if (!container) return;
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-		container.addEventListener('scroll', handleScroll);
-		return () => {
-			container.removeEventListener('scroll', handleScroll);
-		};
-	}, [handleScroll]);
+    container.addEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+    };
+  }, [handleScroll]);
 
-	return (
-		<div
-			ref={containerRef}
-			className={`virtual-scroll-auto-height ${className}`}
-			style={{
-				height: `${containerHeight}px`,
-				overflow: 'auto',
-				position: 'relative'
-			}}
-		>
-			<div style={{ height: `${itemPositions.totalHeight}px`, position: 'relative' }}>
-				{items.slice(startIndex, endIndex + 1).map((item, relativeIndex) => {
-					const absoluteIndex = startIndex + relativeIndex;
-					const key = getItemKey(item, absoluteIndex);
-					const top = itemPositions.positions[absoluteIndex] ?? 0;
+  return (
+    <div
+      ref={containerRef}
+      className={`virtual-scroll-auto-height ${className}`}
+      style={{
+        height: `${containerHeight}px`,
+        overflow: 'auto',
+        position: 'relative'
+      }}
+    >
+      <div style={{ height: `${itemPositions.totalHeight}px`, position: 'relative' }}>
+        {items.slice(startIndex, endIndex + 1).map((item, relativeIndex) => {
+          const absoluteIndex = startIndex + relativeIndex;
+          const key = getItemKey(item, absoluteIndex);
+          const top = itemPositions.positions[absoluteIndex] ?? 0;
 
-					return (
-						<ItemMeasurer
-							key={key}
-							index={absoluteIndex}
-							top={top}
-							onHeightChange={measureItemHeight}
-						>
-							{renderItem(item, absoluteIndex)}
-						</ItemMeasurer>
-					);
-				})}
-			</div>
-		</div>
-	);
-}
+          return (
+            <ItemMeasurer
+              key={key}
+              index={absoluteIndex}
+              top={top}
+              onHeightChange={measureItemHeight}
+            >
+              {renderItem(item, absoluteIndex)}
+            </ItemMeasurer>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+AutoHeightVirtualScroll.displayName = 'AutoHeightVirtualScroll';
 
 /**
  * 项目高度测量组件
