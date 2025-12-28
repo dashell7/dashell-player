@@ -3356,6 +3356,13 @@ color: var(--text-normal);
 		max-height: 300px !important;
 	}
 	
+	/* 关键修复：强制视频区域自适应，防止挤出控制栏 */
+	.linguaflow-player-section {
+		height: auto !important;
+		flex: 1 !important;
+		min-height: 0 !important;
+	}
+
 	.simple-player-container {
 		height: 100% !important;
 	}
@@ -3486,6 +3493,13 @@ color: var(--text-normal);
 		min-height: 300px !important;
 	}
 	
+	/* 关键修复：平板端也强制视频区域自适应 */
+	.linguaflow-player-section {
+		height: auto !important;
+		flex: 1 !important;
+		min-height: 0 !important;
+	}
+	
 	/* 2. 控制栏按钮 */
 	.linguaflow-control-btn {
 		width: 44px !important;
@@ -3530,6 +3544,12 @@ color: var(--text-normal);
 	.linguaflow-player-wrapper-section {
 		height: 60vh !important;
 		max-height: none !important;
+	}
+	
+	.linguaflow-player-section {
+		height: auto !important;
+		flex: 1 !important;
+		min-height: 0 !important;
 	}
 	
 	/* 字幕区域压缩 */
