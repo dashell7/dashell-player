@@ -47,6 +47,8 @@ export interface LinguaFlowSettings {
 
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: boolean;  // 查词时是否自动打开录入面板
+	autoCopyWordOnLookup: boolean;      // 查词时自动复制单词到剪切板
+	noteTemplate: string;               // 视频笔记模板
 
 	// 兼容性字段（向后兼容）
 	openaiApiKey: string;               // 已废弃，使用 sttApiKey
@@ -66,6 +68,53 @@ export interface LinguaFlowSettings {
 	// 调试模式（开发者选项）
 	debugMode: boolean;
 }
+
+/**
+ * 默认笔记模板 (科学学习版)
+ */
+const DEFAULT_NOTE_TEMPLATE = `---
+type: video-study
+status: learning
+tags: [langplayer, video-note]
+created: {{date}}
+source: {{url}}
+---
+
+# 📺 {{title}}
+
+> [!INFO|clean] Metadata
+> **Link**: {{link}}
+> **Date**: {{date}}
+
+## 🧠 学习区 (Study Area)
+
+> [!QUESTION] 核心问题 / 线索
+> - [ ] 00:00 这里的连读是怎么发的？
+> - [ ] 单词: **example**
+
+> [!NOTE] 笔记与回答
+> 在这里记录你的理解...
+
+---
+
+## 📝 词汇积累 (Vocabulary)
+
+| Word | Definition | Context |
+| :--- | :--- | :--- |
+|      |      |      |
+
+---
+
+## 🗣️ 口语训练 (Speaking)
+> [!quote] 影子跟读 (Shadowing)
+> 复制你想模仿的金句到这里...
+
+---
+
+## 💡 总结 (Summary)
+> [!abstract]
+> 用自己的话总结这个视频讲了什么...
+`;
 
 /**
  * 默认设置
@@ -99,6 +148,8 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	subtitleLayout: 'bottom', // 默认底部布局
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: true, // 默认打开录入面板
+	autoCopyWordOnLookup: true, // 默认开启查词自动复制
+	noteTemplate: DEFAULT_NOTE_TEMPLATE,
 	// 兼容性字段
 	openaiApiKey: '',
 	azureSubscriptionKey: '',
@@ -132,9 +183,12 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
+		
+		const timestamp = new Date().toLocaleTimeString();
+		console.log(`[LangPlayer] Settings Displayed at ${timestamp}`);
 
 		// 标题
-		containerEl.createEl('h2', { text: 'LinguaFlow' });
+		containerEl.createEl('h2', { text: `LinguaFlow (Build: ${timestamp})` });
 
 		// 标签页导航
 		const tabsContainer = containerEl.createDiv({ cls: 'linguaflow-tabs' });
@@ -142,7 +196,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			{ id: 'audio', name: '音频' },
 			{ id: 'player', name: '播放器' },
 			{ id: 'subtitle', name: '字幕' },
-			{ id: 'integration', name: '集成' }
+			{ id: 'integration', name: '集成' },
+			{ id: 'developer', name: '开发者' }
 		];
 
 		tabs.forEach(tab => {
@@ -171,6 +226,11 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		} else if (this.activeTab === 'developer') {
 			this.displayDeveloperTab(contentContainer);
 		}
+		
+		// 【调试】无论哪个标签页，都在最底部强制渲染集成设置，看是否会出现
+		// containerEl.createEl('hr');
+		// containerEl.createEl('h3', { text: 'DEBUG: Forced Integration View', style: 'color: red;' });
+		// this.displayIntegrationTab(containerEl);
 	}
 
 	// 音频标签页
@@ -397,6 +457,9 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.addOption('3', '3 次')
 				.addOption('5', '5 次')
 				.addOption('10', '10 次')
+				.addOption('20', '20 次')
+				.addOption('50', '50 次')
+				.addOption('100', '100 次')
 				.setValue(String(this.plugin.settings.loopCount))
 				.onChange(async (value) => {
 					this.plugin.settings.loopCount = parseInt(value);
@@ -427,6 +490,9 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value: 'contain' | 'cover' | 'fill') => {
 					this.plugin.settings.videoFit = value;
 					await this.plugin.saveSettings();
+					// 实时更新
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().setVideoFit(value);
 				})
 			);
 
@@ -440,14 +506,9 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 					this.plugin.settings.showInlineSubtitles = value;
 					await this.plugin.saveSettings();
 					
-					// 刷新所有LinguaFlowView以应用设置
-					const leaves = this.plugin.app.workspace.getLeavesOfType('linguaflow-view');
-					leaves.forEach(leaf => {
-						const view = leaf.view as any;
-						if (view && typeof view.refresh === 'function') {
-							view.refresh();
-						}
-					});
+					// 实时更新
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().setShowInlineSubtitles(value);
 					
 					new Notice(value ? '内嵌字幕列表已开启' : '内嵌字幕列表已关闭');
 				})
@@ -529,30 +590,15 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 					new Notice(value ? '✅ 逐字高亮已启用' : '⏹️ 整行高亮已启用');
 				})
 			);
-
-		new Setting(containerEl)
-			.setName('字幕面板位置')
-			.setDesc('选择打开字幕面板的位置（重新打开面板后生效）')
-			.addDropdown(dropdown => dropdown
-				.addOption('tab', '新标签页（可自由拖动）')
-				.addOption('split', '分割视图')
-				.addOption('right', '右侧边栏')
-				.addOption('left', '左侧边栏')
-				.setValue(this.plugin.settings.subtitlePanelLocation)
-				.onChange(async (value: 'right' | 'left' | 'tab' | 'split') => {
-					this.plugin.settings.subtitlePanelLocation = value;
-					await this.plugin.saveSettings();
-					new Notice('字幕面板位置已更新，重新打开面板后生效');
-				})
-			);
 	}
 
 	// 集成标签页
 	private displayIntegrationTab(containerEl: HTMLElement): void {
-
+		console.log('[LangPlayer] displayIntegrationTab called');
+		
 		new Setting(containerEl)
 			.setName('自动打开录入面板')
-			.setDesc('')
+			.setDesc('查词时是否自动打开 Language Learner 面板')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.openLanguageLearnerPanel)
 				.onChange(async (value) => {
@@ -561,6 +607,37 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				})
 			);
 
+		new Setting(containerEl)
+			.setName('查词自动复制到剪切板')
+			.setDesc('点击字幕单词查词时，自动复制单词到剪切板')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoCopyWordOnLookup)
+				.onChange(async (value) => {
+					this.plugin.settings.autoCopyWordOnLookup = value;
+					await this.plugin.saveSettings();
+				})
+			);
+
+		containerEl.createEl('h3', { text: '学习笔记设置' });
+
+		// 笔记模板设置
+		const setting = new Setting(containerEl)
+			.setName('笔记模板')
+			.setDesc('自定义笔记模板')
+			.addTextArea(text => {
+				text
+					.setValue(this.plugin.settings.noteTemplate || DEFAULT_NOTE_TEMPLATE)
+					.onChange(async (value) => {
+						this.plugin.settings.noteTemplate = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.rows = 8;
+				text.inputEl.style.width = '100%';
+				text.inputEl.style.fontFamily = 'monospace';
+			});
+			
+		// 调试日志
+		console.log('[LangPlayer] Template setting created', setting);
 	}
 
 	// 开发者标签页
@@ -724,7 +801,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		styleEl.textContent = `
 			.linguaflow-subtitle-item-en,
 			.linguaflow-subtitle-item-zh,
-			.linguaflow-subtitle-item-main {
+			.linguaflow-subtitle-item-main,
+			.linguaflow-subtitle-language {
 				font-size: ${settings.subtitleFontSize}px;
 				font-weight: ${settings.subtitleFontWeight};
 				line-height: ${settings.subtitleLineHeight};

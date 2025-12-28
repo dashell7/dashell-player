@@ -5,12 +5,14 @@ import type { SubtitleCue, SubtitleConfig } from '../types';
  * 媒体播放状态
  */
 interface MediaState {
-	// 播放状态
+	// 播放器状态
 	currentTime: number;
 	duration: number;
 	playing: boolean;
 	volume: number;
 	playbackRate: number;
+	videoFit: 'contain' | 'cover' | 'fill';
+	showInlineSubtitles: boolean;
 	
 	// 字幕状态
 	subtitles: SubtitleCue[];
@@ -53,6 +55,8 @@ interface MediaActions {
 	setPlaying: (playing: boolean) => void;
 	setVolume: (volume: number) => void;
 	setPlaybackRate: (rate: number) => void;
+	setVideoFit: (fit: 'contain' | 'cover' | 'fill') => void;
+	setShowInlineSubtitles: (show: boolean) => void;
 	
 	// 字幕管理
 	setSubtitles: (subtitles: SubtitleCue[]) => void;
@@ -101,6 +105,8 @@ const initialState: MediaState = {
 	playing: false,
 	volume: 0.8,
 	playbackRate: 1.0,
+	videoFit: 'cover',
+	showInlineSubtitles: false,
 	
 	subtitles: [],
 	activeIndex: -1,
@@ -112,6 +118,8 @@ const initialState: MediaState = {
 		position: 'bottom',
 		showEnglish: true,
 		showChinese: true,
+		visibleLanguages: ['en', 'zh'], // 默认显示英文和中文
+		primaryLanguage: 'en', // 默认主语言为英语
 		showIndexAndTime: false, // 默认隐藏编号和时间，仅在设置中开启
 		wordByWordHighlight: false, // 默认关闭逐字高亮（整行高亮）
 	},
@@ -165,6 +173,14 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	
 	setPlaybackRate: (rate: number) => {
 		set({ playbackRate: Math.max(0.25, Math.min(2, rate)) });
+	},
+	
+	setVideoFit: (fit: 'contain' | 'cover' | 'fill') => {
+		set({ videoFit: fit });
+	},
+
+	setShowInlineSubtitles: (show: boolean) => {
+		set({ showInlineSubtitles: show });
 	},
 	
 	// ===== 字幕管理 =====

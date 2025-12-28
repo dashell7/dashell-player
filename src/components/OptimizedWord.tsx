@@ -1,4 +1,5 @@
 ﻿import React, { useRef, useEffect, useMemo } from 'react';
+import { LRUCache } from '../utils/LRUCache';
 
 /**
  * 预处理的单词数据接口
@@ -10,25 +11,19 @@ isWord: boolean; // true=单词, false=空格/标点
 }
 
 /**
- * 文本预处理工具 - 只在字幕加载时执行一次
+ * 文本预处理工具 - 使用LRU缓存策略
  */
 export class TextProcessor {
-  private static cache = new Map<string, ParsedWord[]>();
-  private static readonly MAX_CACHE_SIZE = 500;
+  private static cache = new LRUCache<string, ParsedWord[]>(500);
 
   /**
-   * 解析文本为单词数组（带缓存）
+   * 解析文本为单词数组（带LRU缓存）
    */
   static parseText(text: string): ParsedWord[] {
     // 检查缓存
-    if (this.cache.has(text)) {
-      return this.cache.get(text)!;
-    }
-
-    // 简单的缓存清理策略：如果缓存过大，直接清空
-    if (this.cache.size >= this.MAX_CACHE_SIZE) {
-      console.log('[TextProcessor] Cache full, clearing...');
-      this.cache.clear();
+    const cached = this.cache.get(text);
+    if (cached) {
+      return cached;
     }
 
     // 按空格和标点符号分割，但保留它们
@@ -49,7 +44,7 @@ export class TextProcessor {
       });
     });
 
-    // 缓存结果
+    // 使用LRU缓存自动管理容量
     this.cache.set(text, parsed);
     return parsed;
   }
@@ -64,7 +59,14 @@ this.cache.clear();
  * 获取缓存大小
  */
 static getCacheSize() {
-return this.cache.size;
+return this.cache.getSize();
+}
+
+/**
+ * 获取缓存统计信息
+ */
+static getCacheStats() {
+return this.cache.getStats();
 }
 }
 

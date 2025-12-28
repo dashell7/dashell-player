@@ -314,8 +314,8 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 		}
 		
 		try {
-			// 将单词复制到剪贴板（始终执行，作为后备）
-			if (navigator.clipboard) {
+			// 根据设置决定是否复制到剪切板
+			if (plugin.settings.autoCopyWordOnLookup && navigator.clipboard) {
 				await navigator.clipboard.writeText(cleanWord);
 				console.log('[SubtitlePanel] Word copied to clipboard:', cleanWord);
 			}
@@ -363,6 +363,14 @@ const SubtitlePanelContent: React.FC<SubtitlePanelContentProps> = ({ plugin }) =
 		} catch (error) {
 			console.error('[SubtitlePanel] Error calling Language Learner:', error);
 			new Notice('调用 Language Learner 失败，单词已复制到剪贴板');
+		}
+	};
+
+	// 处理字幕导出
+	const handleExportSubtitle = (cue: SubtitleCue, e: React.MouseEvent) => {
+		e.stopPropagation();
+		if (plugin) {
+			plugin.insertSubtitleToNote(cue);
 		}
 	};
 

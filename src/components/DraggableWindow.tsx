@@ -30,7 +30,7 @@ export const DraggableWindow: React.FC<DraggableWindowProps> = ({
 	const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 	const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
-	// 拖动开始
+	// 拖动开始（鼠标）
 	const handleMouseDown = (e: React.MouseEvent) => {
 		if (e.target !== headerRef.current && !headerRef.current?.contains(e.target as Node)) {
 			return;
@@ -44,7 +44,25 @@ export const DraggableWindow: React.FC<DraggableWindowProps> = ({
 		});
 	};
 
-	// 调整大小开始
+	// 拖动开始（触摸）
+	const handleTouchStart = (e: React.TouchEvent) => {
+		if (e.target !== headerRef.current && !headerRef.current?.contains(e.target as Node)) {
+			return;
+		}
+		
+		if (e.touches.length !== 1) return;
+		
+		const touch = e.touches[0];
+		if (!touch) return;
+		
+		setIsDragging(true);
+		setDragStart({
+			x: touch.clientX - position.x,
+			y: touch.clientY - position.y,
+		});
+	};
+
+	// 调整大小开始（鼠标）
 	const handleResizeMouseDown = (e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
@@ -57,7 +75,26 @@ export const DraggableWindow: React.FC<DraggableWindowProps> = ({
 		});
 	};
 
-	// 鼠标移动
+	// 调整大小开始（触摸）
+	const handleResizeTouchStart = (e: React.TouchEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		
+		if (e.touches.length !== 1) return;
+		
+		const touch = e.touches[0];
+		if (!touch) return;
+		
+		setIsResizing(true);
+		setResizeStart({
+			x: touch.clientX,
+			y: touch.clientY,
+			width: size.width,
+			height: size.height,
+		});
+	};
+
+	// 鼠标和触摸移动
 	useEffect(() => {
 		if (!isDragging && !isResizing) return;
 
@@ -89,17 +126,56 @@ export const DraggableWindow: React.FC<DraggableWindowProps> = ({
 			}
 		};
 
-		const handleMouseUp = () => {
+		const handleTouchMove = (e: TouchEvent) => {
+			if (e.touches.length !== 1) return;
+			
+			const touch = e.touches[0];
+			if (!touch) return;
+			
+			if (isDragging) {
+				const newX = touch.clientX - dragStart.x;
+				const newY = touch.clientY - dragStart.y;
+				
+				// 边界限制
+				const maxX = window.innerWidth - 100;
+				const maxY = window.innerHeight - 50;
+				
+				const boundedX = Math.max(0, Math.min(newX, maxX));
+				const boundedY = Math.max(0, Math.min(newY, maxY));
+				
+				setPosition({ x: boundedX, y: boundedY });
+				onPositionChange?.({ x: boundedX, y: boundedY });
+			}
+			
+			if (isResizing) {
+				const deltaX = touch.clientX - resizeStart.x;
+				const deltaY = touch.clientY - resizeStart.y;
+				
+				const newWidth = Math.max(300, resizeStart.width + deltaX);
+				const newHeight = Math.max(400, resizeStart.height + deltaY);
+				
+				setSize({ width: newWidth, height: newHeight });
+				onSizeChange?.({ width: newWidth, height: newHeight });
+			}
+		};
+
+		const handleEnd = () => {
 			setIsDragging(false);
 			setIsResizing(false);
 		};
 
 		document.addEventListener('mousemove', handleMouseMove);
-		document.addEventListener('mouseup', handleMouseUp);
+		document.addEventListener('mouseup', handleEnd);
+		document.addEventListener('touchmove', handleTouchMove);
+		document.addEventListener('touchend', handleEnd);
+		document.addEventListener('touchcancel', handleEnd);
 		
 		return () => {
 			document.removeEventListener('mousemove', handleMouseMove);
-			document.removeEventListener('mouseup', handleMouseUp);
+			document.removeEventListener('mouseup', handleEnd);
+			document.removeEventListener('touchmove', handleTouchMove);
+			document.removeEventListener('touchend', handleEnd);
+			document.removeEventListener('touchcancel', handleEnd);
 		};
 	}, [isDragging, isResizing, dragStart, resizeStart, onPositionChange, onSizeChange]);
 
@@ -121,6 +197,7 @@ export const DraggableWindow: React.FC<DraggableWindowProps> = ({
 				ref={headerRef}
 				className="linguaflow-window-header"
 				onMouseDown={handleMouseDown}
+				onTouchStart={handleTouchStart}
 			>
 				<div className="linguaflow-window-title">
 					<span className="linguaflow-window-icon">📝</span>
@@ -143,6 +220,7 @@ export const DraggableWindow: React.FC<DraggableWindowProps> = ({
 			<div
 				className="linguaflow-window-resize-handle"
 				onMouseDown={handleResizeMouseDown}
+				onTouchStart={handleResizeTouchStart}
 			>
 				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
 					<path d="M21 15l-6 6M21 9l-12 12M21 3l-18 18"/>

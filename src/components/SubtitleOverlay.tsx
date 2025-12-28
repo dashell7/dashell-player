@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Notice } from 'obsidian';
 import { useMediaStore, selectCurrentSubtitle } from '../store/mediaStore';
 import type { SubtitleCue, PlayerRef } from '../types';
@@ -6,6 +6,10 @@ import type { UseRecordingSessionReturn } from '../hooks/useRecordingSession';
 import type LinguaFlowPlugin from '../main';
 import { SubtitleControls } from './SubtitleControls';
 import { ClickableText } from './OptimizedWord';
+import { VirtualScroll } from './VirtualScroll';
+import { shouldEnablePerformanceMode } from '../utils/performanceUtils';
+import type { SupportedLanguage } from '../utils/languageUtils';
+import { isRTLLanguage } from '../utils/languageUtils';
 
 interface SubtitleOverlayProps {
   playerRef: React.RefObject<PlayerRef>;
@@ -30,9 +34,12 @@ interface SubtitleItemProps {
   showIndexAndTime: boolean;
   wordByWordHighlight: boolean;
   activeWordIndex: number;
+  visibleLanguages: SupportedLanguage[]; // 要显示的语言列表
   onSubtitleClick: (cue: SubtitleCue) => void;
   onSubtitleDblClick: (cue: SubtitleCue) => void;
+  onSubtitleContextMenu: (cue: SubtitleCue, e: React.MouseEvent) => void;
   onWordClick: (word: string, e: React.MouseEvent) => void;
+  onExportSubtitle: (cue: SubtitleCue, e: React.MouseEvent) => void;
   activeItemRef?: React.RefObject<HTMLDivElement>;
 }
 
@@ -48,9 +55,12 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
   showChinese,
   showIndexAndTime,
   activeWordIndex,
+  visibleLanguages,
   onSubtitleClick,
   onSubtitleDblClick,
+  onSubtitleContextMenu,
   onWordClick,
+  onExportSubtitle,
   activeItemRef
 }) => {
   const formatTime = (seconds: number): string => {
@@ -59,7 +69,67 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 使用优化的 ClickableText 组件
+  // 决定渲染哪些语言
+  const renderLanguages = () => {
+    // 如果有多语言数据且有可见语言设置
+    if (cue.languages && Object.keys(cue.languages).length > 0) {
+      return Object.entries(cue.languages)
+        .filter(([lang]) => visibleLanguages.includes(lang as SupportedLanguage))
+        .map(([lang, text]) => {
+          if (!text) return null;
+          
+          const isRTL = isRTLLanguage(lang as SupportedLanguage);
+          const canClick = ['en', 'es', 'fr', 'de', 'pt', 'it', 'nl'].includes(lang); // 支持查词的语言
+          
+          return (
+            <div 
+              key={lang}
+              className={`linguaflow-subtitle-language ${isRTL ? 'rtl' : ''} ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}
+            >
+              {canClick ? (
+                <ClickableText
+                  text={text}
+                  isActive={isActive && wordByWordHighlight}
+                  activeWordIndex={activeWordIndex}
+                  onWordClick={onWordClick}
+                />
+              ) : (
+                <span className="linguaflow-subtitle-language-text">{text}</span>
+              )}
+            </div>
+          );
+        });
+    }
+    
+    // 向后兼容：使用textEn/textZh
+    return (
+      <>
+        {cue.textEn && showEnglish && (
+          <div className={`linguaflow-subtitle-item-en ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
+            <ClickableText
+              text={cue.textEn}
+              isActive={isActive && wordByWordHighlight}
+              activeWordIndex={activeWordIndex}
+              onWordClick={onWordClick}
+            />
+          </div>
+        )}
+        {cue.textZh && showChinese && (
+          <div className={`linguaflow-subtitle-item-zh ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>{cue.textZh}</div>
+        )}
+        {!cue.textEn && !cue.textZh && (
+          <div className={`linguaflow-subtitle-item-main ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
+            <ClickableText
+              text={cue.text}
+              isActive={isActive && wordByWordHighlight}
+              activeWordIndex={activeWordIndex}
+              onWordClick={onWordClick}
+            />
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div
@@ -69,6 +139,7 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
       } ${isLooping ? 'looping' : ''} ${isRecording ? 'recording' : ''} ${isSelected ? 'selected' : ''}`}
       onClick={() => onSubtitleClick(cue)}
       onDoubleClick={() => onSubtitleDblClick(cue)}
+      onContextMenu={(e) => onSubtitleContextMenu(cue, e)}
     >
       <div className="linguaflow-subtitle-item-header">
         {showIndexAndTime && (
@@ -82,6 +153,14 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
           </>
         )}
         
+        <button 
+          className="linguaflow-export-btn"
+          onClick={(e) => onExportSubtitle(cue, e)}
+          title="导出字幕到笔记"
+        >
+          📝
+        </button>
+        
         {isSelected && (
           <span className="linguaflow-selected-indicator" title="已选中">
             ●
@@ -93,29 +172,7 @@ const SubtitleItem = React.memo<SubtitleItemProps>(({
       </div>
       
       <div className="linguaflow-subtitle-item-text">
-        {cue.textEn && showEnglish && (
-          <div className={`linguaflow-subtitle-item-en ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
-            <ClickableText
-              text={cue.textEn}
-              isActive={isActive && wordByWordHighlight}
-              activeWordIndex={activeWordIndex}
-              onWordClick={onWordClick}
-            />
-          </div>
-        )}
-        {cue.textZh && showChinese && (
-          <div className="linguaflow-subtitle-item-zh">{cue.textZh}</div>
-        )}
-        {!cue.textEn && !cue.textZh && (
-          <div className={`linguaflow-subtitle-item-main ${isActive && !wordByWordHighlight ? 'linguaflow-line-highlight' : ''}`}>
-            <ClickableText
-              text={cue.text}
-              isActive={isActive && wordByWordHighlight}
-              activeWordIndex={activeWordIndex}
-              onWordClick={onWordClick}
-            />
-          </div>
-        )}
+        {renderLanguages()}
       </div>
     </div>
   );
@@ -161,6 +218,8 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   // 选中的字幕（用于控制栏）
   const [selectedCue, setSelectedCue] = useState<SubtitleCue | null>(null);
   const [isManuallyLocked, setIsManuallyLocked] = useState(false);
+  // 是否正在悬停字幕列表
+  const [isHovering, setIsHovering] = useState(false);
   
   // 监控时间跳跃，自动解锁字幕
   const lastTimeRef = useRef<number>(0);
@@ -204,6 +263,11 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
 
     // console.log('[SubtitleOverlay] Scroll Effect Triggered', { activeIndex, isManuallyLocked });
     
+    // 如果鼠标悬停在列表上，暂停自动滚动（除非在单句循环模式下）
+    if (isHovering && !segmentLoopEnabled) {
+      return;
+    }
+
     // 始终自动滚动到第二行，不受锁定状态影响
     if (activeItemRef.current && listRef.current) {
       const container = listRef.current;
@@ -239,7 +303,7 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
         behavior: 'smooth'
       });
     }
-  }, [activeIndex, segmentLoopEnabled]); // 移除 isManuallyLocked 依赖
+  }, [activeIndex, segmentLoopEnabled, isHovering]); // 添加 isHovering 依赖
   
   // 处理字幕点击 - 选中字幕（使用 useCallback 优化）
   const handleSubtitleClick = useCallback((cue: SubtitleCue) => {
@@ -280,6 +344,41 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
       }
     }
   }, [selectedCue?.id, playerRef]);
+  
+  // 处理字幕右键点击 - 显示上下文菜单
+  const handleSubtitleContextMenu = useCallback((cue: SubtitleCue, e: React.MouseEvent) => {
+    e.preventDefault();
+    const { Menu } = require('obsidian');
+    const menu = new Menu();
+    
+    menu.addItem((item: any) => {
+      item
+        .setTitle('📝 插入到笔记')
+        .setIcon('pencil')
+        .onClick(() => {
+          if (plugin) {
+            plugin.insertSubtitleToNote(cue);
+          }
+        });
+    });
+
+    menu.addSeparator();
+
+    menu.addItem((item: any) => {
+      item
+        .setTitle('▶️ 跳转播放')
+        .setIcon('play')
+        .onClick(() => {
+          if (playerRef.current) {
+            playerRef.current.seekTo(cue.start);
+            playerRef.current.playVideo();
+            useMediaStore.getState().setPlaying(true);
+          }
+        });
+    });
+    
+    menu.showAtMouseEvent(e.nativeEvent);
+  }, [plugin, playerRef]);
   
   // 处理字幕双击 - 跳转播放并解锁（使用 useCallback 优化）
   const handleSubtitleDblClick = useCallback((cue: SubtitleCue) => {
@@ -361,83 +460,50 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
   const handleWordClick = useCallback(async (word: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
-    // 清理单词（去除标点符号）
     const cleanWord = word.replace(/[.,;:!?'"()[\]{}]/g, '').trim();
     if (!cleanWord) return;
     
     console.log('[SubtitleOverlay] Word clicked:', cleanWord);
     
-    if (!plugin) {
-      new Notice('插件未初始化');
-      return;
-    }
-    
+    if (!plugin || !(plugin as any).app) return;
     const app = (plugin as any).app;
-    if (!app) {
-      new Notice('无法访问 Obsidian App');
-      return;
-    }
     
     try {
-      // 将单词复制到剪贴板（始终执行，作为后备）
-      if (navigator.clipboard) {
+      // 根据设置决定是否复制到剪切板
+      if (plugin.settings.autoCopyWordOnLookup && navigator.clipboard) {
         await navigator.clipboard.writeText(cleanWord);
-        console.log('[SubtitleOverlay] Word copied to clipboard:', cleanWord);
       }
       
-      // 查找 obsidian-language-learner 插件
-      const installedPlugins = app.plugins?.plugins;
-      const languageLearnerPlugin = installedPlugins?.['obsidian-language-learner'];
-      
-      if (!languageLearnerPlugin) {
-        new Notice('未找到 Language Learner 插件，请确保已安装并启用');
-        console.warn('[SubtitleOverlay] obsidian-language-learner plugin not found');
-        console.log('[SubtitleOverlay] Available plugins:', Object.keys(installedPlugins || {}));
-        return;
-      }
-      
-      console.log('[SubtitleOverlay] Found obsidian-language-learner plugin');
-      
-      // 检查插件是否已启用
-      if (!app.plugins?.enabledPlugins?.has?.('obsidian-language-learner')) {
-        new Notice('Language Learner 插件未启用，请在设置中启用该插件');
-        return;
-      }
-      
-      // 根据设置决定是否打开录入面板
-      const openPanel = plugin.settings.openLanguageLearnerPanel;
-      const target = e.target as HTMLElement;
-      
-      console.log('[SubtitleOverlay] Calling queryWord, openPanel:', openPanel);
-      
-      if (typeof languageLearnerPlugin.queryWord === 'function') {
-        if (openPanel) {
-          // 传递 target 参数，打开录入面板并填充例句
-          // Language Learner 会通过 target.parentElement 找到 .stns 元素并获取句子
-          languageLearnerPlugin.queryWord(cleanWord, target);
-          new Notice(`查询: ${cleanWord} (已打开录入面板)`);
-        } else {
-          // 不传递 target 参数，仅显示查词结果
-          languageLearnerPlugin.queryWord(cleanWord);
+      const languageLearnerPlugin = app.plugins?.plugins?.['obsidian-language-learner'];
+      if (languageLearnerPlugin && app.plugins?.enabledPlugins?.has?.('obsidian-language-learner')) {
+        const openPanel = plugin.settings.openLanguageLearnerPanel;
+        const target = e.target as HTMLElement;
+        
+        if (typeof languageLearnerPlugin.queryWord === 'function') {
+          if (openPanel) {
+            languageLearnerPlugin.queryWord(cleanWord, target);
+          } else {
+            languageLearnerPlugin.queryWord(cleanWord);
+          }
           new Notice(`查询: ${cleanWord}`);
         }
-      } else {
-        new Notice('Language Learner 插件的 queryWord 方法不可用');
       }
-      
     } catch (error) {
-      console.error('[SubtitleOverlay] Error looking up word:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      new Notice('查词失败: ' + errorMessage);
+      console.error('[SubtitleOverlay] Error:', error);
+    }
+  }, [plugin]);
+
+  // 处理字幕导出
+  const handleExportSubtitle = useCallback((cue: SubtitleCue, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (plugin) {
+      plugin.insertSubtitleToNote(cue);
     }
   }, [plugin]);
   
   // 将文本渲染为可点击的单词（带高亮）
   const renderClickableText = (text: string, isCurrentSubtitle: boolean = false, currentWordIndex: number = -1) => {
-    // 按空格和标点符号分割，但保留标点
     const tokens = text.split(/(\s+|[.,;:!?'"()[\]{}])/);
-    
-    // 跟踪单词计数（只计数真实单词，不包括空格和标点）
     let wordCount = 0;
     
     return (
@@ -522,44 +588,77 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
       )}
       
       {/* 字幕列表 */}
-      {showList && subtitles.length > 0 && (
-        <div className="linguaflow-subtitle-list">
-          <div className="linguaflow-subtitle-items" ref={listRef}>
-            {subtitles.map((cue, index) => {
-              const isLoopingThis = segmentLoopEnabled && 
-                loopStart === cue.start && 
-                loopEnd === cue.end;
+      {showList && subtitles.length > 0 && (() => {
+        // 智能判断是否启用虚拟滚动
+        // 1. 字幕数量超过100条
+        // 2. 或检测到设备需要性能模式
+        const useVirtualScroll = subtitles.length > 100 || shouldEnablePerformanceMode();
+        
+        // 渲染单个字幕项的函数
+        const renderSubtitleItem = (cue: SubtitleCue, index: number) => {
+          const isLoopingThis = segmentLoopEnabled && 
+            loopStart === cue.start && 
+            loopEnd === cue.end;
 
-              // 判断是否正在录制此句
-              const isRecordingThis = !!(recordingSession?.isRecording && 
-                recordingSession?.targetSubtitle?.id === cue.id);
+          const isRecordingThis = !!(recordingSession?.isRecording && 
+            recordingSession?.targetSubtitle?.id === cue.id);
 
-              const isSelected = selectedCue?.id === cue.id;
-              
-              return (
-                <SubtitleItem
-                  key={cue.id}
-                  cue={cue}
-                  index={index}
-                  isActive={index === activeIndex}
-                  isLooping={isLoopingThis}
-                  isRecording={isRecordingThis}
-                  isSelected={isSelected}
-                  showEnglish={showEnglish}
-                  showChinese={showChinese}
-                  showIndexAndTime={showIndexAndTime}
-                  wordByWordHighlight={wordByWordHighlight}
-                  activeWordIndex={index === activeIndex ? activeWordIndex : -1}
-                  onSubtitleClick={handleSubtitleClick}
-                  onSubtitleDblClick={handleSubtitleDblClick}
-                  onWordClick={handleWordClick}
-                  activeItemRef={index === activeIndex ? activeItemRef : undefined}
-                />
-              );
-            })}
+          const isSelected = selectedCue?.id === cue.id;
+          
+          return (
+            <SubtitleItem
+              key={cue.id}
+              cue={cue}
+              index={index}
+              isActive={index === activeIndex}
+              isLooping={isLoopingThis}
+              isRecording={isRecordingThis}
+              isSelected={isSelected}
+              showEnglish={showEnglish}
+              showChinese={showChinese}
+              showIndexAndTime={showIndexAndTime}
+              wordByWordHighlight={wordByWordHighlight}
+              activeWordIndex={index === activeIndex ? activeWordIndex : -1}
+              visibleLanguages={useMediaStore.getState().subtitleConfig.visibleLanguages}
+              onSubtitleClick={handleSubtitleClick}
+              onSubtitleDblClick={handleSubtitleDblClick}
+              onSubtitleContextMenu={handleSubtitleContextMenu}
+              onWordClick={handleWordClick}
+              onExportSubtitle={handleExportSubtitle}
+              activeItemRef={index === activeIndex ? activeItemRef : undefined}
+            />
+          );
+        };
+        
+        return (
+          <div 
+            className="linguaflow-subtitle-list"
+            onMouseEnter={() => setIsHovering(true)}
+            onMouseLeave={() => setIsHovering(false)}
+          >
+            {useVirtualScroll ? (
+              // 虚拟滚动模式（大量字幕或低性能设备）
+              <VirtualScroll
+                items={subtitles}
+                itemHeight={80} // 预估每个字幕项高度
+                containerHeight={600} // 容器高度
+                overscan={5} // 上下各额外渲染5个项目
+                renderItem={renderSubtitleItem}
+                getItemKey={(cue) => cue.id}
+                className="linguaflow-subtitle-items"
+              />
+            ) : (
+              // 普通模式（少量字幕）
+              <div 
+                className="linguaflow-subtitle-items" 
+                ref={listRef}
+              >
+                {subtitles.map((cue, index) => renderSubtitleItem(cue, index))}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

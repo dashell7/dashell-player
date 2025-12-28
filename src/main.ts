@@ -1,8 +1,8 @@
-import { Plugin, WorkspaceLeaf, Notice, TFile } from 'obsidian';
+import { Plugin, WorkspaceLeaf, Notice, TFile, MarkdownView } from 'obsidian';
 import { LinguaFlowView } from './views/LinguaFlowView';
 import { SubtitlePanelView, SUBTITLE_PANEL_VIEW_TYPE } from './views/SubtitlePanelView';
-import { LINGUA_FLOW_VIEW, type MediaSource, type ProtocolParams, type PlayerRef } from './types';
-import { parseTimestamp } from './utils/fileUtils';
+import { LINGUA_FLOW_VIEW, type MediaSource, type ProtocolParams, type PlayerRef, type SubtitleCue } from './types';
+import { parseTimestamp, formatTime } from './utils/fileUtils';
 import { useMediaStore } from './store/mediaStore';
 import { LinguaFlowSettings, DEFAULT_SETTINGS, LinguaFlowSettingTab } from './settings';
 import { MediaInputModal } from './modals/MediaInputModal';
@@ -147,6 +147,26 @@ export default class LinguaFlowPlugin extends Plugin {
 			},
 		});
 
+		// 注册命令：插入当前字幕到笔记
+		this.addCommand({
+			id: 'insert-subtitle-to-note',
+			name: 'Insert current subtitle to note',
+			hotkeys: [{ modifiers: ['Mod'], key: 'i' }],
+			callback: () => {
+				const store = useMediaStore.getState();
+				const { activeIndex, subtitles } = store;
+				
+				if (activeIndex >= 0 && activeIndex < subtitles.length) {
+					const currentCue = subtitles[activeIndex];
+					if (currentCue) {
+						this.insertSubtitleToNote(currentCue);
+					}
+				} else {
+					new Notice('⚠️ 请先播放视频并选择字幕');
+				}
+			},
+		});
+
 		// 注册命令：设置 A 点（AB 循环起点）
 		this.addCommand({
 			id: 'set-point-a',
@@ -171,8 +191,11 @@ export default class LinguaFlowPlugin extends Plugin {
 					new Notice('⚠️ B点必须在A点之后');
 					return;
 				}
-				useMediaStore.getState().setPointB(currentTime);
-				new Notice(`🅱️ B点已设置: ${currentTime.toFixed(2)}s`);
+				const store = useMediaStore.getState();
+				store.setPointB(currentTime);
+				// 设置 B 点后自动启用 AB 循环
+				store.enableABRepeat();
+				new Notice(`🅱️ B点已设置: ${currentTime.toFixed(2)}s - AB循环已启动`);
 			},
 		});
 
@@ -297,6 +320,11 @@ export default class LinguaFlowPlugin extends Plugin {
 	 */
 	async loadSettings() {
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		
+		// 同步设置到 Store
+		const store = useMediaStore.getState();
+		store.setVideoFit(this.settings.videoFit);
+		store.setShowInlineSubtitles(this.settings.showInlineSubtitles);
 	}
 
 	/**
@@ -399,11 +427,12 @@ export default class LinguaFlowPlugin extends Plugin {
 	/**
 	 * 打开本地文件
 	 * @param file - 文件对象
+	 * @param timestamp - 起始时间（秒）
 	 */
-	async openFile(file: TFile) {
+	async openFile(file: TFile, timestamp?: number) {
 		try {
 			const view = await this.activateView();
-			await view.loadFile(file);
+			await view.loadFile(file, timestamp);
 			new Notice(`Playing: ${file.name}`);
 		} catch (error) {
 			console.error('[LinguaFlow] Error opening file:', error);
@@ -443,36 +472,144 @@ export default class LinguaFlowPlugin extends Plugin {
 	 * obsidian://linguaflow?src=...&t=...&title=...
 	 */
 	private async handleProtocol(params: ProtocolParams) {
-		console.log('[LinguaFlow] Protocol called:', params);
+		console.log('[LangPlayer] Protocol called:', params);
 
 		if (!params.src) {
-			new Notice('LinguaFlow: Missing src parameter');
+			new Notice('LangPlayer: Missing src parameter');
 			return;
 		}
 
 		// 解析时间戳
 		const timestamp = params.t ? parseTimestamp(params.t) : undefined;
+		// 解码路径 (因为在生成链接时进行了 encodeURIComponent)
+		const srcPath = decodeURIComponent(params.src);
+		
+		console.log(`[LangPlayer] Protocol Action: src=${srcPath}, t=${timestamp}`);
 
 		// 判断是本地文件还是 URL
-		if (params.src.startsWith('http://') || params.src.startsWith('https://')) {
+		if (srcPath.startsWith('http://') || srcPath.startsWith('https://')) {
 			// 远程 URL
-			await this.openUrl(params.src, timestamp, params.title);
+			await this.openUrl(srcPath, timestamp, params.title);
 		} else {
 			// 本地文件路径
-			const file = this.app.vault.getAbstractFileByPath(params.src);
+			const file = this.app.vault.getAbstractFileByPath(srcPath);
 			if (file instanceof TFile) {
-				await this.openFile(file);
+				// 直接传递 timestamp 给 openFile，让其在加载时处理跳转
+				await this.openFile(file, timestamp);
 				
-				// 跳转到指定时间
-				if (timestamp && timestamp > 0) {
-					const view = await this.activateView();
-					setTimeout(() => {
-						view.seekTo(timestamp);
-					}, 1000);
+				// 如果视图已经存在且是同一个文件，openFile 可能不会重新触发加载
+				// 所以这里保留一个额外的 seekTo 作为保险，但加长延迟
+				if (timestamp !== undefined && timestamp >= 0) {
+					const leaves = this.app.workspace.getLeavesOfType(LINGUA_FLOW_VIEW);
+					const view = leaves[0]?.view as LinguaFlowView;
+					if (view) {
+						setTimeout(() => {
+							// 只有当当前播放时间差距较大时才跳转，避免干扰
+							if (Math.abs(view.getCurrentTime() - timestamp) > 1) {
+								console.log(`[LangPlayer] Seeking to ${timestamp}s (backup)`);
+								view.seekTo(timestamp);
+							}
+						}, 1000);
+					}
 				}
 			} else {
-				new Notice(`File not found: ${params.src}`);
+				console.warn(`[LangPlayer] File not found: ${srcPath}`);
+				new Notice(`File not found: ${srcPath}`);
 			}
+		}
+	}
+	
+	/**
+	 * 打开关联的学习笔记
+	 * 如果不存在则创建，并在分割视图中打开
+	 */
+	async openStudyNote() {
+		// 1. 获取当前正在播放的视频文件
+		const view = this.app.workspace.getLeavesOfType(LINGUA_FLOW_VIEW)[0]?.view as LinguaFlowView;
+		if (!view || !view.currentSource) {
+			new Notice('❌ 请先播放一个视频');
+			return;
+		}
+
+		// 使用局部变量以确保类型收窄
+		const source = view.currentSource;
+		const mediaName = source.displayName || 'Untitled Video';
+		let noteName = mediaName;
+		
+		// 移除扩展名
+		if (noteName && noteName.lastIndexOf('.') > -1) {
+			noteName = noteName.substring(0, noteName.lastIndexOf('.'));
+		}
+		
+		// 添加后缀
+		noteName = `${noteName}_Study.md`;
+		
+		// 2. 确定笔记路径
+		let notePath = noteName;
+		let sourceFile: TFile | null = null;
+		
+		// 检查类型是否为 local
+		if (source.type === 'local' && source.file) {
+			sourceFile = source.file;
+			if (sourceFile.parent) {
+				notePath = `${sourceFile.parent.path}/${noteName}`;
+			}
+		}
+
+		console.log(`[LangPlayer] Opening study note: ${notePath}`);
+
+		// 3. 检查笔记是否存在
+		let noteFile = this.app.vault.getAbstractFileByPath(notePath);
+		
+		if (!noteFile) {
+			// 4. 不存在则创建
+			try {
+				// 获取用户自定义模板或使用默认模板
+				// @ts-ignore - 忽略类型检查，确保 noteTemplate 已添加
+				const templateRaw = this.settings.noteTemplate || '';
+				
+				// 准备变量
+				const now = new Date();
+				// YYYY-MM-DD HH:mm
+				const dateStr = now.getFullYear() + '-' + 
+					String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+					String(now.getDate()).padStart(2, '0') + ' ' + 
+					String(now.getHours()).padStart(2, '0') + ':' + 
+					String(now.getMinutes()).padStart(2, '0');
+					
+				const videoLink = `[[${source.type === 'local' ? sourceFile?.name : source.url}]]`;
+				const videoUrl = source.url;
+
+				// 执行替换
+				const content = templateRaw
+					.replace(/{{title}}/g, mediaName)
+					.replace(/{{date}}/g, dateStr)
+					.replace(/{{link}}/g, videoLink)
+					.replace(/{{url}}/g, videoUrl);
+
+				noteFile = await this.app.vault.create(notePath, content);
+				new Notice('✅ 已创建学习笔记');
+			} catch (error) {
+				console.error('Failed to create study note:', error);
+				new Notice('❌ 创建笔记失败');
+				return;
+			}
+		}
+
+		// 5. 在新分割视图中打开 (Split Right)
+		if (noteFile instanceof TFile) {
+			const leaves = this.app.workspace.getLeavesOfType('markdown');
+			const existingLeaf = leaves.find(leaf => (leaf.view as any).file === noteFile);
+			
+			// 如果笔记已经打开，先关闭它（以便移动到右侧）
+			if (existingLeaf) {
+				existingLeaf.detach();
+			}
+			
+			// 总是尝试在右侧分屏打开
+			const leaf = this.app.workspace.getLeaf('split', 'vertical');
+			await leaf.openFile(noteFile);
+			this.app.workspace.setActiveLeaf(leaf, { focus: true });
 		}
 	}
 
@@ -483,39 +620,42 @@ export default class LinguaFlowPlugin extends Plugin {
 		// 创建文件选择器
 		const input = document.createElement('input');
 		input.type = 'file';
-		input.accept = '.srt,.vtt,.ass,text/srt,text/vtt,text/ass';
+		input.accept = '.srt,.vtt';
 		
-		input.addEventListener('change', async (e) => {
-			const files = (e.target as HTMLInputElement).files;
-			if (files && files.length > 0) {
-				const file = files[0];
-				if (file) {
+		input.onchange = async (e: Event) => {
+			const target = e.target as HTMLInputElement;
+			const file = target.files?.[0];
+			
+			if (file) {
+				// 读取文件内容
+				const reader = new FileReader();
+				reader.onload = async (e: ProgressEvent<FileReader>) => {
+					const content = e.target?.result as string;
+					
 					try {
-						// 读取文件内容
-						const text = await file.text();
-						
-						// 使用 SubtitleLoader 的 loadFromText 方法
-						const result = await this.subtitleLoader.loadFromText(text, file.name);
-						
+						// 解析字幕
+						const result = this.subtitleLoader.loadFromText(content, file.name);
 						if (result && result.cues.length > 0) {
 							// 将字幕加载到状态管理
 							useMediaStore.getState().setSubtitles(result.cues);
-							new Notice(`已加载 ${result.cues.length} 条字幕`);
+							new Notice(`✅ 已加载 ${result.cues.length} 条字幕`);
 						} else {
-							new Notice('无法解析字幕文件');
+							new Notice('❌ 无法解析字幕文件');
 						}
 					} catch (error) {
 						console.error('[LinguaFlow] Error loading subtitle:', error);
 						const errorMsg = error instanceof Error ? error.message : String(error);
-						new Notice('加载字幕失败: ' + errorMsg);
+						new Notice('❌ 加载字幕失败: ' + errorMsg);
 					}
 				}
+				
+				reader.readAsText(file);
 			}
-		});
+		};
 		
 		input.click();
 	}
-
+	
 	/**
 	 * 检查文件是否为媒体文件
 	 */
@@ -527,6 +667,139 @@ export default class LinguaFlowPlugin extends Plugin {
 			'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
 		];
 		return mediaExtensions.includes(file.extension.toLowerCase());
+	}
+
+	/**
+	 * 将字幕插入到当前笔记
+	 * @param cue - 字幕对象
+	 */
+	async insertSubtitleToNote(cue: SubtitleCue) {
+		const view = this.app.workspace.getLeavesOfType(LINGUA_FLOW_VIEW)[0]?.view as LinguaFlowView;
+		if (!view || !view.currentSource) {
+			new Notice('❌ 请先播放视频');
+			return;
+		}
+
+		// 1. 尝试获取 Markdown 视图
+		let targetView: MarkdownView | null = null;
+		let activeLeaf = this.app.workspace.activeLeaf;
+
+		// 情况A: 当前聚焦的就是 Markdown
+		if (activeLeaf?.view.getViewType() === 'markdown') {
+			targetView = activeLeaf.view as MarkdownView;
+		} else {
+			// 情况B: 查找最近使用的 Markdown 视图
+			const leaves = this.app.workspace.getLeavesOfType('markdown');
+			const visibleLeaves = leaves.filter(leaf => (leaf.view as any).containerEl.isShown?.() || leaf.view.containerEl.offsetParent !== null);
+			
+			if (visibleLeaves.length > 0 && visibleLeaves[0]) {
+				targetView = visibleLeaves[0].view as MarkdownView;
+			}
+		}
+
+		// 2. 如果还没找到视图，尝试自动打开学习笔记
+		if (!targetView) {
+			new Notice('未找到笔记，正在打开学习笔记...');
+			await this.openStudyNote();
+			
+			// 等待一点时间让视图加载
+			await new Promise(resolve => setTimeout(resolve, 500));
+			
+			// 再次尝试获取
+			activeLeaf = this.app.workspace.activeLeaf;
+			if (activeLeaf?.view.getViewType() === 'markdown') {
+				targetView = activeLeaf.view as MarkdownView;
+			}
+		}
+
+		if (targetView) {
+			// 自动切换到编辑模式
+			if (targetView.getMode() === 'preview') {
+				await targetView.setState({ ...targetView.getState(), mode: 'source' }, { history: false });
+				// 等待切换完成
+				await new Promise(resolve => setTimeout(resolve, 100));
+			}
+
+			const editor = targetView.editor;
+			if (!editor) {
+				new Notice('❌ 无法获取编辑器实例');
+				return;
+			}
+
+			// 3. 格式化内容
+			const timeStr = formatTime(cue.start);
+			const sourceUrl = view.currentSource.type === 'local' && view.currentSource.file 
+				? view.currentSource.file.path 
+				: view.currentSource.url;
+				
+			const link = `[${timeStr}](obsidian://linguaflow?src=${encodeURIComponent(sourceUrl)}&t=${Math.floor(cue.start)})`;
+			
+			// 获取当前显示的语言
+			const { visibleLanguages } = useMediaStore.getState().subtitleConfig;
+			const textsToExport: string[] = [];
+
+			// 1. 优先使用多语言数据
+			if (cue.languages && Object.keys(cue.languages).length > 0) {
+				// 按照 visibleLanguages 的顺序导出
+				visibleLanguages.forEach(lang => {
+					const text = cue.languages?.[lang];
+					if (text) {
+						textsToExport.push(text);
+					}
+				});
+			} else {
+				// 2. 向后兼容逻辑
+				// 如果 visibleLanguages 包含 'en' 且有英文文本
+				if (visibleLanguages.includes('en') && cue.textEn) {
+					textsToExport.push(cue.textEn);
+				}
+				// 如果 visibleLanguages 包含 'zh' 且有中文文本
+				if (visibleLanguages.includes('zh') && cue.textZh) {
+					textsToExport.push(cue.textZh);
+				}
+				
+				// 如果没有命中任何特定语言，但有基础文本（单语字幕），且至少有一种语言可见
+				if (textsToExport.length === 0 && visibleLanguages.length > 0 && cue.text) {
+					// 避免重复：如果 text 等于 textEn 或 textZh 且已被添加，则不添加
+					if (cue.text !== cue.textEn && cue.text !== cue.textZh) {
+						textsToExport.push(cue.text);
+					}
+				}
+			}
+
+			// 如果没有选中文本（例如全部隐藏），为了防止插入空行，默认插入所有可用文本？
+			// 不，用户说“只显示一种语言...就是显示的语言”。
+			// 如果全隐藏，那就插入空文本（只带时间戳），或者用户根本不应该点击导出。
+			// 但既然点了，我们还是保留时间戳。
+			
+			const contentText = textsToExport.join(' ');
+			
+			// 纯文本格式（带时间戳链接）：- [00:00] 文本
+			let content = `- ${link}`;
+			if (contentText) {
+				content += ` ${contentText}`;
+			}
+			content += '\n';
+
+			// 4. 插入到文档末尾（如果不在光标处）或者光标处
+			// 如果编辑器刚打开，光标可能在开头。我们希望追加到末尾或特定位置。
+			// 简单起见，插入到当前光标位置。
+			
+			// 检查光标是否在文件头且没有选区，如果是，移动到文件末尾
+			const cursor = editor.getCursor();
+			if (cursor.line === 0 && cursor.ch === 0 && !editor.somethingSelected() && editor.lineCount() > 1) {
+				const lastLine = editor.lineCount() - 1;
+				const lastLineLen = editor.getLine(lastLine).length;
+				editor.setCursor({ line: lastLine, ch: lastLineLen });
+				// 加个换行
+				content = '\n' + content;
+			}
+
+			editor.replaceSelection(content);
+			new Notice('✅ 字幕已插入笔记');
+		} else {
+			new Notice('❌ 无法找到或打开笔记视图');
+		}
 	}
 
 	/**

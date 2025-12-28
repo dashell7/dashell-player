@@ -1,8 +1,11 @@
 import type { SubtitleCue, SubtitleFormat } from '../types';
+import { separateLanguages, detectLanguage } from '../utils/languageUtils';
+import type { SupportedLanguage } from '../utils/languageUtils';
 
 /**
- * 字幕解析器服务
- * 支持 SRT 和 VTT 格式
+ * 字幕解析服务
+ * 支持 SRT, VTT, ASS/SSA 等格式
+ * 支持多语言识别和分离
  */
 export class SubtitleParser {
 	/**
@@ -92,7 +95,13 @@ export class SubtitleParser {
 			// 第三行及之后：字幕文本
 			const text = lines.slice(2).join('\n');
 			
+			// 向后兼容：保留原有的textEn/textZh字段
 			const { textEn, textZh } = this.separateLanguages(text);
+			
+			// 新的多语言支持
+			const languages = separateLanguages(text);
+			const detectedLangs = Object.keys(languages) as SupportedLanguage[];
+			const primaryLang = detectedLangs[0] || detectLanguage(text);
 			
 			cues.push({
 				id: `srt-${index}`,
@@ -100,8 +109,13 @@ export class SubtitleParser {
 				start,
 				end,
 				text,
+				// 向后兼容
 				textEn,
 				textZh,
+				// 多语言支持
+				languages,
+				detectedLanguages: detectedLangs,
+				primaryLanguage: primaryLang
 			});
 		}
 		
@@ -163,7 +177,13 @@ export class SubtitleParser {
 			// 清理 VTT 特有的标记
 			text = this.cleanVTTText(text);
 			
+			// 向后兼容：保留原有的textEn/textZh字段
 			const { textEn, textZh } = this.separateLanguages(text);
+			
+			// 新的多语言支持
+			const languages = separateLanguages(text);
+			const detectedLangs = Object.keys(languages) as SupportedLanguage[];
+			const primaryLang = detectedLangs[0] || detectLanguage(text);
 			
 			// ID（时间行之前的内容，如果有）
 			const id = timeLineIndex > 0 ? (lines[timeLineIndex - 1] || `vtt-${i}`) : `vtt-${i}`;
@@ -174,8 +194,13 @@ export class SubtitleParser {
 				start,
 				end,
 				text,
+				// 向后兼容
 				textEn,
 				textZh,
+				// 多语言支持
+				languages,
+				detectedLanguages: detectedLangs,
+				primaryLanguage: primaryLang
 			});
 		}
 		

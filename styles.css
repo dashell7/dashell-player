@@ -635,9 +635,42 @@
 	box-shadow: inset 3px 0 0 0 #28a745, 0 2px 8px rgba(40, 167, 69, 0.15) !important;
 }
 
-.linguaflow-subtitle-item-header {
+/* 字幕导出按钮 - 正式版 */
+.linguaflow-export-btn {
+	position: absolute;
+	right: 4px;
+	top: 4px;
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 12px;
+	padding: 4px;
+	border-radius: 4px;
+	opacity: 0; /* 默认隐藏 */
+	transition: all 0.2s ease;
 	display: flex;
-	justify-content: space-between;
+	align-items: center;
+	justify-content: center;
+	height: 24px;
+	width: 24px;
+	z-index: 10;
+}
+
+.linguaflow-subtitle-item:hover .linguaflow-export-btn {
+	opacity: 0.6; /* 悬停字幕项时显示 */
+}
+
+.linguaflow-export-btn:hover {
+	opacity: 1 !important;
+	background-color: var(--background-modifier-hover);
+	color: var(--interactive-accent);
+	transform: scale(1.1);
+}
+
+.linguaflow-subtitle-item-header {
+	/* 移除之前的 flex 布局对按钮的影响 */
+	display: flex;
 	align-items: center;
 	margin-bottom: 4px;
 	font-size: 12px;
@@ -809,8 +842,13 @@
 	background: var(--background-modifier-hover) !important;
 	color: var(--interactive-accent) !important;
 	padding: 2px 4px;
-	border-radius: 3px;
+	border-radius: 4px;
 	transition: all 0.2s ease;
+}
+
+/* 确保高亮能覆盖可点击单词的颜色 */
+.linguaflow-line-highlight .linguaflow-clickable-word {
+	color: var(--interactive-accent) !important;
 }
 
 /* 标点符号保持原色，不跟随高亮 */
@@ -904,10 +942,135 @@
 	scrollbar-width: none;
 }
 
-/* 隐藏所有按钮文字标签 - 只显示图标 */
-.linguaflow-subtitle-controls .linguaflow-control-label {
-	display: none !important;
+
+/* ==========================================================================
+   LangPlayer v1.6.0 UI 现代化重构 (2024)
+   ========================================================================== */
+
+/* 1. 字幕覆盖层玻璃拟态 (Glassmorphism) */
+.linguaflow-subtitle-overlay {
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	background: rgba(0, 0, 0, 0.4); /* 半透明黑底 */
+	border-radius: 8px;
+	box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	transition: all 0.3s ease;
 }
+
+/* 2. 新版控制栏布局 */
+.linguaflow-subtitle-controls {
+	display: flex;
+	flex-wrap: wrap; /* 允许换行，适应不同窗口宽度 */
+	justify-content: center; /* 居中排列 */
+	align-items: center;
+	gap: 25px; /* 组间距增加到 25px */
+	padding: 10px 12px;
+	background: #111111;
+	border-top: 1px solid #222;
+	width: 100%; /* 确保占满容器 */
+}
+
+/* 分组容器 */
+.linguaflow-controls-group {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	position: relative;
+	flex-shrink: 0; /* 防止分组内部被压缩 */
+}
+
+/* 移除分组之间的垂直分隔线 */
+.linguaflow-controls-group:not(:last-child)::after {
+	content: none;
+	display: none;
+}
+
+/* 移除旧的 margin 规则 */
+.linguaflow-control-btn-loop,
+.linguaflow-control-btn-record,
+.linguaflow-control-btn-speed {
+	margin-left: 0 !important;
+}
+
+/* 3. 按钮样式优化 */
+.linguaflow-control-btn {
+	background: transparent;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: rgba(255, 255, 255, 0.8);
+	border-radius: 6px;
+	width: 36px;
+	height: 36px;
+	min-width: 36px;
+	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.linguaflow-control-btn:hover {
+	background: rgba(255, 255, 255, 0.1);
+	border-color: rgba(255, 255, 255, 0.5);
+	color: #fff;
+	transform: translateY(-1px);
+}
+
+.linguaflow-control-btn:active {
+	transform: translateY(0);
+}
+
+/* 播放按钮特殊处理 - 更大更醒目 */
+.linguaflow-control-btn-playpause {
+	width: 44px;
+	height: 44px;
+	border-color: var(--interactive-accent);
+	color: var(--interactive-accent);
+	background: rgba(var(--interactive-accent-rgb), 0.1);
+}
+
+.linguaflow-control-btn-playpause:hover {
+	background: var(--interactive-accent);
+	color: #fff;
+	box-shadow: 0 0 15px rgba(var(--interactive-accent-rgb), 0.4);
+}
+
+/* 激活状态统一 */
+.linguaflow-control-btn.active {
+	background: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+	color: #fff;
+}
+
+/* 角标优化 */
+.linguaflow-control-badge {
+	position: absolute;
+	bottom: -4px;
+	right: -4px;
+	font-size: 9px;
+	padding: 1px 3px;
+	background: #333;
+	border: 1px solid #555;
+	border-radius: 3px;
+	color: #ccc;
+	line-height: 1;
+}
+
+/* 4. 滚动条美化 (针对 Chrome/Webkit) */
+::-webkit-scrollbar {
+	width: 6px;
+	height: 6px;
+}
+
+::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+	background: rgba(255, 255, 255, 0.2);
+	border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+	background: rgba(255, 255, 255, 0.4);
+}
+
 
 /* 音频波形可视化背景层 */
 .linguaflow-waveform-background {
@@ -3132,5 +3295,560 @@ transition: all 0.2s;
 background: var(--background-modifier-hover);
 border-color: var(--interactive-accent);
 color: var(--text-normal);
+}
+
+/* ================================================================================
+   移动端和平板优化样式
+   多断点响应式设计，确保PC、手机、平板都能流畅操作
+   ================================================================================ */
+
+/* ====================
+   通用移动端优化
+   ==================== */
+
+/* 触摸设备：增大点击区域 */
+@media (hover: none) and (pointer: coarse) {
+	.linguaflow-control-btn {
+		min-height: 44px !important;
+		min-width: 44px !important;
+	}
+	
+	.linguaflow-subtitle-item {
+		min-height: 48px !important;
+		padding: 12px !important;
+	}
+	
+	/* 增大单词点击区域 */
+	.linguaflow-word {
+		padding: 2px 1px;
+		margin: 0 1px;
+	}
+}
+
+/* ====================
+   手机优化 (<768px)
+   ==================== */
+@media (max-width: 767px) {
+	/* 1. 容器布局 */
+	.linguaflow-container {
+		flex-direction: column !important;
+	}
+	
+	.linguaflow-main-content {
+		flex-direction: column !important;
+	}
+	
+	/* 强制底部布局 */
+	.linguaflow-container.linguaflow-layout-right {
+		flex-direction: column !important;
+	}
+	
+	.linguaflow-container.linguaflow-layout-right .linguaflow-player-wrapper-section,
+	.linguaflow-container.linguaflow-layout-right .linguaflow-subtitle-section {
+		width: 100% !important;
+		flex: none !important;
+	}
+	
+	/* 2. 播放器高度 */
+	.linguaflow-player-wrapper-section {
+		height: 40vh !important;
+		min-height: 200px !important;
+		max-height: 300px !important;
+	}
+	
+	.simple-player-container {
+		height: 100% !important;
+	}
+	
+	/* 3. 控制栏按钮 */
+	.linguaflow-control-btn {
+		width: 40px !important;
+		height: 40px !important;
+		min-width: 40px !important;
+		min-height: 40px !important;
+		border-radius: 8px !important;
+	}
+	
+	.linguaflow-control-icon svg {
+		width: 16px !important;
+		height: 16px !important;
+	}
+	
+	/* 播放/暂停按钮略大 */
+	.linguaflow-control-btn-playpause {
+		width: 48px !important;
+		height: 48px !important;
+	}
+	
+	.linguaflow-control-btn-playpause .linguaflow-control-icon svg {
+		width: 20px !important;
+		height: 20px !important;
+	}
+	
+	/* 4. 控制栏间距 */
+	.linguaflow-subtitle-controls {
+		padding: 8px 12px !important;
+		gap: 8px !important;
+	}
+	
+	.linguaflow-controls-group {
+		gap: 4px !important;
+		margin: 0 4px !important;
+	}
+	
+	/* 5. 字幕样式 */
+	.linguaflow-subtitle-item {
+		padding: 10px !important;
+		font-size: 14px !important;
+		line-height: 1.5 !important;
+	}
+	
+	.linguaflow-subtitle-time,
+	.linguaflow-subtitle-index {
+		font-size: 11px !important;
+	}
+	
+	.linguaflow-word {
+		font-size: 14px !important;
+	}
+	
+	/* 6. 字幕列表滚动 */
+	.linguaflow-subtitle-section {
+		height: auto !important;
+		max-height: 50vh !important;
+		flex: 1 1 auto !important;
+	}
+	
+	/* 7. 模态框 */
+	.linguaflow-modal-content {
+		width: 95% !important;
+		max-width: 95% !important;
+		max-height: 85vh !important;
+		border-radius: 12px !important;
+	}
+	
+	.linguaflow-modal-header h2 {
+		font-size: 18px !important;
+	}
+	
+	.linguaflow-modal-body {
+		padding: 16px !important;
+	}
+	
+	/* 8. 设置面板 */
+	.linguaflow-settings {
+		padding: 12px !important;
+	}
+	
+	.linguaflow-settings-section {
+		padding: 12px !important;
+		margin-bottom: 12px !important;
+	}
+	
+	.linguaflow-settings-header h1 {
+		font-size: 20px !important;
+	}
+	
+	/* 9. 录音面板 */
+	.linguaflow-recording-panel {
+		width: 90% !important;
+		max-width: 90% !important;
+	}
+	
+	/* 10. 隐藏次要信息 */
+	.linguaflow-status-locked {
+		display: none !important;
+	}
+	
+	/* 11. 进度条增大 */
+	.linguaflow-progress-bar {
+		height: 6px !important;
+	}
+	
+	.linguaflow-progress-handle {
+		width: 16px !important;
+		height: 16px !important;
+	}
+	
+	/* 12. 音量控制简化 */
+	.linguaflow-volume-control {
+		display: none !important;
+	}
+}
+
+/* ====================
+   平板优化 (768px - 1023px)
+   ==================== */
+@media (min-width: 768px) and (max-width: 1023px) {
+	/* 1. 容器适配 */
+	.linguaflow-player-wrapper-section {
+		height: 50vh !important;
+		min-height: 300px !important;
+	}
+	
+	/* 2. 控制栏按钮 */
+	.linguaflow-control-btn {
+		width: 44px !important;
+		height: 44px !important;
+		min-width: 44px !important;
+		min-height: 44px !important;
+	}
+	
+	.linguaflow-control-icon svg {
+		width: 18px !important;
+		height: 18px !important;
+	}
+	
+	/* 3. 字幕 */
+	.linguaflow-subtitle-item {
+		padding: 11px !important;
+		font-size: 15px !important;
+	}
+	
+	.linguaflow-word {
+		font-size: 15px !important;
+	}
+	
+	/* 4. 右侧布局优化 */
+	.linguaflow-container.linguaflow-layout-right .linguaflow-subtitle-section {
+		min-width: 300px !important;
+		max-width: 400px !important;
+	}
+	
+	/* 5. 模态框 */
+	.linguaflow-modal-content {
+		width: 85% !important;
+		max-width: 600px !important;
+	}
+}
+
+/* ====================
+   横屏手机优化
+   ==================== */
+@media (max-width: 767px) and (orientation: landscape) {
+	/* 横屏时播放器占满更多空间 */
+	.linguaflow-player-wrapper-section {
+		height: 60vh !important;
+		max-height: none !important;
+	}
+	
+	/* 字幕区域压缩 */
+	.linguaflow-subtitle-section {
+		max-height: 35vh !important;
+	}
+	
+	/* 控制栏更紧凑 */
+	.linguaflow-subtitle-controls {
+		padding: 6px 10px !important;
+	}
+	
+	.linguaflow-controls-group {
+		gap: 3px !important;
+		margin: 0 3px !important;
+	}
+	
+	.linguaflow-control-btn {
+		width: 36px !important;
+		height: 36px !important;
+		min-width: 36px !important;
+		min-height: 36px !important;
+	}
+}
+
+/* ====================
+   小屏幕平板横屏
+   ==================== */
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) {
+	.linguaflow-container.linguaflow-layout-right {
+		/* 横屏平板适合右侧布局 */
+		flex-direction: row !important;
+	}
+	
+	.linguaflow-player-wrapper-section {
+		height: 100% !important;
+	}
+}
+
+/* ====================
+   触摸优化：去除hover效果
+   ==================== */
+@media (hover: none) {
+	.linguaflow-control-btn:hover {
+		transform: none !important;
+		background: transparent !important;
+	}
+	
+	.linguaflow-control-btn:active {
+		transform: scale(0.95) !important;
+		background: rgba(255, 255, 255, 0.1) !important;
+	}
+	
+	.linguaflow-subtitle-item:hover {
+		background: inherit !important;
+	}
+	
+	.linguaflow-subtitle-item:active {
+		background: rgba(var(--interactive-accent-rgb), 0.15) !important;
+	}
+	
+	.linguaflow-word:hover {
+		background: inherit !important;
+	}
+	
+	.linguaflow-word:active {
+		background: rgba(var(--interactive-accent-rgb), 0.2) !important;
+	}
+}
+
+/* ====================
+   性能优化：减少动画
+   ==================== */
+@media (prefers-reduced-motion: reduce) {
+	* {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+	
+	.linguaflow-waveform-canvas,
+	.linguaflow-visualizer {
+		display: none !important;
+	}
+}
+
+/* ====================
+   黑暗模式移动端优化
+   ==================== */
+@media (max-width: 767px) {
+	.theme-dark .linguaflow-control-btn {
+		background: rgba(255, 255, 255, 0.05) !important;
+	}
+	
+	.theme-dark .linguaflow-control-btn:active {
+		background: rgba(255, 255, 255, 0.15) !important;
+	}
+	
+	.theme-dark .linguaflow-subtitle-item {
+		background: rgba(0, 0, 0, 0.3) !important;
+	}
+}
+
+/* ====================
+   PWA/全屏模式优化
+   ==================== */
+@media (display-mode: fullscreen), (display-mode: standalone) {
+	.linguaflow-container {
+		height: 100vh !important;
+	}
+	
+	/* 安全区域适配（刘海屏） */
+	.linguaflow-subtitle-controls {
+		padding-left: max(12px, env(safe-area-inset-left)) !important;
+		padding-right: max(12px, env(safe-area-inset-right)) !important;
+		padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+	}
+}
+
+/* ====================
+   可访问性优化
+   ==================== */
+@media (min-width: 320px) {
+	/* 最小字体确保可读性 */
+	.linguaflow-word,
+	.linguaflow-subtitle-text {
+		font-size: max(14px, 1rem) !important;
+	}
+	
+	/* 最小点击区域 */
+	.linguaflow-control-btn,
+	button {
+		min-height: 44px;
+		min-width: 44px;
+	}
+}
+
+/* ====================
+   超小屏幕设备 (<360px)
+   ==================== */
+@media (max-width: 359px) {
+	.linguaflow-controls-group {
+		gap: 2px !important;
+		margin: 0 2px !important;
+	}
+	
+	.linguaflow-control-btn {
+		width: 36px !important;
+		height: 36px !important;
+		min-width: 36px !important;
+		min-height: 36px !important;
+	}
+	
+	.linguaflow-control-btn-playpause {
+		width: 42px !important;
+		height: 42px !important;
+	}
+	
+	.linguaflow-subtitle-item {
+		font-size: 13px !important;
+	}
+}
+
+/* ================================================================================
+   多语言选择器样式
+   ================================================================================ */
+
+/* 完整语言选择器 */
+.linguaflow-language-selector {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	background: var(--background-secondary);
+	border-radius: 6px;
+	margin: 8px 0;
+}
+
+.linguaflow-language-selector-label {
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.linguaflow-language-selector-buttons {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+.linguaflow-language-btn {
+	padding: 4px 12px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.2s;
+	white-space: nowrap;
+}
+
+.linguaflow-language-btn:hover {
+	background: var(--background-modifier-hover);
+	border-color: var(--interactive-accent);
+}
+
+.linguaflow-language-btn.active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+/* 紧凑型语言选择器（控制栏） */
+.linguaflow-compact-language-selector {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
+.linguaflow-lang-toggle {
+	padding: 4px 8px;
+	border-radius: 4px;
+	border: 1px solid transparent;
+	background: rgba(255, 255, 255, 0.05);
+	color: var(--text-muted);
+	font-size: 11px;
+	font-weight: 600;
+	cursor: pointer;
+	transition: all 0.2s;
+	min-width: 28px;
+	text-align: center;
+}
+
+.linguaflow-lang-toggle:hover {
+	background: rgba(255, 255, 255, 0.1);
+	color: var(--text-normal);
+}
+
+.linguaflow-lang-toggle.active {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-color: var(--interactive-accent);
+}
+
+/* 下拉式语言选择器 */
+.linguaflow-dropdown-language-selector {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.linguaflow-dropdown-language-selector label {
+	font-size: 13px;
+	color: var(--text-normal);
+	white-space: nowrap;
+}
+
+.linguaflow-language-dropdown {
+	padding: 4px 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 12px;
+	cursor: pointer;
+	min-width: 120px;
+}
+
+.linguaflow-language-dropdown:hover {
+	border-color: var(--interactive-accent);
+}
+
+/* 多语言字幕显示 */
+.linguaflow-subtitle-language {
+	margin: 4px 0;
+}
+
+.linguaflow-subtitle-language-label {
+	display: inline-block;
+	font-size: 10px;
+	color: var(--text-muted);
+	background: var(--background-secondary);
+	padding: 2px 6px;
+	border-radius: 3px;
+	margin-right: 6px;
+	vertical-align: middle;
+}
+
+.linguaflow-subtitle-language-text {
+	line-height: 1.6;
+}
+
+/* RTL语言支持 */
+.linguaflow-subtitle-language.rtl {
+	direction: rtl;
+	text-align: right;
+}
+
+/* 移动端语言选择器优化 */
+@media (max-width: 767px) {
+	.linguaflow-language-selector {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+	
+	.linguaflow-language-selector-buttons {
+		width: 100%;
+	}
+	
+	.linguaflow-language-btn {
+		flex: 1;
+		min-width: 60px;
+	}
+	
+	.linguaflow-lang-toggle {
+		padding: 6px 10px;
+		font-size: 12px;
+	}
 }
 

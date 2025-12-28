@@ -1,8 +1,10 @@
-import React from 'react';
-import { Menu } from 'obsidian';
-import { SubtitleCue } from '../types';
-import LinguaFlowPlugin from '../main';
+import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
+import { Menu, MenuItem } from 'obsidian';
 import { useMediaStore } from '../store/mediaStore';
+import type { SubtitleCue } from '../types';
+import type { SupportedLanguage } from '../utils/languageUtils';
+import { LANGUAGE_CONFIG } from '../utils/languageUtils';
+import LinguaFlowPlugin from '../main';
 
 // Modern Lucide Icons SVG - High Quality Player Icons
 const Icons = {
@@ -41,6 +43,7 @@ const Icons = {
 	Hash: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></svg>,
 	Lock: <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
 	FileText: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
+	Edit: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>,
 	ExternalLink: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>,
 	// 布局图标
 	LayoutBottom: <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="13" width="18" height="8" rx="2"/></svg>,
@@ -155,8 +158,8 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 
 	return (
 		<div className="linguaflow-subtitle-controls">
-			{/* 控制按钮组 - 精简设计 */}
-			<div className="linguaflow-controls-buttons">
+			{/* 1. 核心控制组 (导航+播放) */}
+			<div className="linguaflow-controls-group linguaflow-group-main">
 				{/* 上一句 */}
 				<button
 					className="linguaflow-control-btn linguaflow-control-btn-previous"
@@ -164,13 +167,10 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					disabled={activeIndex === 0}
 					title="上一句 (快捷键: ←)"
 				>
-					<span className="linguaflow-control-icon">
-						{Icons.SkipBack}
-					</span>
-					<span className="linguaflow-control-label">上一句</span>
+					<span className="linguaflow-control-icon">{Icons.SkipBack}</span>
 				</button>
 
-				{/* 播放/暂停 - 醒目大按钮 */}
+				{/* 播放/暂停 - 居中大按钮 */}
 				<button
 					className={`linguaflow-control-btn linguaflow-control-btn-playpause ${
 						isPlaying ? 'playing' : 'paused'
@@ -181,9 +181,6 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					<span className="linguaflow-control-icon">
 						{isPlaying ? Icons.Pause : Icons.Play}
 					</span>
-					<span className="linguaflow-control-label">
-						{isPlaying ? '暂停' : '播放'}
-					</span>
 				</button>
 
 				{/* 下一句 */}
@@ -193,13 +190,13 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					disabled={activeIndex === subtitles.length - 1}
 					title="下一句 (快捷键: →)"
 				>
-					<span className="linguaflow-control-icon">
-						{Icons.SkipForward}
-					</span>
-					<span className="linguaflow-control-label">下一句</span>
+					<span className="linguaflow-control-icon">{Icons.SkipForward}</span>
 				</button>
+			</div>
 
-				{/* 循环播放 - 如果没有选中字幕则禁用 */}
+			{/* 2. 学习工具组 */}
+			<div className="linguaflow-controls-group linguaflow-group-learning">
+				{/* 循环播放 */}
 				{isLooping ? (
 					<button
 						className="linguaflow-control-btn linguaflow-control-btn-loop active"
@@ -208,21 +205,40 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 						disabled={!currentCue}
 					>
 						<span className="linguaflow-control-icon">{Icons.Square}</span>
-						<span className="linguaflow-control-label">
-							退出循环 ({String(safeLoopCount)}次)
-						</span>
 					</button>
 				) : (
 					<button
 						className="linguaflow-control-btn linguaflow-control-btn-loop"
-						onClick={onToggleLoop}
-						title={!currentCue ? "请先选择字幕以启用循环" : `循环播放 ${String(safeLoopCount)} 次`}
+						onClick={(e) => {
+							// 左键点击：开始循环
+							if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+								onToggleLoop();
+							}
+						}}
+						onContextMenu={(e) => {
+							// 右键点击：显示循环次数菜单
+							e.preventDefault();
+							const menu = new Menu();
+							const loopCounts = [1, 2, 3, 5, 10, 20, 50, 100];
+							
+							loopCounts.forEach(count => {
+								menu.addItem((item: MenuItem) => {
+									item
+										.setTitle(`${count} 次`)
+										.setChecked(plugin.settings.loopCount === count)
+										.onClick(async () => {
+											plugin.settings.loopCount = count;
+											await plugin.saveSettings();
+										});
+								});
+							});
+							
+							menu.showAtMouseEvent(e.nativeEvent);
+						}}
+						title={!currentCue ? "请先选择字幕以启用循环" : `循环播放 ${String(safeLoopCount)} 次 (右键设置次数)`}
 						disabled={!currentCue}
 					>
 						<span className="linguaflow-control-icon">{Icons.RepeatOne}</span>
-						<span className="linguaflow-control-label">
-							循环播放 ({safeLoopCount}次)
-						</span>
 					</button>
 				)}
 
@@ -244,53 +260,57 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 						};
 
 						// 1. 设置 A 点
-						menu.addItem((item) => {
+						menu.addItem((item: MenuItem) => {
 							item
 								.setTitle(`设置 A 点 (当前: ${formatTime(store.pointA)})`)
 								.setIcon('map-pin')
 								.onClick(() => {
 									store.setPointA(currentTime);
-									// 如果 B 已经设置且 B > A，自动开启
+									new (require('obsidian')).Notice(`🅰️ A点已设置: ${formatTime(currentTime)}`);
 									if (store.pointB && store.pointB > currentTime) {
 										store.enableABRepeat();
+										new (require('obsidian')).Notice('🔁 AB循环已自动启动');
 									}
 								});
 						});
 
-						// 2. 设置 B 点
-						menu.addItem((item) => {
+						// 2. 设置 B 点（设置后自动启动）
+						menu.addItem((item: MenuItem) => {
 							item
 								.setTitle(`设置 B 点 (当前: ${formatTime(store.pointB)})`)
 								.setIcon('flag')
-								.setDisabled(!store.pointA && currentTime === 0) // 如果没有A且时间为0，通常不建议直接设B
+								.setDisabled(!store.pointA && currentTime === 0)
 								.onClick(() => {
 									store.setPointB(currentTime);
-									// 如果 A 已经设置，自动开启
+									new (require('obsidian')).Notice(`🅱️ B点已设置: ${formatTime(currentTime)}`);
 									if (store.pointA) {
 										store.enableABRepeat();
+										new (require('obsidian')).Notice('🔁 AB循环已自动启动');
 									}
 								});
 						});
 
 						menu.addSeparator();
 
-						// 3. 启用/关闭开关
-						menu.addItem((item) => {
+						// 3. 循环开关（用于暂停/恢复）
+						menu.addItem((item: MenuItem) => {
 							item
-								.setTitle('启用 AB 复读')
+								.setTitle(store.abRepeatEnabled ? '关闭 AB 复读' : '启用 AB 复读')
 								.setChecked(store.abRepeatEnabled)
 								.setDisabled(!store.pointA || !store.pointB)
 								.onClick(() => {
 									if (store.abRepeatEnabled) {
 										store.disableABRepeat();
+										new (require('obsidian')).Notice('⏹️ AB循环已关闭');
 									} else {
 										store.enableABRepeat();
+										new (require('obsidian')).Notice('🔁 AB循环已启用');
 									}
 								});
 						});
 
 						// 4. 清除设置
-						menu.addItem((item) => {
+						menu.addItem((item: MenuItem) => {
 							item
 								.setTitle('清除 AB 点')
 								.setIcon('trash')
@@ -304,13 +324,10 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					}}
 					title="点击打开 AB 复读菜单"
 				>
-					<span className="linguaflow-control-icon">
-						{Icons.ABRepeat}
-					</span>
-					<span className="linguaflow-control-label">AB复读</span>
+					<span className="linguaflow-control-icon">{Icons.ABRepeat}</span>
 				</button>
 
-				{/* 跟读录音 - 如果没有选中字幕则禁用，或者影子跟读开启时禁用 */}
+				{/* 跟读录音 */}
 				<button
 					className={`linguaflow-control-btn linguaflow-control-btn-record ${
 						isRecording ? 'active' : ''
@@ -318,7 +335,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					onClick={onRecord}
 					title={
 						shadowingEnabled 
-							? "影子跟读模式下不可录音 (请先关闭影子跟读)" 
+							? "影子跟读模式下不可录音" 
 							: (!currentCue ? "请先选择字幕以启用录音" : (isRecording ? '停止录音' : '跟读录音'))
 					}
 					disabled={!currentCue || shadowingEnabled}
@@ -326,12 +343,9 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					<span className="linguaflow-control-icon">
 						{isRecording ? Icons.Circle : Icons.Mic}
 					</span>
-					<span className="linguaflow-control-label">
-						{isRecording ? '停止录音' : '跟读录音'}
-					</span>
 				</button>
 
-				{/* 影子跟读 - 带菜单 */}
+				{/* 影子跟读 */}
 				<button
 					className={`linguaflow-control-btn linguaflow-control-btn-shadowing ${
 						shadowingEnabled ? 'active' : ''
@@ -339,8 +353,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					onClick={(e) => {
 						const menu = new Menu();
 						
-						// 1.0倍选项
-						menu.addItem((item) => {
+						menu.addItem((item: MenuItem) => {
 							item
 								.setTitle('开启 (1.0倍时长)')
 								.setChecked(shadowingEnabled && shadowingPauseFactor === 1.0)
@@ -350,8 +363,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 								});
 						});
 
-						// 1.5倍选项
-						menu.addItem((item) => {
+						menu.addItem((item: MenuItem) => {
 							item
 								.setTitle('开启 (1.5倍时长)')
 								.setChecked(shadowingEnabled && shadowingPauseFactor === 1.5)
@@ -363,8 +375,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 
 						menu.addSeparator();
 
-						// 关闭选项
-						menu.addItem((item) => {
+						menu.addItem((item: MenuItem) => {
 							item
 								.setTitle('关闭影子跟读')
 								.setChecked(!shadowingEnabled)
@@ -378,70 +389,47 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					title={!currentCue ? "请先选择字幕以启用影子跟读" : (shadowingEnabled ? `影子跟读已开启 (${shadowingPauseFactor}倍时长)` : '点击选择跟读模式')}
 					disabled={!currentCue}
 				>
-					<span className="linguaflow-control-icon">
-						{Icons.User}
-					</span>
-					<span className="linguaflow-control-label">
-						{shadowingEnabled ? `${shadowingPauseFactor}x` : '跟读'}
-					</span>
+					<span className="linguaflow-control-icon">{Icons.User}</span>
 				</button>
+			</div>
 
+			{/* 4. 设置与工具组 */}
+			<div className="linguaflow-controls-group linguaflow-group-settings">
 				{/* 播放速度 */}
 				<button
 					className="linguaflow-control-btn linguaflow-control-btn-speed"
 					onClick={(e) => {
 						const menu = new Menu();
 						const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-						
 						rates.forEach(rate => {
-							menu.addItem((item) => {
+							menu.addItem((item: MenuItem) => {
 								item
 									.setTitle(`${rate}x`)
 									.setChecked(playbackRate === rate)
-									.onClick(() => {
-										onRateChange(rate);
-									});
+									.onClick(() => onRateChange(rate));
 							});
 						});
-						
 						menu.showAtMouseEvent(e.nativeEvent);
 					}}
-					title={`当前速度: ${safePlaybackRateDisplay}（点击选择）`}
+					title={`当前速度: ${safePlaybackRateDisplay}`}
 				>
 					<span className="linguaflow-control-icon">{Icons.Gauge}</span>
-					<span className="linguaflow-control-label">
-						{safePlaybackRateDisplay}
-					</span>
 				</button>
 
 				{/* 字幕显示控制 */}
 				<SubtitleDisplayControl />
 
-				{/* 加载字幕 */}
-				<button
-					className="linguaflow-control-btn linguaflow-control-btn-load-subtitle"
-					onClick={() => plugin.loadExternalSubtitle()}
-					title="加载外部字幕文件"
-				>
-					<span className="linguaflow-control-icon">{Icons.FileText}</span>
-					<span className="linguaflow-control-label">加载字幕</span>
-				</button>
-
-				{/* 切换字幕布局 */}
+				{/* 布局切换 */}
 				<button
 					className="linguaflow-control-btn linguaflow-control-btn-layout"
 					onClick={async () => {
-						// 切换布局
 						const currentLayout = plugin.settings.subtitleLayout;
 						const newLayout = currentLayout === 'bottom' ? 'right' : 'bottom';
 						plugin.settings.subtitleLayout = newLayout;
 						await plugin.saveSettings();
 						
-						// 刺新视图
 						const view = await plugin.activateView();
-						if (view) {
-							view.refresh?.();
-						}
+						if (view) view.refresh?.();
 						
 						const layoutText = newLayout === 'bottom' ? '底部' : '右侧';
 						new (require('obsidian')).Notice(`✅ 字幕布局：${layoutText}`);
@@ -451,19 +439,34 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					<span className="linguaflow-control-icon">
 						{plugin.settings.subtitleLayout === 'bottom' ? Icons.LayoutBottom : Icons.LayoutRight}
 					</span>
-					<span className="linguaflow-control-label">
-						{plugin.settings.subtitleLayout === 'bottom' ? '底部' : '右侧'}
-					</span>
+				</button>
+
+				{/* 加载字幕 */}
+				<button
+					className="linguaflow-control-btn linguaflow-control-btn-load-subtitle"
+					onClick={() => plugin.loadExternalSubtitle()}
+					title="加载外部字幕文件"
+				>
+					<span className="linguaflow-control-icon">{Icons.FileText}</span>
+				</button>
+
+				{/* 打开学习笔记 */}
+				<button
+					className="linguaflow-control-btn linguaflow-control-btn-note"
+					onClick={() => plugin.openStudyNote()}
+					title="打开学习笔记 (右侧分屏)"
+				>
+					<span className="linguaflow-control-icon">{Icons.Edit}</span>
 				</button>
 			</div>
 
-			{/* 状态指示器 - 只显示锁定状态 */}
+			{/* 状态指示器 */}
 			{isManuallyLocked && currentCue && (
 				<div className="linguaflow-controls-status-bar">
 					<div className="linguaflow-status-badge linguaflow-status-locked" title="点击字幕解锁">
 						<span className="linguaflow-status-icon">{Icons.Lock}</span>
 						<span className="linguaflow-status-text">
-							已锁定 #{typeof currentCue.index === 'number' ? currentCue.index + 1 : '?'}
+							#{typeof currentCue.index === 'number' ? currentCue.index + 1 : '?'}
 						</span>
 					</div>
 				</div>
@@ -499,70 +502,118 @@ const IndexTimeControl: React.FC = () => {
 
 /**
  * 字幕显示控制组件
- * 支持三种模式切换：全部显示、仅英文、仅中文
+ * 支持多语言选择（使用Obsidian原生Menu）
  */
 const SubtitleDisplayControl: React.FC = () => {
+	const subtitles = useMediaStore(state => state.subtitles);
 	const subtitleConfig = useMediaStore(state => state.subtitleConfig);
 	const updateSubtitleConfig = useMediaStore(state => state.updateSubtitleConfig);
 
-	// 计算当前显示模式
-	const getDisplayMode = () => {
-		const { showEnglish, showChinese } = subtitleConfig;
-		if (showEnglish && showChinese) return 'both';
-		if (showEnglish && !showChinese) return 'en';
-		if (!showEnglish && showChinese) return 'zh';
-		return 'none';
-	};
+	// 检测字幕中可用的语言
+	const availableLanguages = useMemo(() => {
+		const langsSet = new Set<SupportedLanguage>();
+		subtitles.forEach(cue => {
+			if (cue.detectedLanguages) {
+				cue.detectedLanguages.forEach(lang => langsSet.add(lang));
+			}
+			// 向后兼容
+			if (cue.textEn) langsSet.add('en');
+			if (cue.textZh) langsSet.add('zh');
+		});
+		return Array.from(langsSet);
+	}, [subtitles]);
 
-	// 切换显示模式：全部 → 仅英文 → 仅中文 → 隐藏全部 → 全部
-	const toggleDisplayMode = () => {
-		const mode = getDisplayMode();
-		switch (mode) {
-			case 'both':
-				// 全部 → 仅英文
-				updateSubtitleConfig({ showEnglish: true, showChinese: false });
-				break;
-			case 'en':
-				// 仅英文 → 仅中文
-				updateSubtitleConfig({ showEnglish: false, showChinese: true });
-				break;
-			case 'zh':
-				// 仅中文 → 隐藏全部
-				updateSubtitleConfig({ showEnglish: false, showChinese: false });
-				break;
-			case 'none':
-				// 隐藏全部 → 全部
-				updateSubtitleConfig({ showEnglish: true, showChinese: true });
-				break;
+	const visibleLanguages = subtitleConfig.visibleLanguages;
+
+	// 生成按钮显示内容
+	const getButtonDisplay = () => {
+		const count = visibleLanguages.length;
+		if (count === 0) {
+			return { icon: Icons.EyeOff, label: '隐藏' };
+		} else if (count === 1 && visibleLanguages[0]) {
+			const lang = visibleLanguages[0];
+			const langConfig = LANGUAGE_CONFIG[lang];
+			return { 
+				icon: <span style={{ fontSize: '16px', fontWeight: 600 }}>{langConfig.nativeName.slice(0, 2)}</span>,
+				label: langConfig.nativeName.slice(0, 2)
+			};
+		} else {
+			return { icon: Icons.Languages, label: `${count}种` };
 		}
 	};
 
-	const mode = getDisplayMode();
-	const modeConfig = {
-		both: { icon: Icons.Languages, label: '中英', title: '显示中英文（点击切换为仅英文）' },
-		en: { 
-			icon: <span style={{ fontSize: '18px', fontWeight: 700 }}>E</span>, 
-			label: '英文', 
-			title: '仅显示英文（点击切换为仅中文）' 
-		},
-		zh: { 
-			icon: <span style={{ fontSize: '18px', fontWeight: 600 }}>中</span>, 
-			label: '中文', 
-			title: '仅显示中文（点击切换为隐藏全部）' 
-		},
-		none: { icon: Icons.EyeOff, label: '隐藏', title: '字幕已隐藏（点击显示全部）' },
-	};
+	const { icon, label } = getButtonDisplay();
 
-	const config = modeConfig[mode];
+	if (availableLanguages.length === 0) {
+		return null; // 没有字幕时不显示
+	}
 
 	return (
 		<button
 			className="linguaflow-control-btn linguaflow-control-btn-subtitle"
-			onClick={toggleDisplayMode}
-			title={config.title}
+			onClick={(e) => {
+				const menu = new Menu();
+				
+				menu.setNoIcon();
+				
+				// 添加快捷操作
+				menu.addItem((item: MenuItem) => {
+					item
+						.setTitle('✨ 全部显示')
+						.onClick(() => {
+							updateSubtitleConfig({ 
+								visibleLanguages: availableLanguages,
+								showEnglish: availableLanguages.includes('en'),
+								showChinese: availableLanguages.includes('zh')
+							});
+						});
+				});
+				
+				menu.addItem((item: MenuItem) => {
+					item
+						.setTitle('👁️‍🗨️ 全部隐藏')
+						.onClick(() => {
+							updateSubtitleConfig({ 
+								visibleLanguages: [],
+								showEnglish: false,
+								showChinese: false
+							});
+						});
+				});
+				
+				menu.addSeparator();
+				
+				// 单个语言选项
+				availableLanguages.forEach(lang => {
+					const langInfo = LANGUAGE_CONFIG[lang];
+					const isVisible = visibleLanguages.includes(lang);
+					
+					menu.addItem((item: MenuItem) => {
+						item
+							.setTitle(`${langInfo.nativeName} (${langInfo.name})`)
+							.setChecked(isVisible)
+							.onClick(() => {
+								const newVisibleLangs = isVisible
+									? visibleLanguages.filter(l => l !== lang)
+									: [...visibleLanguages, lang];
+								
+								// 允许全部取消（显示空白）
+								updateSubtitleConfig({ 
+									visibleLanguages: newVisibleLangs,
+									// 同步更新旧字段以保持兼容
+									showEnglish: newVisibleLangs.includes('en'),
+									showChinese: newVisibleLangs.includes('zh')
+								});
+							});
+					});
+				});
+				
+				menu.showAtMouseEvent(e.nativeEvent);
+			}}
+			title="选择显示的字幕语言"
 		>
-			<span className="linguaflow-control-icon">{config.icon}</span>
-			<span className="linguaflow-control-label">{config.label}</span>
+			<span className="linguaflow-control-icon">{icon}</span>
+			<span className="linguaflow-control-label">{label}</span>
 		</button>
 	);
 };
