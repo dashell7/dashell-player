@@ -1,4 +1,4 @@
-# LangPlayer (LinguaFlow) 用户指南 v1.6.0
+# LangPlayer (LinguaFlow) 用户指南 v1.7.0
 
 LangPlayer 是 Obsidian 的一款终极语言学习伴侣，它将视频播放器、智能字幕系统和笔记工具无缝集成，助您将任何视频转化为强大的语言学习材料。
 
@@ -98,4 +98,4 @@ A: 当您的鼠标悬停在字幕列表区域时，为了方便您点击或阅�
 
 ---
 
-*LangPlayer v1.6.0 - 让语言学习更高效、更愉悦。*
+*LangPlayer v1.7.0 - 让语言学习更高效、更愉悦。*

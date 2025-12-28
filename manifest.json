@@ -1,7 +1,7 @@
 {
 	"id": "langplayer",
 	"name": "LangPlayer",
-	"version": "1.6.0",
+	"version": "1.7.0",
 	"minAppVersion": "0.15.0",
 	"description": "Advanced media player for language learning with subtitle sync, sentence loop, pronunciation assessment, and vocabulary management.",
 	"author": "LangPlayer Team",

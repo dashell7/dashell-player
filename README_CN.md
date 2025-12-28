@@ -1,6 +1,6 @@
 # LangPlayer (LinguaFlow) - Obsidian 终极语言学习播放器
 
-[![版本](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/dashell7/obsidian-langplayer)
+[![版本](https://img.shields.io/badge/version-1.7.0-blue.svg)](https://github.com/dashell7/obsidian-langplayer)
 [![许可证](https://img.shields.io/badge/license-0--BSD-green.svg)](LICENSE)
 
 LangPlayer 是一款专为 Obsidian 用户打造的沉浸式语言学习工具。它将视频播放器、智能字幕系统和笔记工具无缝集成，助您将任何视频转化为强大的语言学习材料。
@@ -9,7 +9,7 @@ LangPlayer 是一款专为 Obsidian 用户打造的沉浸式语言学习工具�
 
 ---
 
-## ✨ v1.6.0 核心亮点
+## ✨ v1.7.0 核心亮点
 
 ### 🎬 强大的媒体播放器
 - **全格式支持**：MP4, MKV, WebM, MP3, WAV 等主流音视频格式。
