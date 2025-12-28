@@ -259,10 +259,16 @@ export const AutoHeightVirtualScroll = React.forwardRef<any, AutoHeightVirtualSc
 
 	// 暴露滚动方法
 	React.useImperativeHandle(ref, () => ({
-		scrollToIndex: (index: number, behavior: ScrollBehavior = 'smooth') => {
-			const top = itemPositions.positions[index] ?? 0;
+		scrollToIndex: (index: number, options?: { behavior?: ScrollBehavior; offset?: number }) => {
+			const { behavior = 'smooth', offset = 0 } = options || {};
+			const itemTop = itemPositions.positions[index] ?? 0;
+			// 目标滚动位置 = 项目顶部位置 - 期望的偏移量
+			// 例如：如果希望项目在容器中间，offset 应该是 (containerHeight / 2) - (itemHeight / 2)
+			// 这里简单处理，offset 就是项目顶部距离容器顶部的距离
+			const targetScrollTop = Math.max(0, itemTop - offset);
+			
 			containerRef.current?.scrollTo({
-				top,
+				top: targetScrollTop,
 				behavior
 			});
 		},

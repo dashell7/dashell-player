@@ -283,9 +283,25 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
 
     // 智能滚动
     if (useVirtualScroll) {
-      // 虚拟滚动模式：调用组件暴露的 scrollToIndex
+      // 虚拟滚动模式
       if (virtualListRef.current && activeIndex >= 0) {
-        virtualListRef.current.scrollToIndex(activeIndex, 'smooth');
+        const isRightLayout = plugin?.settings.subtitleLayout === 'right';
+        let offset = 0;
+
+        if (isRightLayout) {
+          // 右侧布局：活动字幕在视频中下部 (约 60% 的位置)
+          // offset 是元素距离容器顶部的距离
+          offset = containerHeight * 0.6;
+        } else {
+          // 底部布局：活动字幕在第二行
+          // 预留一行的高度，这里估算为 80px (estimatedItemHeight)
+          offset = 80;
+        }
+
+        virtualListRef.current.scrollToIndex(activeIndex, {
+          behavior: 'smooth',
+          offset
+        });
       }
     } else {
       // 普通模式：手动计算滚动位置
@@ -293,15 +309,16 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
         const container = listRef.current;
         const item = activeItemRef.current;
         
-        const itemHeight = item.offsetHeight;
         const containerHeight = container.clientHeight;
         
         let targetScrollTop = 0;
         const isRightLayout = plugin?.settings.subtitleLayout === 'right';
 
         if (isRightLayout) {
-          targetScrollTop = item.offsetTop - (containerHeight * 0.4);
+          // 右侧布局：活动字幕在视频中下部 (约 60% 的位置)
+          targetScrollTop = item.offsetTop - (containerHeight * 0.6);
         } else {
+          // 底部布局：保持第二行 (显示上一行的顶部)
           const prevItem = item.previousElementSibling as HTMLElement;
           if (prevItem) {
             targetScrollTop = prevItem.offsetTop;
