@@ -851,11 +851,11 @@
 	color: var(--interactive-accent) !important;
 }
 
-/* 标点符号保持原色，不跟随高亮 */
+/* 标点符号跟随父元素颜色 */
 .linguaflow-line-highlight .linguaflow-punctuation,
 .linguaflow-word-highlight .linguaflow-punctuation {
-	color: var(--text-normal) !important;
-	opacity: 0.8;
+	color: inherit !important;
+	opacity: 1;
 }
 
 .linguaflow-exit-loop-btn {

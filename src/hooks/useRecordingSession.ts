@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAudioRecorder } from './useAudioRecorder';
 import { OpenAIService } from '../services/OpenAIService';
 import { SpeechEvaluator, type EvaluationResult } from '../services/SpeechEvaluator';
@@ -38,6 +38,16 @@ export function useRecordingSession(plugin: LinguaFlowPlugin): UseRecordingSessi
 	const [sessionError, setSessionError] = useState<string | null>(null);
 	const [recordingBlobUrl, setRecordingBlobUrl] = useState<string | null>(null);
 	const [targetSubtitle, setTargetSubtitle] = useState<SubtitleCue | null>(null);
+
+	// 内存清理：组件卸载或 URL 更新时清理 Blob URL
+	useEffect(() => {
+		return () => {
+			if (recordingBlobUrl) {
+				console.debug('[useRecordingSession] Revoking Blob URL');
+				URL.revokeObjectURL(recordingBlobUrl);
+			}
+		};
+	}, [recordingBlobUrl]);
 	
 	// 获取 Store 中的当前字幕（如果未指定 target）
 	const activeIndex = useMediaStore(state => state.activeIndex);

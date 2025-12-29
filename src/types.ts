@@ -68,6 +68,8 @@ export type SubtitleFormat = 'srt' | 'vtt' | 'ass' | 'unknown';
 export interface SubtitleConfig {
 	fontSize: number;
 	fontColor: string;
+	translationColor?: string; // 翻译字幕颜色
+	highlightColor?: string; // 高亮颜色
 	backgroundColor: string;
 	position: 'top' | 'center' | 'bottom';
 	

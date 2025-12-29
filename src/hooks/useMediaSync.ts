@@ -51,18 +51,18 @@ export function useMediaSync(
 		}
 	}, [isBlocked]);
 
-	const {
-		setCurrentTime,
-		subtitles,
-		setActiveIndex,
-		setActiveWordIndex,
-		loopEnabled,
-		loopStart,
-		loopEnd,
-		abRepeatEnabled,
-		pointA,
-		pointB,
-	} = useMediaStore();
+	const setCurrentTime = useMediaStore(s => s.setCurrentTime);
+	const setActiveIndex = useMediaStore(s => s.setActiveIndex);
+	const setActiveWordIndex = useMediaStore(s => s.setActiveWordIndex);
+	
+	// 只订阅 effect 需要的配置状态，避免 currentTime 变化导致重渲染
+	const subtitles = useMediaStore(s => s.subtitles);
+	const loopEnabled = useMediaStore(s => s.loopEnabled);
+	const loopStart = useMediaStore(s => s.loopStart);
+	const loopEnd = useMediaStore(s => s.loopEnd);
+	const abRepeatEnabled = useMediaStore(s => s.abRepeatEnabled);
+	const pointA = useMediaStore(s => s.pointA);
+	const pointB = useMediaStore(s => s.pointB);
 	
 	useEffect(() => {
 		if (!enabled || !playerRef.current) {

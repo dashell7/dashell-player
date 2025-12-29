@@ -480,11 +480,16 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 	// 添加全局键盘快捷键支持
 	React.useEffect(() => {
 		const handleKeyDown = (e: KeyboardEvent) => {
+			const target = e.target as HTMLElement;
 			
 			// 如果正在输入，不触发快捷键
-			if (document.activeElement?.tagName === 'INPUT' || 
-				document.activeElement?.tagName === 'TEXTAREA' ||
-				(document.activeElement as HTMLElement)?.isContentEditable) {
+			// 检查 INPUT, TEXTAREA, contentEditable 以及 Obsidian 编辑器特定的类
+			if (target.tagName === 'INPUT' || 
+				target.tagName === 'TEXTAREA' ||
+				target.isContentEditable ||
+				target.classList.contains('cm-content') ||
+				target.closest('.cm-editor') ||
+				target.closest('.markdown-preview-view')) {
 				return;
 			}
 
@@ -561,6 +566,22 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 						}
 						recordingSession.startRecording(cue);
 					}
+				}
+			} else if (e.key.toLowerCase() === 'a') { // Set Point A
+				e.preventDefault();
+				const currentTime = state.currentTime;
+				state.setPointA(currentTime);
+				new Notice(`🅰️ A点已设置: ${currentTime.toFixed(2)}s`);
+			} else if (e.key.toLowerCase() === 'b') { // Set Point B
+				e.preventDefault();
+				const currentTime = state.currentTime;
+				const pointA = state.pointA;
+				if (pointA === null || currentTime <= pointA) {
+					new Notice('⚠️ B点必须在A点之后');
+				} else {
+					state.setPointB(currentTime);
+					state.enableABRepeat();
+					new Notice(`🅱️ B点已设置: ${currentTime.toFixed(2)}s - AB循环已启动`);
 				}
 			} else if (e.key === '[') { // 保留硬编码备用：上一句
 				if (state.activeIndex > 0) {

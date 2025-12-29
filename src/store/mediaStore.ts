@@ -114,6 +114,8 @@ const initialState: MediaState = {
 	subtitleConfig: {
 		fontSize: 16,
 		fontColor: '#FFFFFF',
+		translationColor: '',
+		highlightColor: '',
 		backgroundColor: 'rgba(0, 0, 0, 0.7)',
 		position: 'bottom',
 		showEnglish: true,
@@ -287,22 +289,21 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		if (get().abRepeatEnabled) get().disableABRepeat();
 		if (get().shadowingEnabled) get().disableShadowing();
 		
+		// 获取当前播放状态
+		const { playing } = get();
+
 		// 2. 设置状态
 		set({
 			segmentLoopEnabled: true,
 			segmentLoopTotal: count,
 			segmentLoopCurrent: 0,
 			segmentLoopIndex: index,
-			// 复用 segmentPlayEnd 作为结束点，或者我们需要一个新的 end 状态？
-			// 为了简单，我们复用 segmentPlayEnd，但最好区分清楚。
-			// 这里我们用一个新的逻辑：loopStart/loopEnd 是无限循环用的。
-			// segmentPlayEnd 是单句播放用的。
-			// 我们应该复用 loopStart/loopEnd 吗？
-			// 让我们复用 loopStart/loopEnd 作为循环区间，segmentLoopEnabled 控制是否有次数限制。
+			// 复用 loopStart/loopEnd 作为循环区间
 			loopStart: start,
 			loopEnd: end,
 			currentTime: start,
-			playing: true,
+			// 保持当前的播放状态：如果原来在播则继续播，如果原来暂停则保持暂停（待播放状态）
+			playing: playing,
 		});
 	},
 	

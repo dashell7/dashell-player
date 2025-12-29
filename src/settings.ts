@@ -1,4 +1,5 @@
-import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, TextComponent } from 'obsidian';
+import { ActivationService } from './services/ActivationService';
 import type LinguaFlowPlugin from './main';
 
 /**
@@ -10,6 +11,11 @@ export type SpeechProvider = 'openai' | 'azure' | 'assemblyai' | 'custom';
  * LinguaFlow 插件设置
  */
 export interface LinguaFlowSettings {
+	// 激活码
+	activationCode: string;
+	// 安装日期 (用于试用期计算)
+	installDate: number;
+
 	// 启用/禁用语音转文字
 	enableVoice2Text: boolean;          // 启用语音转文字功能
 	
@@ -40,6 +46,10 @@ export interface LinguaFlowSettings {
 	subtitleFontSize: number;           // 字幕字体大小（px）
 	subtitleFontWeight: string;         // 字幕字重
 	subtitleLineHeight: number;         // 字幕行高
+	subtitleColor: string;              // 字幕颜色
+	subtitleTranslationColor: string;   // 翻译字幕颜色
+	subtitleBackgroundColor: string;    // 字幕背景色
+	subtitleHighlightColor: string;     // 高亮颜色
 	showIndexAndTime: boolean;          // 是否显示字幕编号和时间
 	wordByWordHighlight: boolean;       // 逐字高亮（true）或整行高亮（false）
 	subtitlePanelLocation: 'right' | 'left' | 'tab' | 'split'; // 字幕面板打开位置
@@ -120,6 +130,8 @@ source: {{url}}
  * 默认设置
  */
 export const DEFAULT_SETTINGS: LinguaFlowSettings = {
+	activationCode: '',
+	installDate: 0,
 	enableVoice2Text: true,
 	speechProvider: 'openai',
 	sttApiKey: '',
@@ -137,11 +149,15 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	playerHeight: 400, // 默认播放器高度 400px
 	subtitleWidth: 400, // 默认字幕宽度 400px
 	videoFit: 'cover', // 默认填充模式：填满容器无黑边
-	showInlineSubtitles: false, // 默认不显示内嵌字幕列表（使用独立面板）
+	showInlineSubtitles: true, // 默认显示内嵌字幕列表
 	// 字幕样式设置
 	subtitleFontSize: 15, // 默认字体大小 15px
 	subtitleFontWeight: '500', // 默认字重
 	subtitleLineHeight: 1.6, // 默认行高
+	subtitleColor: '', // 默认跟随主题
+	subtitleTranslationColor: '', // 默认跟随主题
+	subtitleBackgroundColor: '', // 默认无背景
+	subtitleHighlightColor: '', // 默认跟随主题
 	showIndexAndTime: false, // 默认隐藏编号和时间
 	wordByWordHighlight: false, // 默认关闭逐字高亮（整行高亮）
 	subtitlePanelLocation: 'tab', // 默认在新标签页打开（可拖动）
@@ -168,6 +184,66 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	debugMode: false
 };
 
+// 预设主题配置
+const SUBTITLE_THEMES = [
+	{
+		id: 'modern_glass',
+		name: '✨ 现代玻璃',
+		desc: '纯净白字，蓝色高亮',
+		config: {
+			subtitleColor: '#FFFFFF',
+			subtitleBackgroundColor: '', // 无背景
+			subtitleTranslationColor: '#CCCCCC',
+			subtitleHighlightColor: '#4A9EFF',
+			subtitleFontSize: 16,
+			subtitleFontWeight: '500'
+		},
+		previewBg: 'linear-gradient(135deg, #222 0%, #444 100%)' // 模拟深色视频背景
+	},
+	{
+		id: 'netflix_focus',
+		name: '🎬 奈飞经典',
+		desc: '明黄字，沉浸观影',
+		config: {
+			subtitleColor: '#FFD700', // Gold
+			subtitleBackgroundColor: '', // 无背景
+			subtitleTranslationColor: '#AAAAAA',
+			subtitleHighlightColor: '#FFFFFF',
+			subtitleFontSize: 18,
+			subtitleFontWeight: '600'
+		},
+		previewBg: '#000000'
+	},
+	{
+		id: 'soft_study',
+		name: '🌿 护眼学习',
+		desc: '深灰字，墨绿高亮',
+		config: {
+			subtitleColor: '#333333',
+			subtitleBackgroundColor: '', // 无背景
+			subtitleTranslationColor: '#666666',
+			subtitleHighlightColor: '#2E8B57', // SeaGreen
+			subtitleFontSize: 16,
+			subtitleFontWeight: '500'
+		},
+		previewBg: '#F5F5DC' // 模拟浅色背景（如白板视频或文档）
+	},
+	{
+		id: 'cyber_neon',
+		name: '⚡ 赛博霓虹',
+		desc: '青色字，粉红高亮',
+		config: {
+			subtitleColor: '#00FFFF', // Cyan
+			subtitleBackgroundColor: '', // 无背景
+			subtitleTranslationColor: '#008888',
+			subtitleHighlightColor: '#FF00FF', // Magenta
+			subtitleFontSize: 15,
+			subtitleFontWeight: '500'
+		},
+		previewBg: '#111'
+	}
+];
+
 /**
  * LinguaFlow 设置选项卡
  */
@@ -185,10 +261,10 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		containerEl.empty();
 		
 		const timestamp = new Date().toLocaleTimeString();
-		console.log(`[LangPlayer] Settings Displayed at ${timestamp}`);
+		// console.log(`[LangPlayer] Settings Displayed at ${timestamp}`);
 
 		// 标题
-		containerEl.createEl('h2', { text: `LinguaFlow (Build: ${timestamp})` });
+		containerEl.createEl('h2', { text: `LinguaFlow Settings` });
 
 		// 标签页导航
 		const tabsContainer = containerEl.createDiv({ cls: 'linguaflow-tabs' });
@@ -197,7 +273,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			{ id: 'player', name: '播放器' },
 			{ id: 'subtitle', name: '字幕' },
 			{ id: 'integration', name: '集成' },
-			{ id: 'developer', name: '开发者' }
+			{ id: 'license', name: '授权' }
+			// { id: 'developer', name: '开发者' } // 暂时隐藏
 		];
 
 		tabs.forEach(tab => {
@@ -223,6 +300,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			this.displaySubtitleTab(contentContainer);
 		} else if (this.activeTab === 'integration') {
 			this.displayIntegrationTab(contentContainer);
+		} else if (this.activeTab === 'license') {
+			this.displayActivationSection(contentContainer);
 		} else if (this.activeTab === 'developer') {
 			this.displayDeveloperTab(contentContainer);
 		}
@@ -233,13 +312,159 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		// this.displayIntegrationTab(containerEl);
 	}
 
-	// 音频标签页
-	private displayAudioTab(containerEl: HTMLElement): void {
+	// 激活区域 (授权标签页)
+	private displayActivationSection(containerEl: HTMLElement): void {
+		const activationService = ActivationService.getInstance();
+		// 确保服务状态与设置同步
+		if (!activationService.isActivated() && this.plugin.settings.activationCode) {
+			activationService.validateCode(this.plugin.settings.activationCode);
+		}
 
+		const isActivated = activationService.isActivated();
+		const trialStatus = activationService.checkTrialStatus(this.plugin.settings.installDate);
+
+		containerEl.createEl('h3', { text: '软件授权与激活' });
+
+		// ===== 状态卡片 =====
+		let bgColor = 'var(--background-secondary)';
+		let borderColor = 'var(--background-modifier-border)';
+		let statusIcon = '🔒';
+		let statusTitle = '未激活';
+		let statusDesc = '请输入激活码以解锁全部功能。';
+		let statusColor = 'var(--text-normal)';
+
+		if (isActivated) {
+			bgColor = 'rgba(var(--interactive-accent-rgb), 0.1)';
+			borderColor = 'var(--interactive-accent)';
+			statusIcon = '✅';
+			statusTitle = '已激活 Pro 版';
+			statusDesc = '您已获得完整功能的永久使用权。';
+			statusColor = 'var(--interactive-accent)';
+		} else if (!trialStatus.isExpired) {
+			bgColor = 'rgba(255, 165, 0, 0.1)';
+			borderColor = 'var(--text-warning)';
+			statusIcon = '⏳';
+			statusTitle = '试用模式';
+			statusDesc = `剩余试用时间：${trialStatus.daysRemaining} 天。试用期结束后功能将受限。`;
+			statusColor = 'var(--text-warning)';
+		} else {
+			bgColor = 'rgba(255, 0, 0, 0.1)';
+			borderColor = 'var(--text-error)';
+			statusIcon = '⚠️';
+			statusTitle = '试用已过期';
+			statusDesc = '试用期已结束，高级功能已被锁定。请激活以继续使用。';
+			statusColor = 'var(--text-error)';
+		}
+
+		const card = containerEl.createDiv({
+			cls: 'linguaflow-license-card'
+		});
+		
+		card.style.cssText = `
+			background-color: ${bgColor};
+			border: 1px solid ${borderColor};
+			border-radius: 8px;
+			padding: 20px;
+			margin-bottom: 24px;
+			text-align: center;
+		`;
+
+		const iconEl = card.createDiv();
+		iconEl.setText(statusIcon);
+		iconEl.style.fontSize = '48px';
+		iconEl.style.marginBottom = '10px';
+
+		const titleEl = card.createDiv();
+		titleEl.setText(statusTitle);
+		titleEl.style.fontSize = '20px';
+		titleEl.style.fontWeight = 'bold';
+		titleEl.style.marginBottom = '8px';
+		titleEl.style.color = statusColor;
+
+		const descEl = card.createDiv();
+		descEl.setText(statusDesc);
+		descEl.style.fontSize = '14px';
+		descEl.style.opacity = '0.8';
+		descEl.style.marginBottom = '16px';
+
+		// 显示过期时间
+		if (isActivated) {
+			const expiryText = activationService.getExpiryDate(this.plugin.settings.activationCode);
+			if (expiryText) {
+				const expiryEl = card.createDiv();
+				expiryEl.setText(`有效期至: ${expiryText}`);
+				expiryEl.style.fontWeight = '500';
+				expiryEl.style.borderTop = '1px solid var(--background-modifier-border)';
+				expiryEl.style.paddingTop = '10px';
+				expiryEl.style.marginTop = '10px';
+				expiryEl.style.display = 'inline-block';
+				expiryEl.style.width = '80%';
+			}
+		}
+
+		// ===== 激活操作区 =====
+		if (!isActivated) {
+			const actionArea = containerEl.createDiv();
+			new Setting(actionArea)
+				.setName('输入激活码')
+				.setDesc('格式: LP-XXXX-XXXX-XXXX')
+				.addText(text => text
+					.setPlaceholder('LP-...')
+					.setValue(this.plugin.settings.activationCode)
+					.onChange(async (value) => {
+						this.plugin.settings.activationCode = value;
+						await this.plugin.saveSettings();
+					})
+				)
+				.addButton(button => button
+					.setButtonText('立即激活')
+					.setCta()
+					.onClick(async () => {
+						const isValid = activationService.validateCode(this.plugin.settings.activationCode);
+						if (isValid) {
+							new Notice('✅ 激活成功！感谢您的支持。');
+							this.display(); // 刷新界面
+						} else {
+							new Notice('❌ 激活码无效，请检查后重试。');
+						}
+					})
+				);
+		} else {
+			// 已激活状态下显示重置按钮
+			const actionArea = containerEl.createDiv();
+			actionArea.style.textAlign = 'center';
+			actionArea.style.marginTop = '20px';
+			
+			const btn = actionArea.createEl('button', { text: '更换激活码 / 注销' });
+			btn.onclick = () => {
+				// 清除激活状态
+				this.plugin.settings.activationCode = '';
+				this.plugin.saveSettings();
+				activationService.setActivationStatus(false);
+				this.display();
+			};
+		}
+		
+		// 底部版权
+		const footer = containerEl.createDiv();
+		footer.style.marginTop = '40px';
+		footer.style.textAlign = 'center';
+		footer.style.color = 'var(--text-muted)';
+		footer.style.fontSize = '12px';
+		footer.style.display = 'flex';
+		footer.style.flexDirection = 'column';
+		footer.style.gap = '6px';
+		
+		footer.createDiv({ text: 'LangPlayer Pro © 2025' });
+		footer.createDiv({ text: 'By obsidian学英语' });
+		footer.createDiv({ text: '微信：A1802180668' });
+	}
+	private displayAudioTab(containerEl: HTMLElement): void {
 
 		new Setting(containerEl)
 			.setName('启用语音转文字')
-			.setDesc('启用语音录制和转文字功能')
+			.setDesc('')
+			.setTooltip('录音并转写为笔记(需配置 API)')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.enableVoice2Text)
 				.onChange(async (value) => {
@@ -259,7 +484,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('服务提供商')
-			.setDesc('选择用于语音转录的服务')
+			.setDesc('')
+			.setTooltip('选择转录服务。OpenAI: 高精度 (Whisper)。Azure: 企业级。')
 			.addDropdown(dropdown => dropdown
 				.addOption('openai', 'OpenAI (Whisper)')
 				.addOption('azure', 'Azure Speech Services')
@@ -276,20 +502,40 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		const provider = this.plugin.settings.speechProvider;
 
 		// API Key
+		let apiKeyText: TextComponent;
 		new Setting(containerEl)
 			.setName('API Key')
 			.setDesc('')
-			.addText(text => text
-				.setPlaceholder(provider === 'openai' ? 'sk-...' : 'Enter API Key')
-				.setValue(this.plugin.settings.sttApiKey || this.plugin.settings.openaiApiKey)
-				.onChange(async (value) => {
-					this.plugin.settings.sttApiKey = value;
-					// 同步到旧字段以保持兼容性
-					if (provider === 'openai') this.plugin.settings.openaiApiKey = value;
-					if (provider === 'azure') this.plugin.settings.azureSubscriptionKey = value;
-					await this.plugin.saveSettings();
-				})
-			)
+			.setTooltip('仅本地存储,直连服务商')
+			.addText(text => {
+				apiKeyText = text;
+				text
+					.setPlaceholder(provider === 'openai' ? 'sk-...' : 'Enter API Key')
+					.setValue(this.plugin.settings.sttApiKey || this.plugin.settings.openaiApiKey)
+					.onChange(async (value) => {
+						this.plugin.settings.sttApiKey = value;
+						// 同步到旧字段以保持兼容性
+						if (provider === 'openai') this.plugin.settings.openaiApiKey = value;
+						if (provider === 'azure') this.plugin.settings.azureSubscriptionKey = value;
+						await this.plugin.saveSettings();
+					});
+				text.inputEl.type = 'password';
+			})
+			.addExtraButton(btn => {
+				btn.setIcon('eye-off')
+					.setTooltip('显示 API Key')
+					.onClick(() => {
+						if (apiKeyText.inputEl.type === 'password') {
+							apiKeyText.inputEl.type = 'text';
+							btn.setIcon('eye');
+							btn.setTooltip('隐藏 API Key');
+						} else {
+							apiKeyText.inputEl.type = 'password';
+							btn.setIcon('eye-off');
+							btn.setTooltip('显示 API Key');
+						}
+					});
+			})
 			.addButton(button => button
 				.setButtonText('Test Connection')
 				.setTooltip('测试 API 连接')
@@ -314,6 +560,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.setName('Azure Region')
 				.setDesc('')
+				.setTooltip('选择 Azure 服务区域')
 				.addDropdown(dropdown => dropdown
 					.addOption('eastus', 'East US')
 					.addOption('eastus2', 'East US 2')
@@ -351,7 +598,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		} else if (provider === 'custom') {
 			new Setting(containerEl)
 				.setName('API Base URL')
-				.setDesc('自定义 API 端点（OpenAI 兼容接口）')
+				.setDesc('')
+				.setTooltip('自定义 API 端点（OpenAI 兼容接口）')
 				.addText(text => text
 					.setPlaceholder('https://your-api.com/v1/audio/transcriptions')
 					.setValue(this.plugin.settings.sttBaseUrl)
@@ -362,10 +610,10 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				);
 		}
 
-		// Language
 		new Setting(containerEl)
 			.setName('语言')
-			.setDesc('留空为自动检测')
+			.setDesc('')
+			.setTooltip('目标语言代码,如 en, zh。留空自动检测。')
 			.addText(text => text
 				.setPlaceholder('自动检测')
 				.setValue(this.plugin.settings.sttLanguage)
@@ -375,26 +623,24 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				})
 			);
 
-		// Model (OpenAI 和 Custom)
-		if (provider === 'openai' || provider === 'custom') {
-			new Setting(containerEl)
-				.setName('模型')
-				.setDesc('')
-				.addText(text => text
-					.setPlaceholder('whisper-1')
-					.setValue(this.plugin.settings.sttModel)
-					.onChange(async (value) => {
-						this.plugin.settings.sttModel = value;
-						await this.plugin.saveSettings();
-					})
-				);
-		}
-
+		new Setting(containerEl)
+			.setName('模型')
+			.setDesc('')
+			.setTooltip('AI 模型名称,默认为 whisper-1')
+			.addText(text => text
+				.setPlaceholder('whisper-1')
+				.setValue(this.plugin.settings.sttModel)
+				.onChange(async (value) => {
+					this.plugin.settings.sttModel = value;
+					await this.plugin.saveSettings();
+				})
+			);
 
 		// ===== 音频文件格式 =====
 		new Setting(containerEl)
 			.setName('录音文件格式')
 			.setDesc('')
+			.setTooltip('录音格式。WebM: 体积小 (推荐)。WAV: 无损。')
 			.addDropdown(dropdown => dropdown
 				.addOption('wav', 'WAV')
 				.addOption('webm', 'WebM')
@@ -406,10 +652,10 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				})
 			);
 
-
 		new Setting(containerEl)
 			.setName('保存录音文件')
 			.setDesc('')
+			.setTooltip('开启则保留文件。关闭则仅临时转写。')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.saveAudio)
 				.onChange(async (value) => {
@@ -423,6 +669,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			new Setting(containerEl)
 				.setName('保存文件夹')
 				.setDesc('')
+				.setTooltip('录音文件保存的文件夹路径')
 				.addText(text => text
 					.setPlaceholder('Recordings')
 					.setValue(this.plugin.settings.audioFolder)
@@ -436,6 +683,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('只录音不转录')
 			.setDesc('')
+			.setTooltip('仅作为录音机,不消耗 API')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.recordOnlyMode)
 				.onChange(async (value) => {
@@ -451,6 +699,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('单句循环次数')
 			.setDesc('')
+			.setTooltip('每句字幕重复播放的遍数')
 			.addDropdown(dropdown => dropdown
 				.addOption('1', '1 次')
 				.addOption('2', '2 次')
@@ -470,6 +719,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('自动播放下一句')
 			.setDesc('')
+			.setTooltip('开启则连续播放，关闭则暂停等待')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.autoPlayNext)
 				.onChange(async (value) => {
@@ -482,6 +732,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('视频填充模式')
 			.setDesc('')
+			.setTooltip('视频画面填充。Cover: 填满。Contain: 完整。')
 			.addDropdown(dropdown => dropdown
 				.addOption('contain', 'Contain')
 				.addOption('cover', 'Cover')
@@ -500,6 +751,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('显示内嵌字幕列表')
 			.setDesc('')
+			.setTooltip('在播放器下方显示。建议关闭，使用侧边栏。')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.showInlineSubtitles)
 				.onChange(async (value) => {
@@ -517,10 +769,123 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 
 	// 字幕标签页
 	private displaySubtitleTab(containerEl: HTMLElement): void {
+		containerEl.createEl('h3', { text: '🎨 主题预设 (一键应用)' });
+		containerEl.createEl('p', { text: '点击下方主题可快速应用配色方案，之后可继续手动微调。', cls: 'setting-item-description' });
+
+		const themeContainer = containerEl.createDiv();
+		themeContainer.style.display = 'flex';
+		themeContainer.style.gap = '10px';
+		themeContainer.style.marginBottom = '18px';
+
+		SUBTITLE_THEMES.forEach(theme => {
+			const isActive = 
+				this.plugin.settings.subtitleColor === theme.config.subtitleColor &&
+				this.plugin.settings.subtitleBackgroundColor === theme.config.subtitleBackgroundColor &&
+				this.plugin.settings.subtitleTranslationColor === theme.config.subtitleTranslationColor &&
+				this.plugin.settings.subtitleHighlightColor === theme.config.subtitleHighlightColor;
+
+			const card = themeContainer.createDiv();
+			card.style.cssText = `
+				flex: 1;
+				min-width: 70px;
+				border: 1px solid ${isActive ? 'var(--interactive-accent)' : 'var(--background-modifier-border)'};
+				border-radius: 6px;
+				overflow: hidden;
+				cursor: pointer;
+				transition: all 0.2s ease;
+				background: var(--background-primary);
+				display: flex;
+				flex-direction: column;
+				${isActive ? 'box-shadow: 0 0 0 1px var(--interactive-accent);' : ''}
+			`;
+			
+			// 添加鼠标悬停提示显示完整描述
+			card.title = `${theme.name}\n${theme.desc}`;
+
+			// Visual Preview Area (Compact)
+			const previewArea = card.createDiv();
+			previewArea.style.cssText = `
+				height: 36px;
+				width: 100%;
+				background: ${theme.previewBg};
+				display: flex;
+				align-items: center;
+				justify-content: center;
+			`;
+
+			// Simple Preview Text
+			const mainText = previewArea.createDiv();
+			mainText.innerText = 'Aa';
+			mainText.style.fontSize = '14px';
+			mainText.style.fontWeight = 'bold';
+			mainText.style.color = theme.config.subtitleColor;
+
+			// Info Area (Compact)
+			const info = card.createDiv();
+			info.style.padding = '6px 4px';
+			info.style.borderTop = '1px solid var(--background-modifier-border)';
+			info.style.textAlign = 'center';
+			
+			if (isActive) {
+				info.style.backgroundColor = 'rgba(var(--interactive-accent-rgb), 0.1)';
+			}
+
+			const name = info.createDiv();
+			name.innerText = theme.name;
+			name.style.fontSize = '12px';
+			name.style.color = isActive ? 'var(--interactive-accent)' : 'var(--text-normal)';
+			name.style.fontWeight = isActive ? 'bold' : 'normal';
+			name.style.whiteSpace = 'nowrap';
+			name.style.overflow = 'hidden';
+			name.style.textOverflow = 'ellipsis';
+
+			// Hover effect
+			card.onmouseenter = () => {
+				if (!isActive) {
+					card.style.borderColor = 'var(--interactive-accent)';
+					card.style.transform = 'translateY(-1px)';
+				}
+			};
+			card.onmouseleave = () => {
+				if (!isActive) {
+					card.style.borderColor = 'var(--background-modifier-border)';
+					card.style.transform = 'none';
+				}
+			};
+
+			// Click Handler
+			card.onclick = async () => {
+				// Apply Settings
+				this.plugin.settings.subtitleColor = theme.config.subtitleColor;
+				this.plugin.settings.subtitleBackgroundColor = theme.config.subtitleBackgroundColor;
+				this.plugin.settings.subtitleTranslationColor = theme.config.subtitleTranslationColor;
+				this.plugin.settings.subtitleHighlightColor = theme.config.subtitleHighlightColor;
+				this.plugin.settings.subtitleFontSize = theme.config.subtitleFontSize;
+				this.plugin.settings.subtitleFontWeight = theme.config.subtitleFontWeight;
+
+				await this.plugin.saveSettings();
+				this.updateSubtitleStyles();
+
+				// Sync to Store
+				const { useMediaStore } = require('./store/mediaStore');
+				useMediaStore.getState().updateSubtitleConfig({
+					fontColor: theme.config.subtitleColor,
+					backgroundColor: theme.config.subtitleBackgroundColor,
+					translationColor: theme.config.subtitleTranslationColor,
+					highlightColor: theme.config.subtitleHighlightColor
+				});
+
+				new Notice(`已应用主题: ${theme.name}`);
+				this.display(); // Refresh UI to show new values in pickers
+			};
+		});
+
+		containerEl.createEl('hr');
 
 		new Setting(containerEl)
 			.setName('字体大小')
 			.setDesc('')
+			.setTooltip('字幕大小 (px)')
 			.addSlider(slider => slider
 				.setLimits(12, 24, 1)
 				.setValue(this.plugin.settings.subtitleFontSize)
@@ -535,6 +900,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('字重')
 			.setDesc('')
+			.setTooltip('字体粗细。400 (常规) | 700 (粗体)')
 			.addDropdown(dropdown => dropdown
 				.addOption('400', '400')
 				.addOption('500', '500')
@@ -551,6 +917,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('行高')
 			.setDesc('')
+			.setTooltip('行间距。数值越大越宽。')
 			.addSlider(slider => slider
 				.setLimits(1.0, 2.5, 0.1)
 				.setValue(this.plugin.settings.subtitleLineHeight)
@@ -563,8 +930,117 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
+			.setName('字体颜色')
+			.setDesc('')
+			.setTooltip('设置字幕文字颜色')
+			.addColorPicker(color => color
+				.setValue(this.plugin.settings.subtitleColor || '#000000')
+				.onChange(async (value) => {
+					this.plugin.settings.subtitleColor = value;
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ fontColor: value });
+				})
+			)
+			.addExtraButton(btn => btn
+				.setIcon('rotate-ccw')
+				.setTooltip('重置为主题默认')
+				.onClick(async () => {
+					this.plugin.settings.subtitleColor = '';
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ fontColor: '' });
+					this.display();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('翻译字幕颜色')
+			.setDesc('')
+			.setTooltip('设置翻译字幕(如中文)的颜色')
+			.addColorPicker(color => color
+				.setValue(this.plugin.settings.subtitleTranslationColor || '#888888')
+				.onChange(async (value) => {
+					this.plugin.settings.subtitleTranslationColor = value;
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ translationColor: value });
+				})
+			)
+			.addExtraButton(btn => btn
+				.setIcon('rotate-ccw')
+				.setTooltip('重置为默认')
+				.onClick(async () => {
+					this.plugin.settings.subtitleTranslationColor = '';
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ translationColor: '' });
+					this.display();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('高亮颜色')
+			.setDesc('')
+			.setTooltip('设置正在播放的字幕高亮颜色')
+			.addColorPicker(color => color
+				.setValue(this.plugin.settings.subtitleHighlightColor || '#ff0000')
+				.onChange(async (value) => {
+					this.plugin.settings.subtitleHighlightColor = value;
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ highlightColor: value });
+				})
+			)
+			.addExtraButton(btn => btn
+				.setIcon('rotate-ccw')
+				.setTooltip('重置为默认 (主题色)')
+				.onClick(async () => {
+					this.plugin.settings.subtitleHighlightColor = '';
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ highlightColor: '' });
+					this.display();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName('背景颜色')
+			.setDesc('')
+			.setTooltip('设置字幕背景颜色')
+			.addColorPicker(color => color
+				.setValue(this.plugin.settings.subtitleBackgroundColor || '#000000')
+				.onChange(async (value) => {
+					this.plugin.settings.subtitleBackgroundColor = value;
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ backgroundColor: value });
+				})
+			)
+			.addExtraButton(btn => btn
+				.setIcon('rotate-ccw')
+				.setTooltip('重置为默认 (无背景)')
+				.onClick(async () => {
+					this.plugin.settings.subtitleBackgroundColor = '';
+					await this.plugin.saveSettings();
+					this.updateSubtitleStyles();
+					const { useMediaStore } = require('./store/mediaStore');
+					useMediaStore.getState().updateSubtitleConfig({ backgroundColor: '' });
+					this.display();
+				})
+			);
+
+		new Setting(containerEl)
 			.setName('显示编号和时间')
 			.setDesc('')
+			.setTooltip('显示序号和时间。例：[01] 00:05')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.showIndexAndTime)
 				.onChange(async (value) => {
@@ -578,7 +1054,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('逐字高亮')
-			.setDesc('启用后字幕将逐字高亮显示；关闭后整行高亮')
+			.setDesc('')
+			.setTooltip('卡拉OK效果 (需详细时间戳)')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.wordByWordHighlight ?? true)
 				.onChange(async (value) => {
@@ -598,7 +1075,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		
 		new Setting(containerEl)
 			.setName('自动打开录入面板')
-			.setDesc('查词时是否自动打开 Language Learner 面板')
+			.setDesc('')
+			.setTooltip('查词时展开侧边栏，方便制卡')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.openLanguageLearnerPanel)
 				.onChange(async (value) => {
@@ -609,7 +1087,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('查词自动复制到剪切板')
-			.setDesc('点击字幕单词查词时，自动复制单词到剪切板')
+			.setDesc('')
+			.setTooltip('查词时复制单词到剪贴板')
 			.addToggle(toggle => toggle
 				.setValue(this.plugin.settings.autoCopyWordOnLookup)
 				.onChange(async (value) => {
@@ -623,7 +1102,8 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		// 笔记模板设置
 		const setting = new Setting(containerEl)
 			.setName('笔记模板')
-			.setDesc('自定义笔记模板')
+			.setDesc('')
+			.setTooltip('自定义笔记模板')
 			.addTextArea(text => {
 				text
 					.setValue(this.plugin.settings.noteTemplate || DEFAULT_NOTE_TEMPLATE)
@@ -806,6 +1286,18 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				font-size: ${settings.subtitleFontSize}px;
 				font-weight: ${settings.subtitleFontWeight};
 				line-height: ${settings.subtitleLineHeight};
+				${settings.subtitleColor ? `color: ${settings.subtitleColor};` : ''}
+				${settings.subtitleBackgroundColor ? `background-color: ${settings.subtitleBackgroundColor};` : ''}
+			}
+
+			.linguaflow-subtitle-item-zh {
+				${settings.subtitleTranslationColor ? `color: ${settings.subtitleTranslationColor} !important;` : ''}
+			}
+
+			.linguaflow-word-highlight,
+			.linguaflow-line-highlight,
+			.linguaflow-line-highlight .linguaflow-clickable-word {
+				${settings.subtitleHighlightColor ? `color: ${settings.subtitleHighlightColor} !important;` : ''}
 			}
 		`;
 	}

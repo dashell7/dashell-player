@@ -1,3 +1,11 @@
+/*
+ * LangPlayer
+ * Copyright (c) 2025 LinguaFlow Team. All rights reserved.
+ * 
+ * This software is licensed under the terms of the EULA found in the LICENSE file.
+ * Unauthorized copying, modification, or distribution is strictly prohibited.
+ */
+
 import { Plugin, WorkspaceLeaf, Notice, TFile, MarkdownView } from 'obsidian';
 import { LinguaFlowView } from './views/LinguaFlowView';
 import { SubtitlePanelView, SUBTITLE_PANEL_VIEW_TYPE } from './views/SubtitlePanelView';
@@ -9,6 +17,7 @@ import { MediaInputModal } from './modals/MediaInputModal';
 import { SubtitleLoader } from './services/SubtitleLoader';
 import { TextProcessor } from './components/OptimizedWord';
 import * as React from 'react';
+import { ActivationService } from './services/ActivationService';
 import { logger, LogLevel } from './utils/logger';
 
 /**
@@ -25,6 +34,32 @@ export default class LinguaFlowPlugin extends Plugin {
 
 		// 加载设置
 		await this.loadSettings();
+
+		// [试用期初始化] 如果是首次运行，记录安装时间
+		if (!this.settings.installDate || this.settings.installDate <= 0) {
+			this.settings.installDate = Date.now();
+			await this.saveSettings();
+			console.log('[LangPlayer] First run detected. Trial started.');
+		}
+
+		// [激活检查] 验证激活码
+		const activationService = ActivationService.getInstance();
+		const isActivated = activationService.validateCode(this.settings.activationCode);
+		
+		if (!isActivated) {
+			// 检查试用状态
+			const trialStatus = activationService.checkTrialStatus(this.settings.installDate);
+			
+			if (trialStatus.isExpired) {
+				// 已过期 -> 基础模式 (不拦截加载，但提示受限)
+				console.log('[LangPlayer] Trial expired. Running in Basic Mode.');
+				new Notice('⚠️ LinguaFlow 试用期已结束 (基础模式)。\n高级功能已锁定。', 5000);
+			} else {
+				// 试用期内 -> 允许使用
+				console.log(`[LangPlayer] Trial active. ${trialStatus.daysRemaining} days remaining.`);
+				new Notice(`⏳ LinguaFlow 试用模式 (剩余 ${trialStatus.daysRemaining} 天)`, 10000);
+			}
+		}
 
 		// 初始化日志系统
 		if (this.settings.debugMode) {
@@ -171,7 +206,7 @@ export default class LinguaFlowPlugin extends Plugin {
 		this.addCommand({
 			id: 'set-point-a',
 			name: 'Set point A (AB repeat)',
-			hotkeys: [{ modifiers: [], key: 'A' }],
+			// hotkeys: [{ modifiers: [], key: 'A' }], // Removed to avoid global conflict
 			callback: () => {
 				const currentTime = useMediaStore.getState().currentTime;
 				useMediaStore.getState().setPointA(currentTime);
@@ -183,7 +218,7 @@ export default class LinguaFlowPlugin extends Plugin {
 		this.addCommand({
 			id: 'set-point-b',
 			name: 'Set point B (AB repeat)',
-			hotkeys: [{ modifiers: [], key: 'B' }],
+			// hotkeys: [{ modifiers: [], key: 'B' }], // Removed to avoid global conflict
 			callback: () => {
 				const currentTime = useMediaStore.getState().currentTime;
 				const pointA = useMediaStore.getState().pointA;
@@ -203,8 +238,14 @@ export default class LinguaFlowPlugin extends Plugin {
 		this.addCommand({
 			id: 'toggle-ab-repeat',
 			name: 'Toggle AB repeat',
-			hotkeys: [{ modifiers: [], key: 'R' }],
+			// hotkeys: [{ modifiers: [], key: 'R' }], // Removed to avoid conflict with Record (r)
 			callback: () => {
+				// [Pro Check] 仅限 Pro 用户
+				if (!ActivationService.getInstance().isProAccess(this.settings.installDate)) {
+					new Notice('🔒 AB循环是 Pro 功能。请激活插件以解锁。');
+					return;
+				}
+
 				const store = useMediaStore.getState();
 				if (store.abRepeatEnabled) {
 					store.disableABRepeat();
@@ -325,6 +366,12 @@ export default class LinguaFlowPlugin extends Plugin {
 		const store = useMediaStore.getState();
 		store.setVideoFit(this.settings.videoFit);
 		store.setShowInlineSubtitles(this.settings.showInlineSubtitles);
+		store.updateSubtitleConfig({
+			fontColor: this.settings.subtitleColor,
+			translationColor: this.settings.subtitleTranslationColor,
+			highlightColor: this.settings.subtitleHighlightColor,
+			backgroundColor: this.settings.subtitleBackgroundColor
+		});
 	}
 
 	/**

@@ -235,7 +235,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 							
 							menu.showAtMouseEvent(e.nativeEvent);
 						}}
-						title={!currentCue ? "请先选择字幕以启用循环" : `循环播放 ${String(safeLoopCount)} 次 (右键设置次数)`}
+						title={!currentCue ? "请先选择字幕以启用循环" : `循环播放 ${String(safeLoopCount)} 次 (双击字幕)`}
 						disabled={!currentCue}
 					>
 						<span className="linguaflow-control-icon">{Icons.RepeatOne}</span>
@@ -322,7 +322,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 
 						menu.showAtMouseEvent(e.nativeEvent);
 					}}
-					title="点击打开 AB 复读菜单"
+					title="AB复读 (快捷键: A/B 设置端点)"
 				>
 					<span className="linguaflow-control-icon">{Icons.ABRepeat}</span>
 				</button>
@@ -336,7 +336,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					title={
 						shadowingEnabled 
 							? "影子跟读模式下不可录音" 
-							: (!currentCue ? "请先选择字幕以启用录音" : (isRecording ? '停止录音' : '跟读录音'))
+							: (!currentCue ? "请先选择字幕以启用录音" : (isRecording ? '停止录音 (R)' : '跟读录音 (R)'))
 					}
 					disabled={!currentCue || shadowingEnabled}
 				>
