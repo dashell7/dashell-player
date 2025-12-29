@@ -264,7 +264,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		// console.log(`[LangPlayer] Settings Displayed at ${timestamp}`);
 
 		// 标题
-		containerEl.createEl('h2', { text: `LinguaFlow Settings` });
+		containerEl.createEl('h2', { text: `LangPlayer Settings` });
 
 		// 标签页导航
 		const tabsContainer = containerEl.createDiv({ cls: 'linguaflow-tabs' });

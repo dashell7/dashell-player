@@ -353,23 +353,39 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 					onClick={(e) => {
 						const menu = new Menu();
 						
+						// 1. 智能适应 (推荐)
 						menu.addItem((item: MenuItem) => {
 							item
-								.setTitle('开启 (1.0倍时长)')
+								.setTitle('智能适应 (推荐)')
+								.setChecked(shadowingEnabled && shadowingPauseFactor === 1.1)
+								.onClick(() => {
+									setShadowingPauseFactor(1.1);
+									if (!shadowingEnabled) enableShadowing();
+									new (require('obsidian')).Notice('已切换至智能适应模式：时长 + 1秒缓冲');
+								});
+						});
+
+						// 2. 紧凑模式
+						menu.addItem((item: MenuItem) => {
+							item
+								.setTitle('紧凑模式 (1.0x)')
 								.setChecked(shadowingEnabled && shadowingPauseFactor === 1.0)
 								.onClick(() => {
 									setShadowingPauseFactor(1.0);
 									if (!shadowingEnabled) enableShadowing();
+									new (require('obsidian')).Notice('已切换至紧凑模式');
 								});
 						});
 
+						// 3. 宽松模式
 						menu.addItem((item: MenuItem) => {
 							item
-								.setTitle('开启 (1.5倍时长)')
+								.setTitle('宽松模式 (1.5x)')
 								.setChecked(shadowingEnabled && shadowingPauseFactor === 1.5)
 								.onClick(() => {
 									setShadowingPauseFactor(1.5);
 									if (!shadowingEnabled) enableShadowing();
+									new (require('obsidian')).Notice('已切换至宽松模式');
 								});
 						});
 
@@ -386,7 +402,7 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 						
 						menu.showAtMouseEvent(e.nativeEvent);
 					}}
-					title={!currentCue ? "请先选择字幕以启用影子跟读" : (shadowingEnabled ? `影子跟读已开启 (${shadowingPauseFactor}倍时长)` : '点击选择跟读模式')}
+					title={!currentCue ? "请先选择字幕以启用影子跟读" : (shadowingEnabled ? `影子跟读已开启` : '点击选择跟读模式')}
 					disabled={!currentCue}
 				>
 					<span className="linguaflow-control-icon">{Icons.User}</span>

@@ -170,9 +170,24 @@ export function useMediaSync(
 						isShadowingWaitingRef.current = true;
 						lastShadowingSubtitleIndexRef.current = activeIndex;
 						
-						// 动态计算暂停时长：句子时长 * 倍率，且不小于 1.5秒
+						// 动态计算暂停时长 (科学设置)
 						const sentenceDuration = currentCue.end - currentCue.start;
-						const dynamicPauseDuration = Math.max(1500, sentenceDuration * 1000 * shadowingPauseFactor);
+						let dynamicPauseDuration = 0;
+
+						// 检查浮点数相等 (1.1 为智能适应模式)
+						if (Math.abs(shadowingPauseFactor - 1.1) < 0.01) {
+							// 🧠 智能适应模式: 1.1倍语速 + 1秒认知反应缓冲
+							// 理由: 学习者语速稍慢(1.1)，大脑切换需要反应时间(+1s)
+							dynamicPauseDuration = (sentenceDuration * 1000 * 1.1) + 1000;
+						} else if (shadowingPauseFactor <= 1.0) {
+							// ⚡ 紧凑模式: 1.0倍时长 (最少1秒)
+							// 理由: 适合高阶训练，强迫语速同步
+							dynamicPauseDuration = Math.max(1000, sentenceDuration * 1000 * shadowingPauseFactor);
+						} else {
+							// ☕ 宽松模式: N倍时长 (最少1.5秒)
+							// 理由: 适合初学者，给予充足时间
+							dynamicPauseDuration = Math.max(1500, sentenceDuration * 1000 * shadowingPauseFactor);
+						}
 						
 						console.log(`[useMediaSync] 🗣️ Shadowing: Waiting ${dynamicPauseDuration.toFixed(0)}ms (Sentence: ${sentenceDuration.toFixed(1)}s, Factor: ${shadowingPauseFactor})`);
 						

@@ -53,11 +53,11 @@ export default class LinguaFlowPlugin extends Plugin {
 			if (trialStatus.isExpired) {
 				// 已过期 -> 基础模式 (不拦截加载，但提示受限)
 				console.log('[LangPlayer] Trial expired. Running in Basic Mode.');
-				new Notice('⚠️ LinguaFlow 试用期已结束 (基础模式)。\n高级功能已锁定。', 5000);
+				new Notice('⚠️ LangPlayer 试用期已结束 (基础模式)。\n高级功能已锁定。', 5000);
 			} else {
 				// 试用期内 -> 允许使用
 				console.log(`[LangPlayer] Trial active. ${trialStatus.daysRemaining} days remaining.`);
-				new Notice(`⏳ LinguaFlow 试用模式 (剩余 ${trialStatus.daysRemaining} 天)`, 10000);
+				new Notice(`⏳ LangPlayer 试用模式 (剩余 ${trialStatus.daysRemaining} 天)`, 10000);
 			}
 		}
 
@@ -279,8 +279,7 @@ export default class LinguaFlowPlugin extends Plugin {
 				if (file instanceof TFile && this.isMediaFile(file)) {
 					menu.addItem((item) => {
 						item
-							.setTitle('Play in LinguaFlow')
-							.setIcon('play-circle')
+							.setTitle('Play in LangPlayer')
 							.onClick(() => {
 								this.openFile(file);
 							});
@@ -328,7 +327,6 @@ export default class LinguaFlowPlugin extends Plugin {
 					menu.addItem((item) => {
 						item
 							.setTitle('Play in LangPlayer')
-							.setIcon('play-circle')
 							.onClick(() => {
 								this.openUrl(url);
 							});
@@ -343,11 +341,11 @@ export default class LinguaFlowPlugin extends Plugin {
 		// 初始化字幕样式
 		this.initSubtitleStyles();
 
-		console.log('[LinguaFlow] Plugin loaded');
+		console.log('[LangPlayer] Plugin loaded');
 	}
 
 	onunload() {
-		console.log('[LinguaFlow] Unloading plugin');
+		console.log('[LangPlayer] Unloading plugin');
 		
 		// 关闭所有 LinguaFlow 视图
 		this.app.workspace.detachLeavesOfType(LINGUA_FLOW_VIEW);
@@ -599,7 +597,10 @@ export default class LinguaFlowPlugin extends Plugin {
 		if (source.type === 'local' && source.file) {
 			sourceFile = source.file;
 			if (sourceFile.parent) {
-				notePath = `${sourceFile.parent.path}/${noteName}`;
+				// 修复：如果父目录是根目录 ('/')，不要添加额外的斜杠
+				notePath = sourceFile.parent.path === '/' 
+					? noteName 
+					: `${sourceFile.parent.path}/${noteName}`;
 			}
 		}
 
@@ -638,7 +639,8 @@ export default class LinguaFlowPlugin extends Plugin {
 				new Notice('✅ 已创建学习笔记');
 			} catch (error) {
 				console.error('Failed to create study note:', error);
-				new Notice('❌ 创建笔记失败');
+				const msg = error instanceof Error ? error.message : String(error);
+				new Notice(`❌ 创建笔记失败: ${msg}`);
 				return;
 			}
 		}
