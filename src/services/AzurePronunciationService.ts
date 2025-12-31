@@ -5,7 +5,7 @@
  * 提供专业的多维度发音评分
  */
 
-import { requestUrl } from 'obsidian';
+import { requestUrl, arrayBufferToBase64 } from 'obsidian';
 
 /**
  * Azure 发音评估结果
@@ -257,9 +257,10 @@ export class AzurePronunciationService {
 
 			const configJson = JSON.stringify(pronunciationConfig);
 			
-			// 关键修复：使用 Buffer 进行 Base64 编码（在 Obsidian/Node 环境中更可靠）
-			// 之前的 btoa 方法可能在某些情况下有问题，导致 Header 无效被 Azure 忽略
-			const configBase64 = Buffer.from(configJson, 'utf-8').toString('base64');
+			// 关键修复：使用 Obsidian API 进行 Base64 编码（兼容移动端）
+			// 移动端没有 Node.js Buffer 对象，必须使用 TextEncoder + arrayBufferToBase64
+			const configBytes = new TextEncoder().encode(configJson);
+			const configBase64 = arrayBufferToBase64(configBytes.buffer);
 
 			// 使用 WAV PCM 格式
 			const contentType = 'audio/wav; codecs=audio/pcm; samplerate=16000';
