@@ -154,15 +154,45 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
 			console.log('[useAudioRecorder] Permission granted');
 			streamRef.current = stream;
 
-			// 创建 MediaRecorder
-			const mimeType = MediaRecorder.isTypeSupported('audio/webm') 
-				? 'audio/webm'
-				: 'audio/mp4';
+			// 检测浏览器类型
+			const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+			console.log('[useAudioRecorder] Browser detection:', { isSafari, userAgent: navigator.userAgent });
+
+			// 选择 MIME 类型
+			let mimeType = '';
+			if (isSafari) {
+				// Safari/iOS 优先使用 mp4
+				if (MediaRecorder.isTypeSupported('audio/mp4')) {
+					mimeType = 'audio/mp4';
+				} else if (MediaRecorder.isTypeSupported('audio/aac')) {
+					mimeType = 'audio/aac';
+				} else if (MediaRecorder.isTypeSupported('audio/webm')) {
+					mimeType = 'audio/webm'; // 只有当 mp4 不支持时才尝试 webm
+				} else {
+					console.warn('[useAudioRecorder] No supported MIME type found for Safari, trying default');
+					mimeType = ''; // 让浏览器使用默认值
+				}
+			} else {
+				// Chrome/Firefox 优先使用 webm
+				if (MediaRecorder.isTypeSupported('audio/webm')) {
+					mimeType = 'audio/webm';
+				} else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+					mimeType = 'audio/webm;codecs=opus';
+				} else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+					mimeType = 'audio/mp4';
+				}
+			}
+
+			console.log('[useAudioRecorder] Selected MIME type:', mimeType || 'default');
 			
-			const mediaRecorder = new MediaRecorder(stream, {
-				mimeType,
+			const options: MediaRecorderOptions = {
 				audioBitsPerSecond: 128000,
-			});
+			};
+			if (mimeType) {
+				options.mimeType = mimeType;
+			}
+
+			const mediaRecorder = new MediaRecorder(stream, options);
 
 			mediaRecorderRef.current = mediaRecorder;
 			audioChunksRef.current = [];

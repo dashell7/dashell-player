@@ -172,9 +172,10 @@ LangPlayer seamlessly integrates with [obsidian-language-learner](https://github
 ## 📝 Supported Formats
 
 ### Media Files
-- Video: MP4, WebM, OGV
-- Audio: MP3, WAV, OGG, M4A, FLAC, AAC
-- Remote: Any accessible media URL
+- **Video**: **MP4** (H.264/AAC Recommended), WebM, OGV
+  - ⚠️ **Note**: **MKV** files with AC3/DTS audio are **NOT supported** (video plays without sound) due to underlying Chromium limitations. Please convert audio to **AAC** for best compatibility.
+- **Audio**: MP3, WAV, OGG, M4A, FLAC, AAC
+- **Remote**: Any accessible media URL
 
 ### Subtitle Files
 - SRT (SubRip)
