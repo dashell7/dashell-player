@@ -1254,8 +1254,9 @@
    移动端/触屏设备适配
    ========================================================================== */
 @media (pointer: coarse), (max-width: 768px) {
-	/* 1. 增大触摸目标尺寸 */
-	.linguaflow-control-btn {
+	/* 1. 增大触摸目标尺寸，并统一播放按钮大小 */
+	.linguaflow-control-btn,
+	.linguaflow-control-btn-playpause {
 		width: 38px !important;
 		height: 38px !important;
 		min-width: 38px !important;
@@ -1265,16 +1266,11 @@
 		width: 20px !important;
 		height: 20px !important;
 	}
-	
-	.linguaflow-control-btn-playpause {
-		width: 44px !important;
-		height: 44px !important;
-	}
 
-	/* 2. 控制栏改为横向滚动，节省垂直空间 */
+	/* 2. 控制栏改为横向滚动，并尝试居中 */
 	.linguaflow-subtitle-controls {
 		flex-wrap: nowrap;
-		justify-content: flex-start;
+		justify-content: center; /* 居中显示 */
 		overflow-x: auto;
 		padding: 8px 12px;
 		gap: 12px;

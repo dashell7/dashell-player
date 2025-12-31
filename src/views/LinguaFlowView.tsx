@@ -272,6 +272,7 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 	// 移动端检测和自适应高度
 	const [isMobile, setIsMobile] = React.useState(isMobileDevice());
 	const [isSmallScreen, setIsSmallScreen] = React.useState(isPhone());
+	const [windowWidth, setWindowWidth] = React.useState(window.innerWidth);
 	
 	// 根据设备类型设置播放器高度
 	const [playerHeight, setPlayerHeight] = React.useState<number>(() => {
@@ -291,6 +292,7 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		const cleanup = onScreenSizeChange(() => {
 			setIsMobile(isMobileDevice());
 			setIsSmallScreen(isPhone());
+			setWindowWidth(window.innerWidth);
 			// 根据新的屏幕尺寸调整播放器高度
 			const defaultHeight = (plugin.settings as any).playerHeight ?? 400;
 			setPlayerHeight(getPlayerHeight(defaultHeight));
@@ -298,6 +300,17 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		
 		return cleanup;
 	}, [plugin.settings]);
+	
+	// 移动端强制底部布局 (仅当屏幕较窄时)
+	React.useEffect(() => {
+		// 如果是窄屏设备（< 768px），建议使用底部布局
+		if (windowWidth < 768 && plugin.settings.subtitleLayout !== 'bottom') {
+			const recommendedLayout = getRecommendedSubtitleLayout();
+			if (recommendedLayout !== plugin.settings.subtitleLayout) {
+				console.log('[LinguaFlowApp] Narrow screen detected, recommending bottom layout');
+			}
+		}
+	}, [windowWidth, plugin.settings.subtitleLayout]);
 	
 	// 订阅媒体状态（包括播放状态）
 	const subtitles = useMediaStore(state => state.subtitles);
@@ -409,7 +422,8 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 
 	// 双击重置为默认高度/宽度
 	const handleDoubleClick = () => {
-		const isRightLayout = !isMobile && plugin.settings.subtitleLayout === 'right';
+		// 窄屏强制视为底部布局
+		const isRightLayout = windowWidth >= 768 && plugin.settings.subtitleLayout === 'right';
 		if (isRightLayout) {
 			setSubtitleWidth(400);
 			(plugin.settings as any).subtitleWidth = 400;
@@ -439,8 +453,8 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		
 		setIsResizing(true);
 		
-		// 移动端强制视为底部布局
-		const isRightLayout = !isMobile && plugin.settings.subtitleLayout === 'right';
+		// 移动端强制视为底部布局 (仅当窄屏时)
+		const isRightLayout = windowWidth >= 768 && plugin.settings.subtitleLayout === 'right';
 		
 		// 追踪当前值，解决闭包陷阱
 		let currentWidth = subtitleWidth;
@@ -773,8 +787,8 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		);
 	}
 
-	// 移动端强制使用底部布局，不修改用户设置
-	const effectiveLayout = isMobile ? 'bottom' : plugin.settings.subtitleLayout;
+	// 移动端强制使用底部布局（仅当窄屏时），不修改用户设置
+	const effectiveLayout = (windowWidth < 768) ? 'bottom' : plugin.settings.subtitleLayout;
 	const layoutClass = effectiveLayout === 'right' ? 'linguaflow-layout-right' : 'linguaflow-layout-bottom';
 	const isRightLayout = effectiveLayout === 'right';
 	
