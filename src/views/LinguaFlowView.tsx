@@ -5,8 +5,9 @@ import { SimplePlayer } from '../components/SimplePlayer';
 import { SubtitleOverlay } from '../components/SubtitleOverlay';
 import { SubtitleControls } from '../components/SubtitleControls';
 import { EvaluationModal } from '../components/EvaluationModal';
+import { AudioWaveform } from '../components/AudioWaveform';
 import { LINGUA_FLOW_VIEW, type MediaSource, type PlayerRef } from '../types';
-import { getResourceUrl, isMediaFile } from '../utils/fileUtils';
+import { getResourceUrl, isMediaFile, isAudioFile } from '../utils/fileUtils';
 import { SubtitleParser } from '../services/SubtitleParser';
 import { useMediaStore } from '../store/mediaStore';
 import { useMediaSync } from '../hooks/useMediaSync';
@@ -323,6 +324,14 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 	// 订阅设置状态
 	const videoFit = useMediaStore(state => state.videoFit);
 	
+	const isAudio = React.useMemo(() => {
+		if (!source) return false;
+		if (source.type === 'local' && source.file) {
+			return isAudioFile(source.file);
+		}
+		return isAudioFile(source.url);
+	}, [source]);
+
 	// 初始化录音会话
 	const recordingSession = useRecordingSession(plugin);
 
@@ -655,8 +664,14 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 				<div className="linguaflow-player-wrapper-section">
 					{/* 播放器区域 */}
 					<div 
-						className="linguaflow-player-section" 
-						style={isRightLayout ? {} : { height: `${playerHeight}px`, minHeight: '200px' }}
+						className={`linguaflow-player-section ${isAudio ? 'linguaflow-audio-mode' : ''}`} 
+						style={isRightLayout 
+							? {} 
+							: { 
+								height: isAudio ? 'auto' : `${playerHeight}px`, 
+								minHeight: isAudio ? '140px' : '200px',
+								flex: isAudio ? '0 0 auto' : undefined
+							  }}
 					>
 						<SimplePlayer
 							ref={playerRef}
@@ -679,6 +694,16 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 								}
 							}}
 						/>
+
+						{isAudio && ready && (
+							<div className="linguaflow-audio-visualizer">
+								<div className="linguaflow-audio-info">
+									<div className="linguaflow-audio-icon">🎵</div>
+									<div className="linguaflow-audio-title">{source.displayName}</div>
+								</div>
+								<AudioWaveform playerRef={playerRef} isPlaying={isPlaying} />
+							</div>
+						)}
 					</div>
 
 					{/* 固定的控制栏 - 在播放器下方 */}
@@ -745,7 +770,7 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 				</div>
 
 				{/* 拖拽分隔条 */}
-				{ready && (
+				{ready && !isAudio && (
 					<div 
 						className={`linguaflow-resizer ${isResizing ? 'resizing' : ''}`}
 						onMouseDown={handleMouseDown}

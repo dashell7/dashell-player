@@ -593,8 +593,32 @@ export default class LinguaFlowPlugin extends Plugin {
 		let notePath = noteName;
 		let sourceFile: TFile | null = null;
 		
-		// 检查类型是否为 local
-		if (source.type === 'local' && source.file) {
+		// 优先使用设置中的路径
+		if (this.settings.notePath && this.settings.notePath.trim()) {
+			let folderPath = this.settings.notePath.trim();
+			// 移除末尾斜杠
+			if (folderPath.endsWith('/')) {
+				folderPath = folderPath.slice(0, -1);
+			}
+			
+			// 尝试创建文件夹（如果不存在）
+			const folder = this.app.vault.getAbstractFileByPath(folderPath);
+			if (!folder) {
+				try {
+					await this.app.vault.createFolder(folderPath);
+				} catch (e) {
+					console.warn('[LangPlayer] Folder creation failed (might be nested or exist):', e);
+				}
+			}
+			
+			notePath = `${folderPath}/${noteName}`;
+			
+			if (source.type === 'local' && source.file) {
+				sourceFile = source.file;
+			}
+		}
+		// 否则使用源文件目录
+		else if (source.type === 'local' && source.file) {
 			sourceFile = source.file;
 			if (sourceFile.parent) {
 				// 修复：如果父目录是根目录 ('/')，不要添加额外的斜杠

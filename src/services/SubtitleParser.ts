@@ -278,7 +278,8 @@ export class SubtitleParser {
 				
 				// 简单的分割策略：如果一行中包含中文，但开头是英文单词，尝试分割
 				// 很多双语字幕在一行时是：English Text  中文文本
-				const match = text.match(/^([a-zA-Z0-9\s.,;:!?'"()-]+)\s+([\u4e00-\u9fa5].*)$/);
+				// 修改：要求中间至少有两个空格，防止将 "I use WeChat (微信)" 这种混合句子误判为双语分割
+				const match = text.match(/^([a-zA-Z0-9\s.,;:!?'"()-]+)\s{2,}([\u4e00-\u9fa5].*)$/);
 				if (match) {
 					return {
 						textEn: (match[1] || '').trim(),

@@ -39,6 +39,7 @@ export interface PlayerRef {
 	playVideo: () => void;
 	pauseVideo: () => void;
 	setPlaybackRate: (rate: number) => void;
+	getInternalPlayer?: () => HTMLMediaElement | null;
 }
 
 import type { SupportedLanguage } from './utils/languageUtils';

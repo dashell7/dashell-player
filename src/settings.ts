@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Notice, TextComponent } from 'obsidian';
+import { App, PluginSettingTab, Setting, Notice, TextComponent, AbstractInputSuggest, TFolder } from 'obsidian';
 import { ActivationService } from './services/ActivationService';
 import type LinguaFlowPlugin from './main';
 
@@ -58,6 +58,7 @@ export interface LinguaFlowSettings {
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: boolean;  // 查词时是否自动打开录入面板
 	autoCopyWordOnLookup: boolean;      // 查词时自动复制单词到剪切板
+	notePath: string;                   // 学习笔记默认路径
 	noteTemplate: string;               // 视频笔记模板
 
 	// 兼容性字段（向后兼容）
@@ -165,6 +166,7 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: true, // 默认打开录入面板
 	autoCopyWordOnLookup: true, // 默认开启查词自动复制
+	notePath: '', // 默认根目录
 	noteTemplate: DEFAULT_NOTE_TEMPLATE,
 	// 兼容性字段
 	openaiApiKey: '',
@@ -1099,6 +1101,22 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 
 		containerEl.createEl('h3', { text: '学习笔记设置' });
 
+		// 笔记路径设置
+		new Setting(containerEl)
+			.setName('默认笔记路径')
+			.setDesc('')
+			.setTooltip('设置学习笔记的默认保存文件夹 (例如: "English/Notes")')
+			.addText(text => {
+				text
+					.setPlaceholder('默认根目录')
+					.setValue(this.plugin.settings.notePath || '')
+					.onChange(async (value) => {
+						this.plugin.settings.notePath = value;
+						await this.plugin.saveSettings();
+					});
+				new FolderSuggest(this.app, text.inputEl);
+			});
+
 		// 笔记模板设置
 		const setting = new Setting(containerEl)
 			.setName('笔记模板')
@@ -1300,5 +1318,57 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				${settings.subtitleHighlightColor ? `color: ${settings.subtitleHighlightColor} !important;` : ''}
 			}
 		`;
+	}
+}
+
+/**
+ * 文件夹建议类
+ */
+class FolderSuggest extends AbstractInputSuggest<TFolder> {
+	private inputEl: HTMLInputElement;
+
+	constructor(app: App, textInputEl: HTMLInputElement) {
+		super(app, textInputEl);
+		this.inputEl = textInputEl;
+
+		// Auto-select text on focus so user can easily clear it to see all folders
+		this.inputEl.addEventListener('focus', () => {
+			this.inputEl.select();
+		});
+	}
+
+	getSuggestions(inputStr: string): TFolder[] {
+		const abstractFiles = this.app.vault.getAllLoadedFiles();
+		const folders: TFolder[] = [];
+		const lowerCaseInputStr = inputStr.toLowerCase();
+
+		abstractFiles.forEach((file: any) => {
+			if (file instanceof TFolder) {
+				// Match path
+				if (file.path.toLowerCase().contains(lowerCaseInputStr)) {
+					folders.push(file);
+				}
+			}
+		});
+
+		// Sort by path length (shallower folders first) then alphabetically
+		folders.sort((a, b) => {
+			const depthA = a.path.split('/').length;
+			const depthB = b.path.split('/').length;
+			if (depthA !== depthB) return depthA - depthB;
+			return a.path.localeCompare(b.path);
+		});
+
+		return folders.slice(0, 100); // Limit to 100 results to prevent lag
+	}
+
+	renderSuggestion(file: TFolder, el: HTMLElement): void {
+		el.setText(file.path);
+	}
+
+	selectSuggestion(file: TFolder): void {
+		this.inputEl.value = file.path;
+		this.inputEl.trigger("input");
+		this.close();
 	}
 }

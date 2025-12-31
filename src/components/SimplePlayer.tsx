@@ -58,6 +58,9 @@ export const SimplePlayer = forwardRef<PlayerRef, SimplePlayerProps>(
 					console.log('[SimplePlayer] playbackRate set to:', rate);
 				}
 			},
+			getInternalPlayer: () => {
+				return videoRef.current;
+			}
 		}));
 
 		// 视频加载完成

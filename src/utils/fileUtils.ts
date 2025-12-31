@@ -34,6 +34,25 @@ export function isMediaFile(file: TFile): boolean {
 }
 
 /**
+ * 检查是否为音频文件
+ * @param file - 文件对象或文件名/路径
+ * @returns 是否为音频文件
+ */
+export function isAudioFile(file: TFile | string): boolean {
+	const extension = typeof file === 'string' 
+		? file.split('.').pop()?.toLowerCase() 
+		: file.extension.toLowerCase();
+		
+	if (!extension) return false;
+	
+	const audioExtensions = [
+		'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
+	];
+	
+	return audioExtensions.includes(extension);
+}
+
+/**
  * 解析时间戳字符串为秒数
  * 支持格式：
  * - 纯秒数: "120"
