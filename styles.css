@@ -94,7 +94,7 @@
 
 .linguaflow-container.linguaflow-layout-right .linguaflow-subtitle-section {
 	/* width由JS动态设置，这里不固定 */
-	min-width: 200px;
+	min-width: 50px; /* 极度放宽限制 */
 	/* max-width: 1000px;  <-- 移除限制 */
 	/* 强制设置 flex 属性，防止被 flex: 1 覆盖 */
 	flex: 0 0 auto !important;
@@ -185,7 +185,7 @@
 /* 字幕列表区域 */
 .linguaflow-subtitle-section {
 	flex: 1;
-	min-height: 200px;
+	min-height: 50px; /* 极度放宽限制 */
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;

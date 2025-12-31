@@ -485,7 +485,8 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 					
 					if (isRightLayout) {
 						// 右侧布局：调整宽度
-						const newWidth = Math.max(200, rect.right - clientX);
+						const minWidth = 50; // 极度放宽：50px
+						const newWidth = Math.max(minWidth, rect.right - clientX);
 						currentWidth = newWidth;
 						
 						// 1. 更新 State
@@ -503,7 +504,13 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 						const header = document.querySelector('.linguaflow-header');
 						const headerHeight = header ? header.getBoundingClientRect().height : 0;
 						const availableHeight = rect.height - headerHeight;
-						const newHeight = Math.max(200, Math.min(availableHeight - 200, clientY - rect.top - headerHeight));
+						
+						// 极度放宽：50px，允许用户最大限度调整
+						const minPlayerHeight = 50;
+						const minSubtitleHeight = 50;
+						const maxPlayerHeight = Math.max(minPlayerHeight, availableHeight - minSubtitleHeight);
+						
+						const newHeight = Math.max(minPlayerHeight, Math.min(maxPlayerHeight, clientY - rect.top - headerHeight));
 						
 						currentHeight = newHeight;
 						setPlayerHeight(newHeight);

@@ -105,7 +105,7 @@ const initialState: MediaState = {
 	playing: false,
 	volume: 0.8,
 	playbackRate: 1.0,
-	videoFit: 'cover',
+	videoFit: 'contain',
 	showInlineSubtitles: false,
 	
 	subtitles: [],
