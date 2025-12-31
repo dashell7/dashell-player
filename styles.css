@@ -964,8 +964,8 @@
 	flex-wrap: wrap; /* 允许换行，适应不同窗口宽度 */
 	justify-content: center; /* 居中排列 */
 	align-items: center;
-	gap: 25px; /* 组间距增加到 25px */
-	padding: 10px 12px;
+	gap: 16px; /* 组间距缩小，更紧凑 */
+	padding: 8px 12px;
 	background: #111111;
 	border-top: 1px solid #222;
 	width: 100%; /* 确保占满容器 */
@@ -975,7 +975,7 @@
 .linguaflow-controls-group {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 4px;
 	position: relative;
 	flex-shrink: 0; /* 防止分组内部被压缩 */
 }
@@ -998,10 +998,10 @@
 	background: transparent;
 	border: 1px solid rgba(255, 255, 255, 0.2);
 	color: rgba(255, 255, 255, 0.8);
-	border-radius: 6px;
-	width: 36px;
-	height: 36px;
-	min-width: 36px;
+	border-radius: 5px; /* 稍微减小圆角 */
+	width: 28px;  /* 缩小到 28px */
+	height: 28px;
+	min-width: 28px;
 	transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1018,8 +1018,8 @@
 
 /* 播放按钮特殊处理 - 更大更醒目 */
 .linguaflow-control-btn-playpause {
-	width: 44px;
-	height: 44px;
+	width: 34px; /* 缩小播放按钮 */
+	height: 34px;
 	border-color: var(--interactive-accent);
 	color: var(--interactive-accent);
 	background: rgba(var(--interactive-accent-rgb), 0.1);
@@ -1183,8 +1183,8 @@
 }
 
 .linguaflow-control-icon svg {
-	width: 20px;
-	height: 20px;
+	width: 16px; /* 缩小图标 */
+	height: 16px;
 	transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -1248,6 +1248,49 @@
 
 .linguaflow-control-btn:hover .linguaflow-control-icon svg {
 	transform: scale(1.1);
+}
+
+/* ==========================================================================
+   移动端/触屏设备适配
+   ========================================================================== */
+@media (pointer: coarse), (max-width: 768px) {
+	/* 1. 增大触摸目标尺寸 */
+	.linguaflow-control-btn {
+		width: 38px !important;
+		height: 38px !important;
+		min-width: 38px !important;
+	}
+	
+	.linguaflow-control-icon svg {
+		width: 20px !important;
+		height: 20px !important;
+	}
+	
+	.linguaflow-control-btn-playpause {
+		width: 44px !important;
+		height: 44px !important;
+	}
+
+	/* 2. 控制栏改为横向滚动，节省垂直空间 */
+	.linguaflow-subtitle-controls {
+		flex-wrap: nowrap;
+		justify-content: flex-start;
+		overflow-x: auto;
+		padding: 8px 12px;
+		gap: 12px;
+		/* 隐藏滚动条但保持功能 */
+		-ms-overflow-style: none;
+		scrollbar-width: none;
+	}
+	
+	.linguaflow-subtitle-controls::-webkit-scrollbar {
+		display: none;
+	}
+	
+	/* 3. 隐藏不适合移动端的按钮 (如布局切换，移动端强制底部) */
+	.linguaflow-control-btn-layout {
+		display: none !important;
+	}
 }
 
 .linguaflow-control-label {

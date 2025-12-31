@@ -533,44 +533,94 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
     }
   }, [plugin]);
   
-  // 将文本渲染为可点击的单词（带高亮）
-  const renderClickableText = (text: string, isCurrentSubtitle: boolean = false, currentWordIndex: number = -1) => {
-    const tokens = text.split(/(\s+|[.,;:!?'"()[\]{}])/);
-    let wordCount = 0;
+  // 处理播放/暂停
+  const handleTogglePlay = useCallback(() => {
+    if (playerRef.current) {
+      if (isPlaying) {
+        playerRef.current.pauseVideo();
+        setPlaying(false);
+      } else {
+        playerRef.current.playVideo();
+        setPlaying(true);
+      }
+    }
+  }, [isPlaying, setPlaying, playerRef]);
+
+  // 处理循环切换
+  const handleToggleLoop = useCallback(() => {
+    const cue = selectedCue || currentSubtitle;
+    if (cue) {
+      handleSegmentLoop(cue);
+    }
+  }, [selectedCue, currentSubtitle, handleSegmentLoop]);
+
+  // 处理退出循环
+  const handleExitLoop = useCallback(() => {
+    handleStopLoop();
+  }, [handleStopLoop]);
+
+  // 处理录音
+  const handleRecord = useCallback(() => {
+    const cue = selectedCue || currentSubtitle;
+    if (cue && recordingSession) {
+      handleRecordSegment(cue);
+    }
+  }, [selectedCue, currentSubtitle, recordingSession, handleRecordSegment]);
+
+  // 处理速率变化
+  const handleRateChange = useCallback((rate: number) => {
+    setPlaybackRate(rate);
+    if (playerRef.current) {
+      playerRef.current.setPlaybackRate(rate);
+    }
+  }, [setPlaybackRate, playerRef]);
+
+  // 处理解锁
+  const handleUnlock = useCallback(() => {
+    setIsManuallyLocked(false);
+  }, []);
+
+  // 渲染单个字幕项的函数 (使用 useCallback 优化)
+  const renderSubtitleItem = useCallback((cue: SubtitleCue, index: number) => {
+    const isLoopingThis = segmentLoopEnabled && 
+      loopStart === cue.start && 
+      loopEnd === cue.end;
+
+    const isRecordingThis = !!(recordingSession?.isRecording && 
+      recordingSession?.targetSubtitle?.id === cue.id);
+
+    const isSelected = selectedCue?.id === cue.id;
     
     return (
-      <div className="stns">
-        {tokens.map((token, index) => {
-          // 如果是空白或标点，直接显示
-          if (/^\s+$/.test(token) || /^[.,;:!?'"()[\]{}]$/.test(token)) {
-            return <span key={index}>{token}</span>;
-          }
-          
-          // 如果是单词，添加点击事件和可能的高亮
-          if (token.trim()) {
-            const thisWordIndex = wordCount;
-            wordCount++;
-            
-            // 判断是否应该高亮：必须是当前字幕，并且单词索引匹配
-            const shouldHighlight = isCurrentSubtitle && currentWordIndex === thisWordIndex;
-            
-            return (
-              <span
-                key={index}
-                className={`linguaflow-clickable-word ${shouldHighlight ? 'linguaflow-word-highlight' : ''}`}
-                onClick={(e) => handleWordClick(token, e)}
-                title={`查询: ${token}`}
-              >
-                {token}
-              </span>
-            );
-          }
-          
-          return null;
-        })}
-      </div>
+      <SubtitleItem
+        key={cue.id}
+        cue={cue}
+        index={index}
+        isActive={index === activeIndex}
+        isLooping={isLoopingThis}
+        isRecording={isRecordingThis}
+        isSelected={isSelected}
+        showEnglish={showEnglish}
+        showChinese={showChinese}
+        showIndexAndTime={showIndexAndTime}
+        wordByWordHighlight={wordByWordHighlight}
+        activeWordIndex={index === activeIndex ? activeWordIndex : -1}
+        visibleLanguages={useMediaStore.getState().subtitleConfig.visibleLanguages}
+        onSubtitleClick={handleSubtitleClick}
+        onSubtitleDblClick={handleSubtitleDblClick}
+        onSubtitleContextMenu={handleSubtitleContextMenu}
+        onWordClick={handleWordClick}
+        onExportSubtitle={handleExportSubtitle}
+        activeItemRef={index === activeIndex ? activeItemRef : undefined}
+      />
     );
-  };
+  }, [
+    segmentLoopEnabled, loopStart, loopEnd, 
+    recordingSession?.isRecording, recordingSession?.targetSubtitle?.id, 
+    selectedCue?.id, activeIndex, 
+    showEnglish, showChinese, showIndexAndTime, wordByWordHighlight, activeWordIndex,
+    handleSubtitleClick, handleSubtitleDblClick, handleSubtitleContextMenu, handleWordClick, handleExportSubtitle
+  ]);
   
   return (
     <div className="linguaflow-subtitle-container">
@@ -585,114 +635,46 @@ export function SubtitleOverlay({ playerRef, showList = true, showControls = tru
           isRecording={recordingSession?.isRecording || false}
           isManuallyLocked={isManuallyLocked}
           playbackRate={playbackRate}
-          onTogglePlay={() => {
-            if (playerRef.current) {
-              if (isPlaying) {
-                playerRef.current.pauseVideo();
-                setPlaying(false);
-              } else {
-                playerRef.current.playVideo();
-                setPlaying(true);
-              }
-            }
-          }}
-          onToggleLoop={() => {
-            const cue = selectedCue || currentSubtitle;
-            if (cue) {
-              handleSegmentLoop(cue);
-            }
-          }}
-          onExitLoop={() => handleStopLoop()}
-          onRecord={() => {
-            const cue = selectedCue || currentSubtitle;
-            if (cue && recordingSession) {
-              handleRecordSegment(cue);
-            }
-          }}
-          onRateChange={(rate) => {
-            setPlaybackRate(rate);
-            if (playerRef.current) {
-              playerRef.current.setPlaybackRate(rate);
-            }
-          }}
-          onUnlock={() => setIsManuallyLocked(false)}
+          onTogglePlay={handleTogglePlay}
+          onToggleLoop={handleToggleLoop}
+          onExitLoop={handleExitLoop}
+          onRecord={handleRecord}
+          onRateChange={handleRateChange}
+          onUnlock={handleUnlock}
         />
       )}
       
       {/* 字幕列表 */}
-      {showList && subtitles.length > 0 && (() => {
-        // 智能判断是否启用虚拟滚动
-        // 1. 字幕数量超过100条
-        // 2. 或检测到设备需要性能模式
-        const useVirtualScroll = subtitles.length > 100 || shouldEnablePerformanceMode();
-        
-        // 渲染单个字幕项的函数
-        const renderSubtitleItem = (cue: SubtitleCue, index: number) => {
-          const isLoopingThis = segmentLoopEnabled && 
-            loopStart === cue.start && 
-            loopEnd === cue.end;
-
-          const isRecordingThis = !!(recordingSession?.isRecording && 
-            recordingSession?.targetSubtitle?.id === cue.id);
-
-          const isSelected = selectedCue?.id === cue.id;
-          
-          return (
-            <SubtitleItem
-              key={cue.id}
-              cue={cue}
-              index={index}
-              isActive={index === activeIndex}
-              isLooping={isLoopingThis}
-              isRecording={isRecordingThis}
-              isSelected={isSelected}
-              showEnglish={showEnglish}
-              showChinese={showChinese}
-              showIndexAndTime={showIndexAndTime}
-              wordByWordHighlight={wordByWordHighlight}
-              activeWordIndex={index === activeIndex ? activeWordIndex : -1}
-              visibleLanguages={useMediaStore.getState().subtitleConfig.visibleLanguages}
-              onSubtitleClick={handleSubtitleClick}
-              onSubtitleDblClick={handleSubtitleDblClick}
-              onSubtitleContextMenu={handleSubtitleContextMenu}
-              onWordClick={handleWordClick}
-              onExportSubtitle={handleExportSubtitle}
-              activeItemRef={index === activeIndex ? activeItemRef : undefined}
+      {showList && subtitles.length > 0 && (
+        <div 
+          className="linguaflow-subtitle-list"
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
+          ref={resizeRef}
+        >
+          {useVirtualScroll && containerHeight > 0 ? (
+            // 虚拟滚动模式（大量字幕或低性能设备）
+            <AutoHeightVirtualScroll
+              ref={virtualListRef}
+              items={subtitles}
+              estimatedItemHeight={80} // 预估每个字幕项高度
+              containerHeight={containerHeight} // 动态容器高度
+              overscan={5} // 上下各额外渲染5个项目
+              renderItem={renderSubtitleItem}
+              getItemKey={(cue) => cue.id}
+              className="linguaflow-subtitle-items"
             />
-          );
-        };
-        
-        return (
-          <div 
-            className="linguaflow-subtitle-list"
-            onMouseEnter={() => setIsHovering(true)}
-            onMouseLeave={() => setIsHovering(false)}
-            ref={resizeRef}
-          >
-            {useVirtualScroll && containerHeight > 0 ? (
-              // 虚拟滚动模式（大量字幕或低性能设备）
-              <AutoHeightVirtualScroll
-                ref={virtualListRef}
-                items={subtitles}
-                estimatedItemHeight={80} // 预估每个字幕项高度
-                containerHeight={containerHeight} // 动态容器高度
-                overscan={5} // 上下各额外渲染5个项目
-                renderItem={renderSubtitleItem}
-                getItemKey={(cue) => cue.id}
-                className="linguaflow-subtitle-items"
-              />
-            ) : (
-              // 普通模式（少量字幕）
-              <div 
-                className="linguaflow-subtitle-items" 
-                ref={listRef}
-              >
-                {subtitles.map((cue, index) => renderSubtitleItem(cue, index))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
+          ) : (
+            // 普通模式（少量字幕）
+            <div 
+              className="linguaflow-subtitle-items" 
+              ref={listRef}
+            >
+              {subtitles.map((cue, index) => renderSubtitleItem(cue, index))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

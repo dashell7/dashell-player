@@ -71,7 +71,7 @@ interface SubtitleControlsProps {
  * 字幕控制栏组件
  * 固定显示在播放器下方，控制当前选中的字幕
  */
-export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
+const SubtitleControlsBase: React.FC<SubtitleControlsProps> = ({
 	currentCue,
 	plugin,
 	playerRef,
@@ -490,6 +490,8 @@ export const SubtitleControls: React.FC<SubtitleControlsProps> = ({
 		</div>
 	);
 };
+
+export const SubtitleControls = React.memo(SubtitleControlsBase);
 
 /**
  * 编号和时间显示控制组件

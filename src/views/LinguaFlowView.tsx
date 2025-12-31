@@ -51,6 +51,53 @@ export class LinguaFlowView extends ItemView {
 	}
 
 	/**
+	 * 获取视图状态（用于保存）
+	 */
+	getState() {
+		const state = super.getState();
+		if (this.currentSource) {
+			// 更新当前播放时间，以便恢复时继续播放
+			const currentTime = this.getCurrentTime();
+			if (currentTime > 0) {
+				this.currentSource.timestamp = currentTime;
+			}
+
+			// 序列化 source
+			const sourceState: any = { ...this.currentSource };
+			if (this.currentSource.type === 'local' && this.currentSource.file) {
+				sourceState.filePath = this.currentSource.file.path;
+				delete sourceState.file; // TFile 对象不可序列化，需移除
+			}
+			state.source = sourceState;
+		}
+		return state;
+	}
+
+	/**
+	 * 恢复视图状态
+	 */
+	async setState(state: any, result: any) {
+		await super.setState(state, result);
+		
+		if (state.source) {
+			const source = state.source;
+			// 恢复本地文件的 TFile 对象
+			if (source.type === 'local' && source.filePath) {
+				const file = this.app.vault.getAbstractFileByPath(source.filePath);
+				if (file instanceof TFile) {
+					source.file = file;
+				} else {
+					console.warn('[LinguaFlowView] 无法恢复文件，路径不存在:', source.filePath);
+					return;
+				}
+			}
+			
+			// 自动重新加载媒体
+			await this.loadMedia(source);
+		}
+	}
+
+	/**
 	 * 视图打开时调用
 	 */
 	async onOpen() {
@@ -188,56 +235,8 @@ export class LinguaFlowView extends ItemView {
 			timestamp,
 			file
 		});
-		
-		// 自动加载字幕文件
-		await this.loadSubtitlesForFile(file);
 	}
 	
-	/**
-	 * 加载视频对应的字幕文件
-	 */
-	private async loadSubtitlesForFile(mediaFile: TFile) {
-		try {
-			// 查找同名字幕文件
-			const baseName = mediaFile.basename;
-			const folder = mediaFile.parent;
-			
-			if (!folder) return;
-			
-			// 处理路径拼接（避免根目录出现 //）
-			const folderPath = folder.path === '/' ? '' : folder.path;
-			
-			const subtitleExts = ['srt', 'vtt'];
-			// 常见的语言后缀
-			const suffixes = ['', '.zh', '.en', '.chs', '.cht', '.eng', '.jp', '.ja', '.ko', '.kr', '.zh-CN', '.zh-TW'];
-			
-			for (const ext of subtitleExts) {
-				for (const suffix of suffixes) {
-					const fileName = `${baseName}${suffix}.${ext}`;
-					const subtitlePath = folderPath ? `${folderPath}/${fileName}` : fileName;
-					
-					const file = this.app.vault.getAbstractFileByPath(subtitlePath);
-					
-					if (file instanceof TFile) {
-						console.log('[LinguaFlowView] Found subtitle:', file.path);
-						const content = await this.app.vault.read(file);
-						const subtitles = SubtitleParser.parse(content);
-						
-						if (subtitles.length > 0) {
-							useMediaStore.getState().setSubtitles(subtitles);
-							console.log('[LinguaFlowView] Loaded', subtitles.length, 'subtitles');
-							return; // 找到第一个就返回
-						}
-					}
-				}
-			}
-			
-			console.log('[LinguaFlowView] No subtitle file found for', mediaFile.name);
-		} catch (error) {
-			console.error('[LinguaFlowView] Failed to load subtitles:', error);
-		}
-	}
-
 	/**
 	 * 跳转到指定时间
 	 * @param seconds - 秒数
@@ -300,16 +299,6 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		return cleanup;
 	}, [plugin.settings]);
 	
-	// 移动端强制底部布局
-	React.useEffect(() => {
-		if (isMobile && plugin.settings.subtitleLayout !== 'bottom') {
-			const recommendedLayout = getRecommendedSubtitleLayout();
-			if (recommendedLayout !== plugin.settings.subtitleLayout) {
-				console.log('[LinguaFlowApp] Mobile device detected, recommending bottom layout');
-			}
-		}
-	}, [isMobile, plugin.settings.subtitleLayout]);
-	
 	// 订阅媒体状态（包括播放状态）
 	const subtitles = useMediaStore(state => state.subtitles);
 	const activeIndex = useMediaStore(state => state.activeIndex);
@@ -364,9 +353,63 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 	const isBlocked = recordingSession.isRecording || showEvaluationModal;
 	useMediaSync(playerRef, ready, plugin, isBlocked);
 
+	// 回调函数优化 (useCallback)
+	const handleTogglePlay = React.useCallback(() => {
+		if (playerRef.current) {
+			if (isPlaying) {
+				playerRef.current.pauseVideo();
+				setPlaying(false);
+			} else {
+				playerRef.current.playVideo();
+				setPlaying(true);
+			}
+		}
+	}, [isPlaying, setPlaying]);
+
+	const handleToggleLoop = React.useCallback(() => {
+		if (currentSubtitle) {
+			const loopCount = plugin.settings.loopCount ?? 3;
+			const activeIndex = useMediaStore.getState().activeIndex;
+			useMediaStore.getState().startSegmentLoop(
+				currentSubtitle.start, 
+				currentSubtitle.end, 
+				loopCount,
+				activeIndex
+			);
+		}
+	}, [currentSubtitle, plugin]);
+
+	const handleExitLoop = React.useCallback(() => {
+		useMediaStore.getState().stopSegmentLoop();
+	}, []);
+
+	const handleRecord = React.useCallback(() => {
+		if (currentSubtitle && recordingSession) {
+			if (recordingSession.isRecording) {
+				recordingSession.stopRecording();
+			} else {
+				if (playerRef.current && isPlaying) {
+					console.log('[LinguaFlowView] Pausing video for recording');
+					playerRef.current.pauseVideo();
+					setPlaying(false);
+				}
+				recordingSession.startRecording(currentSubtitle);
+			}
+		}
+	}, [currentSubtitle, recordingSession, isPlaying, setPlaying]);
+
+	const handleRateChange = React.useCallback((rate: number) => {
+		setPlaybackRate(rate);
+		if (playerRef.current) {
+			playerRef.current.setPlaybackRate(rate);
+		}
+	}, [setPlaybackRate]);
+
+	const handleUnlock = React.useCallback(() => setIsManuallyLocked(false), []);
+
 	// 双击重置为默认高度/宽度
 	const handleDoubleClick = () => {
-		const isRightLayout = plugin.settings.subtitleLayout === 'right';
+		const isRightLayout = !isMobile && plugin.settings.subtitleLayout === 'right';
 		if (isRightLayout) {
 			setSubtitleWidth(400);
 			(plugin.settings as any).subtitleWidth = 400;
@@ -377,77 +420,158 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		plugin.saveSettings();
 	};
 
-	// 处理拖拽调整大小
-	const handleMouseDown = (e: React.MouseEvent) => {
-		// 防止双击触发拖拽
-		if (e.detail === 2) return;
-		e.preventDefault();
+	// 通用拖拽处理 (支持鼠标和触摸)
+	const handleDragStart = (e: React.MouseEvent | React.TouchEvent) => {
+		// 忽略非左键点击（仅限鼠标）
+		if ('button' in e && e.button !== 0) return;
+		// 忽略多点触控
+		if ('touches' in e && e.touches.length > 1) return;
+
+		// 防止双击触发拖拽 (仅限鼠标)
+		if ('detail' in e && e.detail === 2) return;
+		
+		// 阻止默认事件（特别是触摸时的滚动）
+		// 注意：passive: false 事件监听器在 handleDragMove 中添加
+		if (e.type === 'touchstart' && e.cancelable) {
+			// 在某些浏览器中可能需要阻止默认行为以防止滚动
+			// 但 React SyntheticEvent 有时受限，主要逻辑在原生 listener 中
+		}
+		
 		setIsResizing(true);
 		
-		const isRightLayout = plugin.settings.subtitleLayout === 'right';
+		// 移动端强制视为底部布局
+		const isRightLayout = !isMobile && plugin.settings.subtitleLayout === 'right';
+		
+		// 追踪当前值，解决闭包陷阱
+		let currentWidth = subtitleWidth;
+		let currentHeight = playerHeight;
+		let ticking = false;
 
-		const handleMouseMove = (e: MouseEvent) => {
-			const container = document.querySelector('.linguaflow-container');
-			if (!container) return;
-			
-			const rect = container.getBoundingClientRect();
-			
-			if (isRightLayout) {
-				// 右侧布局：调整宽度
-				// 移除最大宽度限制，只保留最小宽度 200px
-				const newWidth = Math.max(200, rect.right - e.clientX);
-				
-				// 1. 更新 State (触发 React 重渲染)
-				setSubtitleWidth(newWidth);
-				
-				// 2. 直接更新 DOM (确保实时性，防止 React 渲染延迟)
-				const subtitleSection = document.querySelector('.linguaflow-subtitle-section') as HTMLElement;
-				if (subtitleSection) {
-					// 强制设置所有宽度属性，防止 flex 布局压缩或限制
-					subtitleSection.style.width = `${newWidth}px`;
-					subtitleSection.style.minWidth = `${newWidth}px`;
-					subtitleSection.style.maxWidth = `${newWidth}px`;
-					
-					// 调试日志
-					const computed = window.getComputedStyle(subtitleSection);
+		const handleDragMove = (moveEvent: MouseEvent | TouchEvent) => {
+			let clientX, clientY;
+			if ('touches' in moveEvent) {
+				const touchEvent = moveEvent as TouchEvent;
+				if (touchEvent.touches && touchEvent.touches.length > 0) {
+					clientX = touchEvent.touches[0]!.clientX;
+					clientY = touchEvent.touches[0]!.clientY;
 				} else {
-					console.warn('[Drag] Element .linguaflow-subtitle-section not found!');
+					return;
 				}
 			} else {
-				// 底部布局：调整高度
-				const header = document.querySelector('.linguaflow-header');
-				const headerHeight = header ? header.getBoundingClientRect().height : 0;
-				const availableHeight = rect.height - headerHeight;
-				const newHeight = Math.max(200, Math.min(availableHeight - 200, e.clientY - rect.top - headerHeight));
-				setPlayerHeight(newHeight);
+				clientX = (moveEvent as MouseEvent).clientX;
+				clientY = (moveEvent as MouseEvent).clientY;
+			}
+
+			if (!ticking) {
+				window.requestAnimationFrame(() => {
+					const container = document.querySelector('.linguaflow-container');
+					if (!container) return;
+					
+					const rect = container.getBoundingClientRect();
+					
+					if (isRightLayout) {
+						// 右侧布局：调整宽度
+						const newWidth = Math.max(200, rect.right - clientX);
+						currentWidth = newWidth;
+						
+						// 1. 更新 State
+						setSubtitleWidth(newWidth);
+						
+						// 2. 直接更新 DOM
+						const subtitleSection = document.querySelector('.linguaflow-subtitle-section') as HTMLElement;
+						if (subtitleSection) {
+							subtitleSection.style.width = `${newWidth}px`;
+							subtitleSection.style.minWidth = `${newWidth}px`;
+							subtitleSection.style.maxWidth = `${newWidth}px`;
+						}
+					} else {
+						// 底部布局：调整高度
+						const header = document.querySelector('.linguaflow-header');
+						const headerHeight = header ? header.getBoundingClientRect().height : 0;
+						const availableHeight = rect.height - headerHeight;
+						const newHeight = Math.max(200, Math.min(availableHeight - 200, clientY - rect.top - headerHeight));
+						
+						currentHeight = newHeight;
+						setPlayerHeight(newHeight);
+					}
+					ticking = false;
+				});
+				ticking = true;
 			}
 		};
 
-		const handleMouseUp = () => {
+		const handleDragEnd = () => {
 			setIsResizing(false);
-			document.removeEventListener('mousemove', handleMouseMove);
-			document.removeEventListener('mouseup', handleMouseUp);
+			document.removeEventListener('mousemove', handleDragMove);
+			document.removeEventListener('mouseup', handleDragEnd);
+			document.removeEventListener('touchmove', handleDragMove);
+			document.removeEventListener('touchend', handleDragEnd);
 			
 			// 保存设置
 			if (isRightLayout) {
-				(plugin.settings as any).subtitleWidth = subtitleWidth;
+				(plugin.settings as any).subtitleWidth = currentWidth;
 			} else {
-				(plugin.settings as any).playerHeight = playerHeight;
+				(plugin.settings as any).playerHeight = currentHeight;
 			}
 			plugin.saveSettings();
 		};
 
-		document.addEventListener('mousemove', handleMouseMove);
-		document.addEventListener('mouseup', handleMouseUp);
+		document.addEventListener('mousemove', handleDragMove);
+		document.addEventListener('mouseup', handleDragEnd);
+		document.addEventListener('touchmove', handleDragMove, { passive: false });
+		document.addEventListener('touchend', handleDragEnd);
 	};
 
-	// 重置状态当源改变时
+	// 重置状态并自动加载字幕当源改变时
 	React.useEffect(() => {
 		setError(null);
 		setReady(false);
 		// 重置字幕
 		useMediaStore.getState().reset();
-	}, [source]);
+
+		// 如果是本地文件，尝试自动加载同名字幕
+		if (source?.type === 'local' && source.file) {
+			const loadSubtitles = async () => {
+				const mediaFile = source.file!;
+				try {
+					const baseName = mediaFile.basename;
+					const folder = mediaFile.parent;
+					if (!folder) return;
+					
+					const folderPath = folder.path === '/' ? '' : folder.path;
+					const subtitleExts = ['srt', 'vtt'];
+					const suffixes = ['', '.zh', '.en', '.chs', '.cht', '.eng', '.jp', '.ja', '.ko', '.kr', '.zh-CN', '.zh-TW'];
+					
+					const vault = plugin.app.vault;
+					
+					for (const ext of subtitleExts) {
+						for (const suffix of suffixes) {
+							const fileName = `${baseName}${suffix}.${ext}`;
+							const subtitlePath = folderPath ? `${folderPath}/${fileName}` : fileName;
+							
+							const file = vault.getAbstractFileByPath(subtitlePath);
+							
+							if (file instanceof TFile) {
+								console.log('[LinguaFlowApp] Found subtitle:', file.path);
+								const content = await vault.read(file);
+								const subtitles = SubtitleParser.parse(content);
+								
+								if (subtitles.length > 0) {
+									useMediaStore.getState().setSubtitles(subtitles);
+									console.log('[LinguaFlowApp] Loaded', subtitles.length, 'subtitles');
+									return;
+								}
+							}
+						}
+					}
+					console.log('[LinguaFlowApp] No subtitle file found for', mediaFile.name);
+				} catch (error) {
+					console.error('[LinguaFlowApp] Failed to load subtitles:', error);
+				}
+			};
+			loadSubtitles();
+		}
+	}, [source, plugin]);
 
 	// 监听录音状态变化并优化弹窗显示时机
 	React.useEffect(() => {
@@ -649,8 +773,10 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		);
 	}
 
-	const layoutClass = plugin.settings.subtitleLayout === 'right' ? 'linguaflow-layout-right' : 'linguaflow-layout-bottom';
-	const isRightLayout = plugin.settings.subtitleLayout === 'right';
+	// 移动端强制使用底部布局，不修改用户设置
+	const effectiveLayout = isMobile ? 'bottom' : plugin.settings.subtitleLayout;
+	const layoutClass = effectiveLayout === 'right' ? 'linguaflow-layout-right' : 'linguaflow-layout-bottom';
+	const isRightLayout = effectiveLayout === 'right';
 	
 	return (
 		<div className={`linguaflow-container ${layoutClass} ${isResizing ? 'resizing' : ''}`}>
@@ -709,63 +835,21 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 					{/* 固定的控制栏 - 在播放器下方 */}
 					{ready && plugin && (
 						<SubtitleControls
-					currentCue={currentSubtitle}
-					plugin={plugin}
-					playerRef={playerRef}
-					isPlaying={isPlaying}
-					isLooping={segmentLoopEnabled}
-					isRecording={recordingSession?.isRecording || false}
-					isManuallyLocked={isManuallyLocked}
-					playbackRate={playbackRate}
-					onTogglePlay={() => {
-						if (playerRef.current) {
-							if (isPlaying) {
-								playerRef.current.pauseVideo();
-								setPlaying(false);
-							} else {
-								playerRef.current.playVideo();
-								setPlaying(true);
-							}
-						}
-					}}
-					onToggleLoop={() => {
-						if (currentSubtitle) {
-							const loopCount = plugin.settings.loopCount ?? 3;
-							const activeIndex = useMediaStore.getState().activeIndex;
-							useMediaStore.getState().startSegmentLoop(
-								currentSubtitle.start, 
-								currentSubtitle.end, 
-								loopCount,
-								activeIndex
-							);
-						}
-					}}
-					onExitLoop={() => {
-						useMediaStore.getState().stopSegmentLoop();
-					}}
-					onRecord={() => {
-						if (currentSubtitle && recordingSession) {
-							if (recordingSession.isRecording) {
-								recordingSession.stopRecording();
-							} else {
-								// 录音前强制暂停播放，避免背景音干扰
-								if (playerRef.current && isPlaying) {
-									console.log('[LinguaFlowView] Pausing video for recording');
-									playerRef.current.pauseVideo();
-									setPlaying(false);
-								}
-								recordingSession.startRecording(currentSubtitle);
-							}
-						}
-					}}
-					onRateChange={(rate: number) => {
-						setPlaybackRate(rate);
-						if (playerRef.current) {
-							playerRef.current.setPlaybackRate(rate);
-						}
-						}}
-						onUnlock={() => setIsManuallyLocked(false)}
-					/>
+							currentCue={currentSubtitle}
+							plugin={plugin}
+							playerRef={playerRef}
+							isPlaying={isPlaying}
+							isLooping={segmentLoopEnabled}
+							isRecording={recordingSession?.isRecording || false}
+							isManuallyLocked={isManuallyLocked}
+							playbackRate={playbackRate}
+							onTogglePlay={handleTogglePlay}
+							onToggleLoop={handleToggleLoop}
+							onExitLoop={handleExitLoop}
+							onRecord={handleRecord}
+							onRateChange={handleRateChange}
+							onUnlock={handleUnlock}
+						/>
 					)}
 				</div>
 
@@ -773,7 +857,8 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 				{ready && !isAudio && (
 					<div 
 						className={`linguaflow-resizer ${isResizing ? 'resizing' : ''}`}
-						onMouseDown={handleMouseDown}
+						onMouseDown={handleDragStart}
+						onTouchStart={handleDragStart}
 						onDoubleClick={handleDoubleClick}
 						title="拖拽调整大小 | 双击重置为默认高度"
 						aria-label="Resize handle"
@@ -944,42 +1029,31 @@ function isHotkeyMatch(e: KeyboardEvent, hotkeySetting: string): boolean {
 		return false;
 	}
 	if (e.ctrlKey !== hasCtrl) {
-		console.log('[Match] ✗ Ctrl mismatch');
 		return false;
 	}
 	if (e.altKey !== hasAlt) {
-		console.log('[Match] ✗ Alt mismatch');
 		return false;
 	}
 	if (e.metaKey !== hasMeta) {
-		console.log('[Match] ✗ Meta mismatch');
 		return false;
 	}
 	
 	// 检查按键
 	// 对于字母，忽略大小写 (如 'r' 和 'R' 都是 'r')
 	if (key.length === 1) {
-		const match = e.key.toLowerCase() === key.toLowerCase();
-		console.log('[Match]', match ? '✓' : '✗', 'Key match (single char):', e.key, 'vs', key);
-		return match;
+		return e.key.toLowerCase() === key.toLowerCase();
 	}
 	
 	// 对于特殊键，如 ArrowLeft, Space
 	if (key === 'Space') {
-		const match = e.key === ' ';
-		console.log('[Match]', match ? '✓' : '✗', 'Space match');
-		return match;
+		return e.key === ' ';
 	}
 	
 	// 对于方向键，优先使用 e.code，因为输入法可能干扰 e.key
 	// e.code: 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'
 	if (key.startsWith('Arrow')) {
-		const match = e.code === key;
-		console.log('[Match]', match ? '✓' : '✗', 'Arrow key match (using e.code):', e.code, '===', key, '?', match);
-		return match;
+		return e.code === key;
 	}
 	
-	const match = e.key === key;
-	console.log('[Match]', match ? '✓' : '✗', 'Key match:', e.key, '===', key, '?', match);
-	return match;
+	return e.key === key;
 }
