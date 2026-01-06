@@ -316,6 +316,45 @@ export function useMediaSync(
 			stopLoop();
 		};
 	}, [enabled, playerRef]);
+	
+	// 暂停状态下的字幕同步（低频轮询）
+	useEffect(() => {
+		if (!enabled || !playerRef.current) return;
+		
+		let intervalId: number | null = null;
+		
+		// 当暂停时，每100ms检查一次currentTime并更新activeIndex
+		const checkPausedSubtitle = () => {
+			const player = playerRef.current;
+			const state = useMediaStore.getState();
+			
+			if (!state.playing && player && subtitles.length > 0) {
+				try {
+					const currentTime = player.getCurrentTime();
+					const currentIndex = state.activeIndex;
+					const newIndex = SubtitleParser.findIndexAtTime(subtitles, currentTime, currentIndex);
+					
+					if (newIndex !== currentIndex) {
+						setActiveIndex(newIndex);
+					}
+					
+					// 同时更新 currentTime
+					setCurrentTime(currentTime);
+				} catch (error) {
+					// Ignore errors during pause
+				}
+			}
+		};
+		
+		// 启动低频轮询
+		intervalId = window.setInterval(checkPausedSubtitle, 100);
+		
+		return () => {
+			if (intervalId !== null) {
+				clearInterval(intervalId);
+			}
+		};
+	}, [enabled, playerRef, subtitles]);
 }
 
 /**
