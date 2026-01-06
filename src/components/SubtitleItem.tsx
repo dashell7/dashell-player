@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import type { SubtitleCue } from '../types';
 import { ClickableText } from './OptimizedWord';
 import { isRTLLanguage, type SupportedLanguage } from '../utils/languageUtils';
@@ -44,17 +44,24 @@ export const SubtitleItem = React.memo<SubtitleItemProps>(({
   onExportSubtitle,
   activeItemRef
 }) => {
-  const formatTime = (seconds: number): string => {
+  // 性能优化：缓存时间格式化函数
+  const formatTime = useCallback((seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
-  // 决定渲染哪些语言
-  const renderLanguages = () => {
+  // 性能优化：缓存 languages 是否为空的判断
+  const hasLanguages = useMemo(
+    () => cue.languages && Object.keys(cue.languages).length > 0,
+    [cue.languages]
+  );
+
+  // 性能优化：缓存渲染函数
+  const renderLanguages = useCallback(() => {
     // 如果有多语言数据且有可见语言设置
-    if (cue.languages && Object.keys(cue.languages).length > 0) {
-      return Object.entries(cue.languages)
+    if (hasLanguages) {
+      return Object.entries(cue.languages!)
         .filter(([lang]) => visibleLanguages.includes(lang as SupportedLanguage))
         .map(([lang, text]) => {
           if (!text) return null;
@@ -110,7 +117,7 @@ export const SubtitleItem = React.memo<SubtitleItemProps>(({
         )}
       </>
     );
-  };
+  }, [hasLanguages, cue, visibleLanguages, showEnglish, showChinese, isActive, wordByWordHighlight, activeWordIndex, onWordClick]);
 
   return (
     <div

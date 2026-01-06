@@ -95,13 +95,14 @@ export class SubtitleParser {
 			// 第三行及之后：字幕文本
 			const text = lines.slice(2).join('\n');
 			
-			// 向后兼容：保留原有的textEn/textZh字段
-			const { textEn, textZh } = this.separateLanguages(text);
-			
-			// 新的多语言支持
+			// 多语言支持（只调用一次，性能优化）
 			const languages = separateLanguages(text);
 			const detectedLangs = Object.keys(languages) as SupportedLanguage[];
 			const primaryLang = detectedLangs[0] || detectLanguage(text);
+			
+			// 向后兼容：从 languages 对象中提取 textEn/textZh
+			const textEn = languages.en;
+			const textZh = languages.zh;
 			
 			cues.push({
 				id: `srt-${index}`,
@@ -177,13 +178,14 @@ export class SubtitleParser {
 			// 清理 VTT 特有的标记
 			text = this.cleanVTTText(text);
 			
-			// 向后兼容：保留原有的textEn/textZh字段
-			const { textEn, textZh } = this.separateLanguages(text);
-			
-			// 新的多语言支持
+			// 多语言支持（只调用一次，性能优化）
 			const languages = separateLanguages(text);
 			const detectedLangs = Object.keys(languages) as SupportedLanguage[];
 			const primaryLang = detectedLangs[0] || detectLanguage(text);
+			
+			// 向后兼容：从 languages 对象中提取 textEn/textZh
+			const textEn = languages.en;
+			const textZh = languages.zh;
 			
 			// ID（时间行之前的内容，如果有）
 			const id = timeLineIndex > 0 ? (lines[timeLineIndex - 1] || `vtt-${i}`) : `vtt-${i}`;
@@ -230,80 +232,6 @@ export class SubtitleParser {
 			// 清理多余空格
 			.replace(/\s+/g, ' ')
 			.trim();
-	}
-	
-	/**
-	 * 分离中英文字幕
-	 */
-	private static separateLanguages(text: string): { textEn?: string; textZh?: string } {
-		// 如果文本包含换行符，尝试按行分离
-		if (text.includes('\n')) {
-			const lines = text.split('\n').map(l => l.trim()).filter(l => l);
-			const enLines: string[] = [];
-			const zhLines: string[] = [];
-			
-			for (const line of lines) {
-				// 检测是否包含中文字符
-				if (/[\u4e00-\u9fa5]/.test(line)) {
-					zhLines.push(line);
-				} else {
-					enLines.push(line);
-				}
-			}
-			
-			// 如果成功分离出中文和英文
-			if (zhLines.length > 0 && enLines.length > 0) {
-				return {
-					textEn: enLines.join(' '),
-					textZh: zhLines.join(' ')
-				};
-			}
-			
-			// 如果全是中文
-			if (zhLines.length > 0 && enLines.length === 0) {
-				return { textZh: zhLines.join(' ') };
-			}
-			
-			// 如果全是英文
-			if (zhLines.length === 0 && enLines.length > 0) {
-				return { textEn: enLines.join(' ') };
-			}
-		} 
-		// 如果只有一行
-		else {
-			// 检测是否包含中文
-			if (/[\u4e00-\u9fa5]/.test(text)) {
-				// 尝试检测是否混合了中英文（例如 "English 中文"）
-				// 这种比较难完美分割，简单起见，如果包含较多中文则视为中文，否则尝试分割
-				
-				// 简单的分割策略：如果一行中包含中文，但开头是英文单词，尝试分割
-				// 很多双语字幕在一行时是：English Text  中文文本
-				// 修改：要求中间至少有两个空格，防止将 "I use WeChat (微信)" 这种混合句子误判为双语分割
-				const match = text.match(/^([a-zA-Z0-9\s.,;:!?'"()-]+)\s{2,}([\u4e00-\u9fa5].*)$/);
-				if (match) {
-					return {
-						textEn: (match[1] || '').trim(),
-						textZh: (match[2] || '').trim()
-					};
-				}
-				
-				// 无法明确分割，视为中文（或混合）
-				// 但为了保证显示效果，如果包含中文，且没有 textEn，那么在 SubtitleOverlay 中可能会只显示 textZh
-				// 我们需要根据情况决定。
-				// 策略：如果包含中文，就放入 textZh，textEn 为空？
-				// 不，如果 textEn 为空，textZh 也会显示。
-				// 但如果 textEn 为空，textZh 里的英文无法点击查词吗？
-				// SubtitleOverlay 里 textZh 是纯文本显示。
-				
-				// 如果这一行主要是中文，放 textZh
-				return { textZh: text };
-			} else {
-				// 纯英文
-				return { textEn: text };
-			}
-		}
-		
-		return {};
 	}
 	
 	/**

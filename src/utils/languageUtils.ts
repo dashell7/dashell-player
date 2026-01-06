@@ -184,7 +184,7 @@ const LANGUAGE_PATTERNS: Array<{
 ];
 
 /**
- * 检测文本语言
+ * 检测文本语言（性能优化版）
  * @param text 要检测的文本
  * @returns 检测到的语言代码
  */
@@ -193,9 +193,24 @@ export function detectLanguage(text: string): SupportedLanguage {
 		return 'unknown';
 	}
 
+	// 快速路径 1: 中文检测（包括汉字和标点）
+	if (/[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]/.test(text)) {
+		return 'zh';
+	}
+	
+	// 快速路径 2: 纯数字和标点 → 英文
+	if (/^[\d\s.,!?;:'"()\-]+$/.test(text)) {
+		return 'en';
+	}
+	
+	// 快速路径 3: 包含英文字母 → 英文
+	if (/[a-zA-Z]/.test(text)) {
+		return 'en';
+	}
+
+	// 慢速路径：完整的模式匹配（仅用于特殊语言）
 	const scores: Partial<Record<SupportedLanguage, number>> = {};
 
-	// 应用所有规则
 	for (const pattern of LANGUAGE_PATTERNS) {
 		const matches = text.match(pattern.regex);
 		if (matches) {
@@ -212,11 +227,6 @@ export function detectLanguage(text: string): SupportedLanguage {
 			maxScore = score;
 			detectedLang = lang as SupportedLanguage;
 		}
-	}
-
-	// 如果没有检测到特殊字符，默认为英语
-	if (detectedLang === 'unknown' && /[a-zA-Z]/.test(text)) {
-		return 'en';
 	}
 
 	return detectedLang;
@@ -248,7 +258,21 @@ export function separateLanguages(text: string): Partial<Record<SupportedLanguag
 	const langGroups: Map<SupportedLanguage, string[]> = new Map();
 
 	for (const line of lines) {
-		const lang = detectLanguage(line);
+		// 优先使用中文标点符号判断（处理纯数字字幕）
+		// \u4e00-\u9fa5: 中文汉字
+		// \u3000-\u303F: CJK 符号和标点
+		// \uFF00-\uFFEF: 全角ASCII、全角标点
+		let lang: SupportedLanguage;
+		if (/[\u4e00-\u9fa5\u3000-\u303F\uFF00-\uFFEF]/.test(line)) {
+			lang = 'zh';
+		} else {
+			lang = detectLanguage(line);
+			// 如果检测为 unknown 但包含数字，默认为英文
+			if (lang === 'unknown' && /\d/.test(line)) {
+				lang = 'en';
+			}
+		}
+		
 		if (!langGroups.has(lang)) {
 			langGroups.set(lang, []);
 		}
