@@ -1,6 +1,7 @@
 import { TFile, requestUrl, Notice } from 'obsidian';
 import type LangPlayerPlugin from '../main';
 import { SubtitleParser } from './SubtitleParser';
+import { SubtitleWorkerManager } from './SubtitleWorkerManager';
 import type { SubtitleCue } from '../types';
 
 /**
@@ -30,8 +31,12 @@ export class SubtitleLoader {
 	private cache: Map<string, SubtitleCacheEntry> = new Map();
 	private cacheMaxAge: number = 5 * 60 * 1000; // 5分钟缓存
 	private maxCacheSize: number = 50; // 最多缓存50个字幕
+	private workerManager: SubtitleWorkerManager;
+	private readonly WORKER_THRESHOLD = 100 * 1024; // 100KB 以上使用 Worker
 
-	constructor(private plugin: LangPlayerPlugin) {}
+	constructor(private plugin: LangPlayerPlugin) {
+		this.workerManager = SubtitleWorkerManager.getInstance();
+	}
 
 	/**
 	 * 从 Vault 文件加载字幕
@@ -55,7 +60,8 @@ export class SubtitleLoader {
 				return null;
 			}
 
-			const cues = SubtitleParser.parse(content);
+			// 使用 Worker 异步解析大文件
+			const cues = await this.parseContent(content, file.path);
 			
 			if (cues.length === 0) {
 				new Notice('无法解析字幕文件');
@@ -108,7 +114,8 @@ export class SubtitleLoader {
 				return null;
 			}
 
-			const cues = SubtitleParser.parse(content);
+			// 使用 Worker 异步解析大文件
+			const cues = await this.parseContent(content, filePath);
 			
 			if (cues.length === 0) {
 				new Notice('无法解析字幕文件');
@@ -163,7 +170,8 @@ export class SubtitleLoader {
 				return null;
 			}
 
-			const cues = SubtitleParser.parse(content);
+			// 使用 Worker 异步解析大文件
+			const cues = await this.parseContent(content, url);
 			
 			if (cues.length === 0) {
 				new Notice('无法解析字幕');
@@ -316,6 +324,42 @@ export class SubtitleLoader {
 	}
 
 	/**
+	 * 智能解析内容（自动选择同步/异步）
+	 * @param content 字幕内容
+	 * @param source 来源标识（用于日志）
+	 */
+	private async parseContent(content: string, source: string): Promise<SubtitleCue[]> {
+		const contentSize = new Blob([content]).size;
+		const format = SubtitleParser.detectFormat(content);
+		
+		// 大文件使用 Worker 异步解析
+		if (contentSize > this.WORKER_THRESHOLD && this.workerManager.isWorkerSupported()) {
+			console.log(`[SubtitleLoader] Using Worker for large file (${(contentSize / 1024).toFixed(1)}KB):`, source);
+			
+			try {
+				const startTime = performance.now();
+				const cues = await this.workerManager.parse(content, format, (progress) => {
+					// 可选：显示进度
+					if (progress % 25 === 0) {
+						console.log(`[SubtitleLoader] Parsing progress: ${progress}%`);
+					}
+				});
+				const duration = performance.now() - startTime;
+				console.log(`[SubtitleLoader] Worker parsed ${cues.length} cues in ${duration.toFixed(2)}ms`);
+				return cues;
+			} catch (error) {
+				console.warn('[SubtitleLoader] Worker failed, falling back to sync:', error);
+				// 降级到同步解析
+				return SubtitleParser.parse(content, format);
+			}
+		} else {
+			// 小文件使用同步解析
+			console.log(`[SubtitleLoader] Using sync parsing (${(contentSize / 1024).toFixed(1)}KB):`, source);
+			return SubtitleParser.parse(content, format);
+		}
+	}
+
+	/**
 	 * 简单的字符串哈希函数
 	 */
 	private hashString(str: string): string {
@@ -326,5 +370,14 @@ export class SubtitleLoader {
 			hash = hash & hash; // Convert to 32bit integer
 		}
 		return hash.toString(36);
+	}
+	
+	/**
+	 * 清理资源（插件卸载时调用）
+	 */
+	destroy(): void {
+		this.clearCache();
+		this.workerManager.terminate();
+		console.log('[SubtitleLoader] Destroyed');
 	}
 }

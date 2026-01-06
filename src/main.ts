@@ -339,9 +339,10 @@ export default class LinguaFlowPlugin extends Plugin {
 		this.addSettingTab(new LinguaFlowSettingTab(this.app, this));
 
 		// 初始化字幕样式
-		this.initSubtitleStyles();
+		this.updateSubtitleStyles();
 
 		console.log('[LangPlayer] Plugin loaded');
+
 	}
 
 	onunload() {
@@ -352,6 +353,11 @@ export default class LinguaFlowPlugin extends Plugin {
 		
 		// 清理缓存
 		TextProcessor.clearCache();
+		
+		// 清理字幕加载器（终止 Worker）
+		if (this.subtitleLoader) {
+			this.subtitleLoader.destroy();
+		}
 	}
 
 	/**
@@ -365,12 +371,18 @@ export default class LinguaFlowPlugin extends Plugin {
 		store.setVideoFit(this.settings.videoFit);
 		store.setShowInlineSubtitles(this.settings.showInlineSubtitles);
 		store.updateSubtitleConfig({
+			fontSize: this.settings.subtitleFontSize,
 			fontColor: this.settings.subtitleColor,
 			translationColor: this.settings.subtitleTranslationColor,
 			highlightColor: this.settings.subtitleHighlightColor,
-			backgroundColor: this.settings.subtitleBackgroundColor
+			backgroundColor: this.settings.subtitleBackgroundColor,
+			showIndexAndTime: this.settings.showIndexAndTime,
+			wordByWordHighlight: this.settings.wordByWordHighlight,
+			// 确保从设置中加载可见语言，如果没有设置则默认 en, zh
+			visibleLanguages: (this.settings.visibleLanguages as any) || ['en', 'zh']
 		});
 	}
+
 
 	/**
 	 * 保存设置
@@ -876,24 +888,41 @@ export default class LinguaFlowPlugin extends Plugin {
 	}
 
 	/**
-	 * 初始化字幕样式
+	 * 更新字幕样式 (Public for settings tab)
 	 */
-	private initSubtitleStyles(): void {
+	public updateSubtitleStyles(): void {
 		const settings = this.settings;
 		
-		// 创建自定义样式
-		const styleEl = document.createElement('style');
-		styleEl.id = 'linguaflow-custom-subtitle-style';
-		document.head.appendChild(styleEl);
+		// 创建或更新自定义样式
+		let styleEl = document.getElementById('linguaflow-custom-subtitle-style');
+		if (!styleEl) {
+			styleEl = document.createElement('style');
+			styleEl.id = 'linguaflow-custom-subtitle-style';
+			document.head.appendChild(styleEl);
+		}
 
 		styleEl.textContent = `
 			.linguaflow-subtitle-item-en,
 			.linguaflow-subtitle-item-zh,
-			.linguaflow-subtitle-item-main {
+			.linguaflow-subtitle-item-main,
+			.linguaflow-subtitle-language {
 				font-size: ${settings.subtitleFontSize}px;
 				font-weight: ${settings.subtitleFontWeight};
 				line-height: ${settings.subtitleLineHeight};
+				${settings.subtitleColor ? `color: ${settings.subtitleColor};` : ''}
+				${settings.subtitleBackgroundColor ? `background-color: ${settings.subtitleBackgroundColor};` : ''}
+			}
+
+			.linguaflow-subtitle-item-zh {
+				${settings.subtitleTranslationColor ? `color: ${settings.subtitleTranslationColor} !important;` : ''}
+			}
+
+			.linguaflow-word-highlight,
+			.linguaflow-line-highlight,
+			.linguaflow-line-highlight .linguaflow-clickable-word {
+				${settings.subtitleHighlightColor ? `color: ${settings.subtitleHighlightColor} !important;` : ''}
 			}
 		`;
 	}
+
 }

@@ -15,6 +15,7 @@ interface MediaState {
 	showInlineSubtitles: boolean;
 	
 	// 字幕状态
+	playerRef: any; // 保存播放器引用
 	subtitles: SubtitleCue[];
 	activeIndex: number;  // 当前高亮的字幕索引（-1 表示无）
 	activeWordIndex: number;  // 当前高亮的单词索引（-1 表示无）
@@ -59,6 +60,7 @@ interface MediaActions {
 	setShowInlineSubtitles: (show: boolean) => void;
 	
 	// 字幕管理
+	setPlayerRef: (ref: any) => void;
 	setSubtitles: (subtitles: SubtitleCue[]) => void;
 	setActiveIndex: (index: number) => void;
 	setActiveWordIndex: (index: number) => void;
@@ -108,6 +110,7 @@ const initialState: MediaState = {
 	videoFit: 'contain',
 	showInlineSubtitles: false,
 	
+	playerRef: null,
 	subtitles: [],
 	activeIndex: -1,
 	activeWordIndex: -1,
@@ -186,6 +189,10 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	},
 	
 	// ===== 字幕管理 =====
+	setPlayerRef: (ref: any) => {
+		set({ playerRef: ref });
+	},
+	
 	setSubtitles: (subtitles: SubtitleCue[]) => {
 		console.log('[MediaStore] Loading subtitles:', subtitles.length);
 		set({ subtitles, activeIndex: -1 });
@@ -283,6 +290,16 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	// 单句循环播放
 	startSegmentLoop: (start: number, end: number, count: number, index: number = -1) => {
 		console.log('[MediaStore] Start segment loop:', start, '-', end, 'Count:', count, 'Index:', index);
+		
+		// 强制跳转到开始时间 (新增逻辑)
+		const player = get().playerRef;
+		if (player) {
+			console.log('[MediaStore] startSegmentLoop seeking to:', start);
+			player.seekTo(start);
+		} else {
+			console.warn('[MediaStore] startSegmentLoop: Player ref is null!');
+		}
+
 		// 1. 停止其他模式
 		if (get().loopEnabled) get().disableLoop();
 		if (get().segmentPlayEnabled) set({ segmentPlayEnabled: false });
@@ -352,6 +369,18 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		
 		// 如果在循环模式，停止当前循环并启动新的循环
 		if (segmentLoopIndex !== -1) {
+			console.log('[MediaStore] Stopping current loop and starting new one');
+			
+			// 1. 先强制跳转到新位置
+			const player = get().playerRef;
+			if (player) {
+				console.log('[MediaStore] Seeking to next segment (loop mode):', nextCue.start);
+				player.seekTo(nextCue.start);
+				player.playVideo(); // 确保继续播放
+				get().setPlaying(true);
+			}
+			
+			// 2. 然后停止旧循环并启动新循环
 			set({
 				segmentLoopEnabled: false,
 				segmentLoopCurrent: 0,
@@ -362,11 +391,10 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 			console.log('[MediaStore] Not in loop mode, jumping directly to nextIndex:', nextIndex);
 			set({ activeIndex: nextIndex });
 			// 需要 playerRef 来 seekTo，这里通过 plugin.playerRef 访问
-			const plugin = (window as any).app?.plugins?.plugins?.langplayer;
-			console.log('[MediaStore] Plugin found:', !!plugin, 'playerRef:', !!plugin?.playerRef?.current);
-			if (plugin?.playerRef?.current) {
+			const player = get().playerRef;
+			if (player) {
 				console.log('[MediaStore] Seeking to:', nextCue.start);
-				plugin.playerRef.current.seekTo(nextCue.start);
+				player.seekTo(nextCue.start);
 			} else {
 				console.warn('[MediaStore] Player not available!');
 			}
@@ -404,6 +432,18 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		
 		// 如果在循环模式，停止当前循环并启动新的循环
 		if (segmentLoopIndex !== -1) {
+			console.log('[MediaStore] Stopping current loop and starting new one');
+			
+			// 1. 先强制跳转到新位置
+			const player = get().playerRef;
+			if (player) {
+				console.log('[MediaStore] Seeking to previous segment (loop mode):', prevCue.start);
+				player.seekTo(prevCue.start);
+				player.playVideo(); // 确保继续播放
+				get().setPlaying(true);
+			}
+			
+			// 2. 然后停止旧循环并启动新循环
 			set({
 				segmentLoopEnabled: false,
 				segmentLoopCurrent: 0,
@@ -414,11 +454,10 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 			console.log('[MediaStore] Not in loop mode, jumping directly to prevIndex:', prevIndex);
 			set({ activeIndex: prevIndex });
 			// 需要 playerRef 来 seekTo，这里通过 plugin.playerRef 访问
-			const plugin = (window as any).app?.plugins?.plugins?.langplayer;
-			console.log('[MediaStore] Plugin found:', !!plugin, 'playerRef:', !!plugin?.playerRef?.current);
-			if (plugin?.playerRef?.current) {
+			const player = get().playerRef;
+			if (player) {
 				console.log('[MediaStore] Seeking to:', prevCue.start);
-				plugin.playerRef.current.seekTo(prevCue.start);
+				player.seekTo(prevCue.start);
 			} else {
 				console.warn('[MediaStore] Player not available!');
 			}
@@ -512,8 +551,18 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 	// ===== 重置 =====
 	reset: () => {
 		console.log('[MediaStore] Reset state');
-		set(initialState);
+		// 保留用户配置（字幕设置、视频填充模式、内嵌字幕开关、音量）
+		const { subtitleConfig, videoFit, showInlineSubtitles, volume } = get();
+		
+		set({
+			...initialState,
+			subtitleConfig,
+			videoFit,
+			showInlineSubtitles,
+			volume // 音量也保留，符合用户习惯
+		});
 	},
+
 }));
 
 /**

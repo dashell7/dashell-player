@@ -52,8 +52,10 @@ export interface LinguaFlowSettings {
 	subtitleHighlightColor: string;     // 高亮颜色
 	showIndexAndTime: boolean;          // 是否显示字幕编号和时间
 	wordByWordHighlight: boolean;       // 逐字高亮（true）或整行高亮（false）
+	visibleLanguages: string[];         // 可见语言列表 (e.g. ['en', 'zh'])
 	subtitlePanelLocation: 'right' | 'left' | 'tab' | 'split'; // 字幕面板打开位置
 	subtitleLayout: 'bottom' | 'right'; // 内嵌字幕布局：底部或右侧
+
 
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: boolean;  // 查词时是否自动打开录入面板
@@ -161,7 +163,9 @@ export const DEFAULT_SETTINGS: LinguaFlowSettings = {
 	subtitleHighlightColor: '', // 默认跟随主题
 	showIndexAndTime: false, // 默认隐藏编号和时间
 	wordByWordHighlight: false, // 默认关闭逐字高亮（整行高亮）
+	visibleLanguages: ['en', 'zh'], // 默认显示英文和中文
 	subtitlePanelLocation: 'tab', // 默认在新标签页打开（可拖动）
+
 	subtitleLayout: 'bottom', // 默认底部布局
 	// Language Learner 集成设置
 	openLanguageLearnerPanel: true, // 默认打开录入面板
@@ -866,9 +870,10 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				this.plugin.settings.subtitleFontWeight = theme.config.subtitleFontWeight;
 
 				await this.plugin.saveSettings();
-				this.updateSubtitleStyles();
+				this.plugin.updateSubtitleStyles();
 
 				// Sync to Store
+
 				const { useMediaStore } = require('./store/mediaStore');
 				useMediaStore.getState().updateSubtitleConfig({
 					fontColor: theme.config.subtitleColor,
@@ -895,7 +900,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleFontSize = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 				})
 			);
 
@@ -912,7 +917,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleFontWeight = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 				})
 			);
 
@@ -927,7 +932,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleLineHeight = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 				})
 			);
 
@@ -940,7 +945,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleColor = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ fontColor: value });
 				})
@@ -951,7 +956,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					this.plugin.settings.subtitleColor = '';
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ fontColor: '' });
 					this.display();
@@ -967,7 +972,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleTranslationColor = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ translationColor: value });
 				})
@@ -978,7 +983,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					this.plugin.settings.subtitleTranslationColor = '';
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ translationColor: '' });
 					this.display();
@@ -994,7 +999,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleHighlightColor = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ highlightColor: value });
 				})
@@ -1005,7 +1010,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					this.plugin.settings.subtitleHighlightColor = '';
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ highlightColor: '' });
 					this.display();
@@ -1021,7 +1026,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onChange(async (value) => {
 					this.plugin.settings.subtitleBackgroundColor = value;
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ backgroundColor: value });
 				})
@@ -1032,12 +1037,13 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 				.onClick(async () => {
 					this.plugin.settings.subtitleBackgroundColor = '';
 					await this.plugin.saveSettings();
-					this.updateSubtitleStyles();
+					this.plugin.updateSubtitleStyles();
 					const { useMediaStore } = require('./store/mediaStore');
 					useMediaStore.getState().updateSubtitleConfig({ backgroundColor: '' });
 					this.display();
 				})
 			);
+
 
 		new Setting(containerEl)
 			.setName('显示编号和时间')
@@ -1282,43 +1288,7 @@ export class LinguaFlowSettingTab extends PluginSettingTab {
 		console.log('[LinguaFlow] AssemblyAI test successful');
 	}
 
-	/**
-	 * 更新字幕样式
-	 */
-	private updateSubtitleStyles(): void {
-		const settings = this.plugin.settings;
-		
-		// 创建或更新自定义样式
-		let styleEl = document.getElementById('linguaflow-custom-subtitle-style');
-		if (!styleEl) {
-			styleEl = document.createElement('style');
-			styleEl.id = 'linguaflow-custom-subtitle-style';
-			document.head.appendChild(styleEl);
-		}
 
-		styleEl.textContent = `
-			.linguaflow-subtitle-item-en,
-			.linguaflow-subtitle-item-zh,
-			.linguaflow-subtitle-item-main,
-			.linguaflow-subtitle-language {
-				font-size: ${settings.subtitleFontSize}px;
-				font-weight: ${settings.subtitleFontWeight};
-				line-height: ${settings.subtitleLineHeight};
-				${settings.subtitleColor ? `color: ${settings.subtitleColor};` : ''}
-				${settings.subtitleBackgroundColor ? `background-color: ${settings.subtitleBackgroundColor};` : ''}
-			}
-
-			.linguaflow-subtitle-item-zh {
-				${settings.subtitleTranslationColor ? `color: ${settings.subtitleTranslationColor} !important;` : ''}
-			}
-
-			.linguaflow-word-highlight,
-			.linguaflow-line-highlight,
-			.linguaflow-line-highlight .linguaflow-clickable-word {
-				${settings.subtitleHighlightColor ? `color: ${settings.subtitleHighlightColor} !important;` : ''}
-			}
-		`;
-	}
 }
 
 /**

@@ -100,7 +100,6 @@ wordRefs.current = parsedWords.map(() => null);
 // 监听 activeWordIndex 变化，直接操作 DOM
 useEffect(() => {
 // 调试日志
-console.log('[ClickableText] Effect:', { isActive, activeWordIndex, wordRefsLen: wordRefs.current.length });
 
 // 如果当前句子不活跃，或者没有单词，不做任何操作
 if (!isActive) {
@@ -116,7 +115,6 @@ return;
 // 找到对应的 DOM 元素索引
 // parsedWords 中的 index 是逻辑单词索引，我们需要找到对应的数组索引
 const targetIndex = parsedWords.findIndex(p => p.index === activeWordIndex);
-console.log('[ClickableText] Highlight update:', { activeWordIndex, targetIndex });
 
 // 移除旧的高亮
 if (prevIndexRef.current !== -1 && prevIndexRef.current !== targetIndex) {
@@ -131,7 +129,6 @@ if (targetEl) {
 targetEl.classList.add('linguaflow-word-highlight');
 prevIndexRef.current = targetIndex;
 } else {
-console.warn('[ClickableText] Target element not found for index:', targetIndex);
 }
 } else {
 // 如果没找到对应单词（比如刚开始播放或结束），也要清除旧的
@@ -154,7 +151,7 @@ return (
 				// 空格和标点
 				if (!parsed.isWord) {
 					return (
-						<span key={idx} className="linguaflow-punctuation">
+						<span key={idx} className="linguaflow-punctuation" style={{ whiteSpace: 'pre-wrap' }}>
 							{parsed.text}
 						</span>
 					);

@@ -101,6 +101,7 @@
         <div class="form-group">
             <label for="duration">有效期时长</label>
             <select id="duration" onchange="updateExpiryInfo()">
+                <option value="3d">3 天 (试用)</option>
                 <option value="1m">1 个月</option>
                 <option value="3m">3 个月</option>
                 <option value="1y" selected>1 年</option>
@@ -150,6 +151,7 @@
             let expiry = new Date();
             
             switch(duration) {
+                case '3d': expiry.setDate(now.getDate() + 3); break;
                 case '1m': expiry.setMonth(now.getMonth() + 1); break;
                 case '3m': expiry.setMonth(now.getMonth() + 3); break;
                 case '1y': expiry.setFullYear(now.getFullYear() + 1); break;

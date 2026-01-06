@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-langplayer",
-	"version": "1.8.10",
+	"version": "1.8.12",
 	"description": "Advanced media player for language learning",
 	"main": "main.js",
 	"type": "module",

@@ -90,6 +90,8 @@ const SubtitleControlsBase: React.FC<SubtitleControlsProps> = ({
 	// 获取字幕列表和当前索引
 	const subtitles = useMediaStore(state => state.subtitles);
 	const activeIndex = useMediaStore(state => state.activeIndex);
+	const playNextSegment = useMediaStore(state => state.playNextSegment);
+	const playPreviousSegment = useMediaStore(state => state.playPreviousSegment);
 	const setActiveIndex = useMediaStore(state => state.setActiveIndex);
 	const shadowingEnabled = useMediaStore(state => state.shadowingEnabled);
 	const toggleShadowing = useMediaStore(state => state.toggleShadowing);
@@ -106,29 +108,13 @@ const SubtitleControlsBase: React.FC<SubtitleControlsProps> = ({
 	// 组件挂载时的初始化（如果需要可以在这里添加逻辑）
 
 	// 跳转到上一句
-	const handlePrevious = () => {
-		if (activeIndex > 0) {
-			const prevIndex = activeIndex - 1;
-			setActiveIndex(prevIndex);
-			// 如果有对应的字幕，跳转播放位置
-			const prevCue = subtitles[prevIndex];
-			if (prevCue && playerRef?.current) {
-				playerRef.current.seekTo(prevCue.start);
-			}
-		}
+		const handlePrevious = () => {
+		playPreviousSegment();
 	};
 
 	// 跳转到下一句
-	const handleNext = () => {
-		if (activeIndex < subtitles.length - 1) {
-			const nextIndex = activeIndex + 1;
-			setActiveIndex(nextIndex);
-			// 如果有对应的字幕，跳转播放位置
-			const nextCue = subtitles[nextIndex];
-			if (nextCue && playerRef?.current) {
-				playerRef.current.seekTo(nextCue.start);
-			}
-		}
+		const handleNext = () => {
+		playNextSegment();
 	};
 
 	// 安全获取循环次数

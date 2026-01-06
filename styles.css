@@ -835,6 +835,7 @@
 .linguaflow-subtitle-item-zh {
 	color: var(--text-muted);
 	font-size: 13px;
+	white-space: pre-wrap; /* 允许换行 */
 }
 
 /* 整行高亮样式（禁用逐字高亮时使用） */
@@ -1267,13 +1268,13 @@
 		height: 20px !important;
 	}
 
-	/* 2. 控制栏改为横向滚动，并尝试居中 */
+	/* 2. 控制栏改为横向滚动，防止溢出被切掉 */
 	.linguaflow-subtitle-controls {
 		flex-wrap: nowrap;
-		justify-content: center; /* 居中显示 */
+		justify-content: flex-start; /* 改回 flex-start 以确保溢出时可以通过滚动访问所有按钮 */
 		overflow-x: auto;
 		padding: 8px 12px;
-		gap: 12px;
+		gap: 8px; /* 稍微减小间距 */
 		/* 隐藏滚动条但保持功能 */
 		-ms-overflow-style: none;
 		scrollbar-width: none;
@@ -3881,6 +3882,7 @@ color: var(--text-normal);
 
 .linguaflow-subtitle-language-text {
 	line-height: 1.6;
+	white-space: pre-wrap;
 }
 
 /* RTL语言支持 */

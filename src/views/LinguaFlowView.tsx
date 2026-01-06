@@ -86,6 +86,9 @@ export class LinguaFlowView extends ItemView {
 				const file = this.app.vault.getAbstractFileByPath(source.filePath);
 				if (file instanceof TFile) {
 					source.file = file;
+					// 重新生成 URL 以防过期
+					source.url = getResourceUrl(file, this.app.vault);
+					console.log('[LinguaFlowView] Refreshed URL for local file:', source.url);
 				} else {
 					console.warn('[LinguaFlowView] 无法恢复文件，路径不存在:', source.filePath);
 					return;
@@ -352,12 +355,17 @@ function LinguaFlowApp({ source, playerRef, plugin }: LinguaFlowAppProps) {
 		}
 	}, [source, ready]);
 
-	// 同步 playerRef 到 plugin.playerRef，以便 Store 方法可以访问
+	// 同步 playerRef 到 Store 和 plugin
 	React.useEffect(() => {
-		if (playerRef.current && plugin.playerRef) {
-			// 将当前的 playerRef.current 同步到 plugin.playerRef
-			(plugin.playerRef as any).current = playerRef.current;
-			console.log('[LinguaFlowApp] Synced playerRef to plugin.playerRef');
+		if (playerRef.current) {
+			// 同步到 Store (新方式)
+			useMediaStore.getState().setPlayerRef(playerRef.current);
+			console.log('[LinguaFlowApp] Synced playerRef to Store');
+
+			// 同步到 plugin (旧方式，保持兼容)
+			if (plugin.playerRef) {
+				(plugin.playerRef as any).current = playerRef.current;
+			}
 		}
 	}, [playerRef.current, plugin]);
 
