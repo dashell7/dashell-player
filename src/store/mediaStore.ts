@@ -371,16 +371,18 @@ export const useMediaStore = create<MediaState & MediaActions>((set, get) => ({
 		if (segmentLoopIndex !== -1) {
 			console.log('[MediaStore] Stopping current loop and starting new one');
 			
-			// 1. 先强制跳转到新位置
+			// 1. 先设置播放状态为 true（关键修复！）
+			set({ playing: true });
+			
+			// 2. 强制跳转到新位置并播放
 			const player = get().playerRef;
 			if (player) {
 				console.log('[MediaStore] Seeking to next segment (loop mode):', nextCue.start);
 				player.seekTo(nextCue.start);
 				player.playVideo(); // 确保继续播放
-				get().setPlaying(true);
 			}
 			
-			// 2. 然后停止旧循环并启动新循环
+			// 3. 然后停止旧循环并启动新循环
 			set({
 				segmentLoopEnabled: false,
 				segmentLoopCurrent: 0,
