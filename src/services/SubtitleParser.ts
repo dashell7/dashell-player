@@ -9,6 +9,17 @@ import type { SupportedLanguage } from '../utils/languageUtils';
  */
 export class SubtitleParser {
 	/**
+	 * 缓存正则表达式（性能优化）
+	 * 避免在每次调用 cleanVTTText 时重新创建
+	 */
+	private static readonly INLINE_TIMESTAMP_REGEX = /<\d{2}:\d{2}:\d{2}\.\d{3}>/g;
+	private static readonly STYLE_TAG_REGEX = /<\/?[cibu]>/g;
+	private static readonly CLASS_STYLE_REGEX = /<c\.[^>]+>/g;
+	private static readonly VOICE_TAG_REGEX = /<v\s+[^>]+>/g;
+	private static readonly VOICE_CLOSE_REGEX = /<\/v>/g;
+	private static readonly ANY_TAG_REGEX = /<[^>]+>/g;
+	private static readonly WHITESPACE_REGEX = /\s+/g;
+	/**
 	 * 检测字幕格式
 	 */
 	static detectFormat(text: string): SubtitleFormat {
@@ -219,18 +230,18 @@ export class SubtitleParser {
 	private static cleanVTTText(text: string): string {
 		return text
 			// 移除内联时间戳 <00:00:00.000>
-			.replace(/<\d{2}:\d{2}:\d{2}\.\d{3}>/g, '')
+			.replace(SubtitleParser.INLINE_TIMESTAMP_REGEX, '')
 			// 移除样式标签 <c>, </c>, <i>, </i>, <b>, </b>, <u>, </u>
-			.replace(/<\/?[cibu]>/g, '')
+			.replace(SubtitleParser.STYLE_TAG_REGEX, '')
 			// 移除带类名的样式标签 <c.classname>
-			.replace(/<c\.[^>]+>/g, '')
+			.replace(SubtitleParser.CLASS_STYLE_REGEX, '')
 			// 移除语音标签 <v speaker>, </v>
-			.replace(/<v\s+[^>]+>/g, '')
-			.replace(/<\/v>/g, '')
+			.replace(SubtitleParser.VOICE_TAG_REGEX, '')
+			.replace(SubtitleParser.VOICE_CLOSE_REGEX, '')
 			// 移除其他可能的标签
-			.replace(/<[^>]+>/g, '')
+			.replace(SubtitleParser.ANY_TAG_REGEX, '')
 			// 清理多余空格
-			.replace(/\s+/g, ' ')
+			.replace(SubtitleParser.WHITESPACE_REGEX, ' ')
 			.trim();
 	}
 	
