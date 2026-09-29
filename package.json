@@ -1,43 +1,34 @@
 {
 	"name": "obsidian-langplayer",
-	"version": "1.9.0",
-	"description": "Advanced media player for language learning",
+	"version": "1.9.1",
+	"description": "Language-learning media player for Obsidian with user-triggered AI sentence meanings.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
-		"version": "node version-bump.mjs && git add manifest.json versions.json",
-		"lint": "eslint ."
+		"build": "node esbuild.config.mjs production && node -e \"const fs=require('fs');const base=fs.existsSync('styles-base.css')?fs.readFileSync('styles-base.css','utf8'):'';const compiled=fs.existsSync('main.css')?fs.readFileSync('main.css','utf8'):'';fs.writeFileSync('styles.css',base+'\\n\\n/* === Additional Compiled Styles === */\\n'+compiled)\"",
+		"package": "npm run build && node scripts/package-plugin.mjs",
+		"typecheck": "tsc -noEmit -skipLibCheck",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
 	"keywords": [],
-	"license": "0-BSD",
+	"license": "MIT",
 	"devDependencies": {
-		"@eslint/js": "9.30.1",
-		"@types/diff-match-patch": "^1.0.36",
-		"@types/node": "^25.0.3",
-		"@types/react": "^18.3.27",
+		"@types/node": "^22.20.1",
+		"@types/react": "^18.3.31",
 		"@types/react-dom": "^18.3.7",
 		"@types/react-window": "^1.8.8",
-		"esbuild": "^0.27.2",
-		"eslint-plugin-obsidianmd": "0.1.9",
-		"globals": "14.0.0",
-		"jiti": "2.6.1",
-		"tslib": "2.4.0",
+		"esbuild": "^0.28.1",
+		"obsidian": "^1.13.1",
 		"typescript": "^5.9.3",
-		"typescript-eslint": "^8.52.0"
+		"vitest": "^4.1.11"
 	},
 	"dependencies": {
-		"diff-match-patch": "^1.0.5",
-		"obsidian": "^1.11.0",
 		"react": "^18.3.1",
 		"react-dom": "^18.3.1",
-		"react-player": "^2.13.0",
 		"react-window": "^2.2.3",
-		"wavesurfer.js": "^7.12.1",
-		"zustand": "^5.0.9"
-	},
-	"optionalDependencies": {
-		"@types/diff-match-patch": "^1.0.36"
+		"zustand": "^5.0.14"
 	}
 }

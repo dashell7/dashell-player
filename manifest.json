@@ -1,10 +1,9 @@
 {
 	"id": "langplayer",
 	"name": "LangPlayer",
-	"version": "1.9.0",
-	"minAppVersion": "0.15.0",
-	"description": "Advanced media player for language learning with subtitle sync, sentence loop, pronunciation assessment, and vocabulary management.",
-	"author": "LangPlayer Team",
-	"authorUrl": "https://github.com/langplayer",
+	"version": "1.9.1",
+	"minAppVersion": "1.11.4",
+	"description": "Open local or web media for language learning with subtitle browsing, sentence dictation, vocabulary management, and recording.",
+	"author": "obsidian学英语",
 	"isDesktopOnly": false
 }

@@ -1,928 +1,754 @@
-/*
- * LangPlayer
- * Copyright (c) 2025 LinguaFlow Team. All rights reserved.
- * 
- * This software is licensed under the terms of the EULA found in the LICENSE file.
- * Unauthorized copying, modification, or distribution is strictly prohibited.
- */
-
-import { Plugin, WorkspaceLeaf, Notice, TFile, MarkdownView } from 'obsidian';
-import { LinguaFlowView } from './views/LinguaFlowView';
-import { SubtitlePanelView, SUBTITLE_PANEL_VIEW_TYPE } from './views/SubtitlePanelView';
-import { LINGUA_FLOW_VIEW, type MediaSource, type ProtocolParams, type PlayerRef, type SubtitleCue } from './types';
-import { parseTimestamp, formatTime } from './utils/fileUtils';
-import { useMediaStore } from './store/mediaStore';
-import { LinguaFlowSettings, DEFAULT_SETTINGS, LinguaFlowSettingTab } from './settings';
-import { MediaInputModal } from './modals/MediaInputModal';
-import { SubtitleLoader } from './services/SubtitleLoader';
-import { TextProcessor } from './components/OptimizedWord';
-import * as React from 'react';
-import { ActivationService } from './services/ActivationService';
-import { logger, LogLevel } from './utils/logger';
-
-/**
- * LangPlayer 插件主类
- * 提供媒体播放、字幕同步、语言学习功能
- */
-export default class LinguaFlowPlugin extends Plugin {
-	settings: LinguaFlowSettings;
-	playerRef: React.RefObject<PlayerRef> = React.createRef();
-	subtitleLoader: SubtitleLoader;
-
-	async onload() {
-		console.log('[LangPlayer] Loading plugin');
-
-		// 加载设置
-		await this.loadSettings();
-
-		// [试用期初始化] 如果是首次运行，记录安装时间
-		if (!this.settings.installDate || this.settings.installDate <= 0) {
-			this.settings.installDate = Date.now();
-			await this.saveSettings();
-			console.log('[LangPlayer] First run detected. Trial started.');
-		}
-
-		// [激活检查] 验证激活码
-		const activationService = ActivationService.getInstance();
-		const isActivated = activationService.validateCode(this.settings.activationCode);
-		
-		if (!isActivated) {
-			// 检查试用状态
-			const trialStatus = activationService.checkTrialStatus(this.settings.installDate);
-			
-			if (trialStatus.isExpired) {
-				// 已过期 -> 基础模式 (不拦截加载，但提示受限)
-				console.log('[LangPlayer] Trial expired. Running in Basic Mode.');
-				new Notice('⚠️ LangPlayer 试用期已结束 (基础模式)。\n高级功能已锁定。', 5000);
-			} else {
-				// 试用期内 -> 允许使用
-				console.log(`[LangPlayer] Trial active. ${trialStatus.daysRemaining} days remaining.`);
-				new Notice(`⏳ LangPlayer 试用模式 (剩余 ${trialStatus.daysRemaining} 天)`, 10000);
-			}
-		}
-
-		// 初始化日志系统
-		if (this.settings.debugMode) {
-			logger.enableDebug();
-			logger.info('Main', 'Debug mode enabled');
-		} else {
-			logger.disableAll();
-		}
-
-		// 初始化字幕加载器（带缓存功能）
-		this.subtitleLoader = new SubtitleLoader(this);
-		console.log('[LangPlayer] Subtitle loader initialized');
-
-		// 注册自定义视图
-		this.registerView(
-			LINGUA_FLOW_VIEW,
-			(leaf) => new LinguaFlowView(leaf, this)
-		);
-
-		// 注册字幕面板视图
-		this.registerView(
-			SUBTITLE_PANEL_VIEW_TYPE,
-			(leaf) => new SubtitlePanelView(leaf, this)
-		);
-
-		// 注册 Ribbon 图标
-		this.addRibbonIcon('play-circle', 'Open LangPlayer', () => {
-			// 打开媒体输入对话框
-			new MediaInputModal(this.app, this).open();
-		});
-
-		// 注册命令：打开播放器
-		this.addCommand({
-			id: 'open-player',
-			name: 'Open Media Player',
-			callback: () => {
-				this.activateView();
-			},
-		});
-
-		// 注册命令：打开当前文件
-		this.addCommand({
-			id: 'open-current-file',
-			name: 'Play current file',
-			checkCallback: (checking: boolean) => {
-				const file = this.app.workspace.getActiveFile();
-				if (file && this.isMediaFile(file)) {
-					if (!checking) {
-						this.openFile(file);
-					}
-					return true;
-				}
-				return false;
-			},
-		});
-
-		// 注册命令：切换循环
-		this.addCommand({
-			id: 'toggle-loop',
-			name: 'Toggle sentence loop',
-			callback: () => {
-				useMediaStore.getState().toggleLoop();
-				const loopEnabled = useMediaStore.getState().loopEnabled;
-				new Notice(loopEnabled ? '🔁 循环已启用' : '⏹️ 循环已关闭');
-			},
-		});
-
-		// 注册命令：退出循环
-		this.addCommand({
-			id: 'exit-loop',
-			name: 'Exit loop',
-			callback: () => {
-				useMediaStore.getState().disableLoop();
-				new Notice('⏹️ 已退出循环');
-			},
-		});
-
-		// 注册命令：上一句字幕
-		this.addCommand({
-			id: 'previous-subtitle',
-			name: 'Previous subtitle',
-			hotkeys: [{ modifiers: [], key: 'ArrowLeft' }],
-			callback: () => {
-				useMediaStore.getState().playPreviousSegment();
-			},
-		});
-
-		// 注册命令：下一句字幕
-		this.addCommand({
-			id: 'next-subtitle',
-			name: 'Next subtitle',
-			hotkeys: [{ modifiers: [], key: 'ArrowRight' }],
-			callback: () => {
-				useMediaStore.getState().playNextSegment();
-			},
-		});
-
-		// 注册命令：开启/关闭复读（句子循环）
-		this.addCommand({
-			id: 'toggle-sentence-repeat',
-			name: 'Toggle sentence repeat',
-			hotkeys: [{ modifiers: [], key: 'ArrowDown' }],
-			callback: () => {
-				const store = useMediaStore.getState();
-				if (store.segmentLoopEnabled) {
-					store.stopSegmentLoop();
-					new Notice('⏹️ 复读已关闭');
-				} else {
-					const { activeIndex, subtitles } = store;
-					if (activeIndex >= 0 && activeIndex < subtitles.length) {
-						const currentCue = subtitles[activeIndex];
-						if (currentCue) {
-							store.startSegmentLoop(currentCue.start, currentCue.end, 3, activeIndex);
-							new Notice('🔁 复读已启用');
-						}
-					} else {
-						new Notice('⚠️ 请先选择字幕');
-					}
-				}
-			},
-		});
-
-		// 注册命令：插入当前字幕到笔记
-		this.addCommand({
-			id: 'insert-subtitle-to-note',
-			name: 'Insert current subtitle to note',
-			hotkeys: [{ modifiers: ['Mod'], key: 'i' }],
-			callback: () => {
-				const store = useMediaStore.getState();
-				const { activeIndex, subtitles } = store;
-				
-				if (activeIndex >= 0 && activeIndex < subtitles.length) {
-					const currentCue = subtitles[activeIndex];
-					if (currentCue) {
-						this.insertSubtitleToNote(currentCue);
-					}
-				} else {
-					new Notice('⚠️ 请先播放视频并选择字幕');
-				}
-			},
-		});
-
-		// 注册命令：设置 A 点（AB 循环起点）
-		this.addCommand({
-			id: 'set-point-a',
-			name: 'Set point A (AB repeat)',
-			// hotkeys: [{ modifiers: [], key: 'A' }], // Removed to avoid global conflict
-			callback: () => {
-				const currentTime = useMediaStore.getState().currentTime;
-				useMediaStore.getState().setPointA(currentTime);
-				new Notice(`🅰️ A点已设置: ${currentTime.toFixed(2)}s`);
-			},
-		});
-
-		// 注册命令：设置 B 点（AB 循环终点）
-		this.addCommand({
-			id: 'set-point-b',
-			name: 'Set point B (AB repeat)',
-			// hotkeys: [{ modifiers: [], key: 'B' }], // Removed to avoid global conflict
-			callback: () => {
-				const currentTime = useMediaStore.getState().currentTime;
-				const pointA = useMediaStore.getState().pointA;
-				if (pointA === null || currentTime <= pointA) {
-					new Notice('⚠️ B点必须在A点之后');
-					return;
-				}
-				const store = useMediaStore.getState();
-				store.setPointB(currentTime);
-				// 设置 B 点后自动启用 AB 循环
-				store.enableABRepeat();
-				new Notice(`🅱️ B点已设置: ${currentTime.toFixed(2)}s - AB循环已启动`);
-			},
-		});
-
-		// 注册命令：启用/关闭 AB 循环
-		this.addCommand({
-			id: 'toggle-ab-repeat',
-			name: 'Toggle AB repeat',
-			// hotkeys: [{ modifiers: [], key: 'R' }], // Removed to avoid conflict with Record (r)
-			callback: () => {
-				// [Pro Check] 仅限 Pro 用户
-				if (!ActivationService.getInstance().isProAccess(this.settings.installDate)) {
-					new Notice('🔒 AB循环是 Pro 功能。请激活插件以解锁。');
-					return;
-				}
-
-				const store = useMediaStore.getState();
-				if (store.abRepeatEnabled) {
-					store.disableABRepeat();
-					new Notice('⏹️ AB循环已关闭');
-				} else {
-					if (store.pointA !== null && store.pointB !== null) {
-						store.enableABRepeat();
-						new Notice('🔁 AB循环已启用');
-					} else {
-						new Notice('⚠️ 请先设置A点和B点');
-					}
-				}
-			},
-		});
-
-		// 注册命令：打开字幕面板
-		this.addCommand({
-			id: 'open-subtitle-panel',
-			name: 'Open Subtitle Panel',
-			callback: () => {
-				this.activateSubtitlePanel();
-			},
-		});
-
-		// 注册 Protocol Handler
-		this.registerObsidianProtocolHandler('linguaflow', this.handleProtocol.bind(this));
-
-		// 注册文件菜单
-		this.registerEvent(
-			this.app.workspace.on('file-menu', (menu, file) => {
-				if (file instanceof TFile && this.isMediaFile(file)) {
-					menu.addItem((item) => {
-						item
-							.setTitle('Play in LangPlayer')
-							.onClick(() => {
-								this.openFile(file);
-							});
-					});
-				}
-			})
-		);
-
-		// 注册编辑器菜单（右键菜单）
-		this.registerEvent(
-			this.app.workspace.on('editor-menu', (menu, editor, view) => {
-				// 获取选中的文本或光标下的链接
-				const selection = editor.getSelection();
-				let url = selection.trim();
-
-				// 如果没有选中文本，尝试获取光标下的链接
-				if (!url) {
-					const cursor = editor.getCursor();
-					const line = editor.getLine(cursor.line);
-					
-					// 简单的 URL 匹配
-					const urlRegex = /https?:\/\/[^\s)]+/g;
-					let match;
-					while ((match = urlRegex.exec(line)) !== null) {
-						if (cursor.ch >= match.index && cursor.ch <= match.index + match[0].length) {
-							url = match[0];
-							break;
-						}
-					}
-					
-					// 如果还在 Markdown 链接中 [Title](Url)
-					if (!url) {
-						const mdLinkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-						while ((match = mdLinkRegex.exec(line)) !== null) {
-							if (cursor.ch >= match.index && cursor.ch <= match.index + match[0].length) {
-								url = match[2] || '';
-								break;
-							}
-						}
-					}
-				}
-
-				// 如果找到了 URL，添加播放菜单
-				if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-					menu.addItem((item) => {
-						item
-							.setTitle('Play in LangPlayer')
-							.onClick(() => {
-								this.openUrl(url);
-							});
-					});
-				}
-			})
-		);
-
-		// 注册设置选项卡
-		this.addSettingTab(new LinguaFlowSettingTab(this.app, this));
-
-		// 初始化字幕样式
-		this.updateSubtitleStyles();
-
-		console.log('[LangPlayer] Plugin loaded');
-
-	}
-
-	onunload() {
-		console.log('[LangPlayer] Unloading plugin');
-		
-		// 关闭所有 LinguaFlow 视图
-		this.app.workspace.detachLeavesOfType(LINGUA_FLOW_VIEW);
-		
-		// 清理缓存
-		TextProcessor.clearCache();
-		
-		// 清理字幕加载器（终止 Worker）
-		if (this.subtitleLoader) {
-			this.subtitleLoader.destroy();
-		}
-	}
-
-	/**
-	 * 加载设置
-	 */
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-		
-		// 同步设置到 Store
-		const store = useMediaStore.getState();
-		store.setVideoFit(this.settings.videoFit);
-		store.setShowInlineSubtitles(this.settings.showInlineSubtitles);
-		store.updateSubtitleConfig({
-			fontSize: this.settings.subtitleFontSize,
-			fontColor: this.settings.subtitleColor,
-			translationColor: this.settings.subtitleTranslationColor,
-			highlightColor: this.settings.subtitleHighlightColor,
-			backgroundColor: this.settings.subtitleBackgroundColor,
-			showIndexAndTime: this.settings.showIndexAndTime,
-			wordByWordHighlight: this.settings.wordByWordHighlight,
-			// 确保从设置中加载可见语言，如果没有设置则默认 en, zh
-			visibleLanguages: (this.settings.visibleLanguages as any) || ['en', 'zh']
-		});
-	}
-
-
-	/**
-	 * 保存设置
-	 */
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-
-	/**
-	 * 激活视图（如果不存在则创建）
-	 */
-	async activateView(): Promise<LinguaFlowView> {
-		const { workspace } = this.app;
-
-		// 查找已存在的视图
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType(LINGUA_FLOW_VIEW);
-
-		if (leaves.length > 0) {
-			// 使用已存在的视图
-			leaf = leaves[0] || null;
-		} else {
-			// 创建新视图（在新标签页中打开）
-			leaf = workspace.getLeaf('tab');
-			if (leaf) {
-				await leaf.setViewState({
-					type: LINGUA_FLOW_VIEW,
-					active: true,
-				});
-			}
-		}
-
-		// 显示视图
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-			return leaf.view as LinguaFlowView;
-		}
-
-		throw new Error('Failed to create view');
-	}
-
-	/**
-	 * 激活字幕面板（如果不存在则创建）
-	 */
-	async activateSubtitlePanel(): Promise<SubtitlePanelView> {
-		const { workspace } = this.app;
-
-		// 查找已存在的字幕面板
-		let leaf: WorkspaceLeaf | null = null;
-		const leaves = workspace.getLeavesOfType(SUBTITLE_PANEL_VIEW_TYPE);
-
-		if (leaves.length > 0) {
-			// 使用已存在的面板
-			leaf = leaves[0] || null;
-		} else {
-			// 根据设置选择打开位置
-			const location = this.settings.subtitlePanelLocation || 'tab'; // 默认使用 tab
-			console.log('[LangPlayer] Opening subtitle panel in location:', location);
-			
-			switch (location) {
-				case 'right':
-					// 右侧边栏
-					leaf = workspace.getRightLeaf(false);
-					break;
-				case 'left':
-					// 左侧边栏
-					leaf = workspace.getLeftLeaf(false);
-					break;
-				case 'tab':
-					// 新标签页（可自由拖动）
-					leaf = workspace.getLeaf('tab');
-					break;
-				case 'split':
-					// 分割视图
-					leaf = workspace.getLeaf('split', 'vertical');
-					break;
-				default:
-					// 默认：新标签页
-					leaf = workspace.getLeaf('tab');
-			}
-			
-			if (leaf) {
-				await leaf.setViewState({
-					type: SUBTITLE_PANEL_VIEW_TYPE,
-					active: true,
-				});
-			}
-		}
-
-		// 显示面板
-		if (leaf) {
-			workspace.revealLeaf(leaf);
-			return leaf.view as SubtitlePanelView;
-		}
-
-		throw new Error('Failed to create subtitle panel');
-	}
-
-	/**
-	 * 打开本地文件
-	 * @param file - 文件对象
-	 * @param timestamp - 起始时间（秒）
-	 */
-	async openFile(file: TFile, timestamp?: number) {
-		try {
-			const view = await this.activateView();
-			await view.loadFile(file, timestamp);
-			new Notice(`Playing: ${file.name}`);
-		} catch (error) {
-			console.error('[LinguaFlow] Error opening file:', error);
-			const msg = error instanceof Error ? error.message : 'Unknown error';
-			new Notice(`Failed to open file: ${msg}`);
-		}
-	}
-
-	/**
-	 * 打开 URL（远程媒体）
-	 * @param url - 媒体 URL
-	 * @param timestamp - 起始时间（秒）
-	 * @param title - 标题
-	 */
-	async openUrl(url: string, timestamp?: number, title?: string) {
-		try {
-			const view = await this.activateView();
-			
-			const source: MediaSource = {
-				type: 'url',
-				url,
-				displayName: title || url,
-				timestamp,
-			};
-			
-			await view.loadMedia(source);
-			new Notice(`Loading: ${title || 'Media'}`);
-		} catch (error) {
-			console.error('[LinguaFlow] Error opening URL:', error);
-			const msg = error instanceof Error ? error.message : 'Unknown error';
-			new Notice(`Failed to open URL: ${msg}`);
-		}
-	}
-
-	/**
-	 * 处理 Protocol Handler
-	 * obsidian://linguaflow?src=...&t=...&title=...
-	 */
-	private async handleProtocol(params: ProtocolParams) {
-		console.log('[LangPlayer] Protocol called:', params);
-
-		if (!params.src) {
-			new Notice('LangPlayer: Missing src parameter');
-			return;
-		}
-
-		// 解析时间戳
-		const timestamp = params.t ? parseTimestamp(params.t) : undefined;
-		// 解码路径 (因为在生成链接时进行了 encodeURIComponent)
-		const srcPath = decodeURIComponent(params.src);
-		
-		console.log(`[LangPlayer] Protocol Action: src=${srcPath}, t=${timestamp}`);
-
-		// 判断是本地文件还是 URL
-		if (srcPath.startsWith('http://') || srcPath.startsWith('https://')) {
-			// 远程 URL
-			await this.openUrl(srcPath, timestamp, params.title);
-		} else {
-			// 本地文件路径
-			const file = this.app.vault.getAbstractFileByPath(srcPath);
-			if (file instanceof TFile) {
-				// 直接传递 timestamp 给 openFile，让其在加载时处理跳转
-				await this.openFile(file, timestamp);
-				
-				// 如果视图已经存在且是同一个文件，openFile 可能不会重新触发加载
-				// 所以这里保留一个额外的 seekTo 作为保险，但加长延迟
-				if (timestamp !== undefined && timestamp >= 0) {
-					const leaves = this.app.workspace.getLeavesOfType(LINGUA_FLOW_VIEW);
-					const view = leaves[0]?.view as LinguaFlowView;
-					if (view) {
-						setTimeout(() => {
-							// 只有当当前播放时间差距较大时才跳转，避免干扰
-							if (Math.abs(view.getCurrentTime() - timestamp) > 1) {
-								console.log(`[LangPlayer] Seeking to ${timestamp}s (backup)`);
-								view.seekTo(timestamp);
-							}
-						}, 1000);
-					}
-				}
-			} else {
-				console.warn(`[LangPlayer] File not found: ${srcPath}`);
-				new Notice(`File not found: ${srcPath}`);
-			}
-		}
-	}
-	
-	/**
-	 * 打开关联的学习笔记
-	 * 如果不存在则创建，并在分割视图中打开
-	 */
-	async openStudyNote() {
-		// 1. 获取当前正在播放的视频文件
-		const view = this.app.workspace.getLeavesOfType(LINGUA_FLOW_VIEW)[0]?.view as LinguaFlowView;
-		if (!view || !view.currentSource) {
-			new Notice('❌ 请先播放一个视频');
-			return;
-		}
-
-		// 使用局部变量以确保类型收窄
-		const source = view.currentSource;
-		const mediaName = source.displayName || 'Untitled Video';
-		let noteName = mediaName;
-		
-		// 移除扩展名
-		if (noteName && noteName.lastIndexOf('.') > -1) {
-			noteName = noteName.substring(0, noteName.lastIndexOf('.'));
-		}
-		
-		// 添加后缀
-		noteName = `${noteName}_Study.md`;
-		
-		// 2. 确定笔记路径
-		let notePath = noteName;
-		let sourceFile: TFile | null = null;
-		
-		// 优先使用设置中的路径
-		if (this.settings.notePath && this.settings.notePath.trim()) {
-			let folderPath = this.settings.notePath.trim();
-			// 移除末尾斜杠
-			if (folderPath.endsWith('/')) {
-				folderPath = folderPath.slice(0, -1);
-			}
-			
-			// 尝试创建文件夹（如果不存在）
-			const folder = this.app.vault.getAbstractFileByPath(folderPath);
-			if (!folder) {
-				try {
-					await this.app.vault.createFolder(folderPath);
-				} catch (e) {
-					console.warn('[LangPlayer] Folder creation failed (might be nested or exist):', e);
-				}
-			}
-			
-			notePath = `${folderPath}/${noteName}`;
-			
-			if (source.type === 'local' && source.file) {
-				sourceFile = source.file;
-			}
-		}
-		// 否则使用源文件目录
-		else if (source.type === 'local' && source.file) {
-			sourceFile = source.file;
-			if (sourceFile.parent) {
-				// 修复：如果父目录是根目录 ('/')，不要添加额外的斜杠
-				notePath = sourceFile.parent.path === '/' 
-					? noteName 
-					: `${sourceFile.parent.path}/${noteName}`;
-			}
-		}
-
-		console.log(`[LangPlayer] Opening study note: ${notePath}`);
-
-		// 3. 检查笔记是否存在
-		let noteFile = this.app.vault.getAbstractFileByPath(notePath);
-		
-		if (!noteFile) {
-			// 4. 不存在则创建
-			try {
-				// 获取用户自定义模板或使用默认模板
-				// @ts-ignore - 忽略类型检查，确保 noteTemplate 已添加
-				const templateRaw = this.settings.noteTemplate || '';
-				
-				// 准备变量
-				const now = new Date();
-				// YYYY-MM-DD HH:mm
-				const dateStr = now.getFullYear() + '-' + 
-					String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-					String(now.getDate()).padStart(2, '0') + ' ' + 
-					String(now.getHours()).padStart(2, '0') + ':' + 
-					String(now.getMinutes()).padStart(2, '0');
-					
-				const videoLink = `[[${source.type === 'local' ? sourceFile?.name : source.url}]]`;
-				const videoUrl = source.url;
-
-				// 执行替换
-				const content = templateRaw
-					.replace(/{{title}}/g, mediaName)
-					.replace(/{{date}}/g, dateStr)
-					.replace(/{{link}}/g, videoLink)
-					.replace(/{{url}}/g, videoUrl);
-
-				noteFile = await this.app.vault.create(notePath, content);
-				new Notice('✅ 已创建学习笔记');
-			} catch (error) {
-				console.error('Failed to create study note:', error);
-				const msg = error instanceof Error ? error.message : String(error);
-				new Notice(`❌ 创建笔记失败: ${msg}`);
-				return;
-			}
-		}
-
-		// 5. 在新分割视图中打开 (Split Right)
-		if (noteFile instanceof TFile) {
-			const leaves = this.app.workspace.getLeavesOfType('markdown');
-			const existingLeaf = leaves.find(leaf => (leaf.view as any).file === noteFile);
-			
-			// 如果笔记已经打开，先关闭它（以便移动到右侧）
-			if (existingLeaf) {
-				existingLeaf.detach();
-			}
-			
-			// 总是尝试在右侧分屏打开
-			const leaf = this.app.workspace.getLeaf('split', 'vertical');
-			await leaf.openFile(noteFile);
-			this.app.workspace.setActiveLeaf(leaf, { focus: true });
-		}
-	}
-
-	/**
-	 * 加载外部字幕文件
-	 */
-	async loadExternalSubtitle() {
-		// 创建文件选择器
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = '.srt,.vtt';
-		
-		input.onchange = async (e: Event) => {
-			const target = e.target as HTMLInputElement;
-			const file = target.files?.[0];
-			
-			if (file) {
-				// 读取文件内容
-				const reader = new FileReader();
-				reader.onload = async (e: ProgressEvent<FileReader>) => {
-					const content = e.target?.result as string;
-					
-					try {
-						// 解析字幕
-						const result = this.subtitleLoader.loadFromText(content, file.name);
-						if (result && result.cues.length > 0) {
-							// 将字幕加载到状态管理
-							useMediaStore.getState().setSubtitles(result.cues);
-							new Notice(`✅ 已加载 ${result.cues.length} 条字幕`);
-						} else {
-							new Notice('❌ 无法解析字幕文件');
-						}
-					} catch (error) {
-						console.error('[LinguaFlow] Error loading subtitle:', error);
-						const errorMsg = error instanceof Error ? error.message : String(error);
-						new Notice('❌ 加载字幕失败: ' + errorMsg);
-					}
-				}
-				
-				reader.readAsText(file);
-			}
-		};
-		
-		input.click();
-	}
-	
-	/**
-	 * 检查文件是否为媒体文件
-	 */
-	private isMediaFile(file: TFile): boolean {
-		const mediaExtensions = [
-			// 视频格式
-			'mp4', 'mkv', 'webm', 'ogv', 'avi', 'mov', 'flv', 'wmv', 'm4v', '3gp',
-			// 音频格式
-			'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
-		];
-		return mediaExtensions.includes(file.extension.toLowerCase());
-	}
-
-	/**
-	 * 将字幕插入到当前笔记
-	 * @param cue - 字幕对象
-	 */
-	async insertSubtitleToNote(cue: SubtitleCue) {
-		const view = this.app.workspace.getLeavesOfType(LINGUA_FLOW_VIEW)[0]?.view as LinguaFlowView;
-		if (!view || !view.currentSource) {
-			new Notice('❌ 请先播放视频');
-			return;
-		}
-
-		// 1. 尝试获取 Markdown 视图
-		let targetView: MarkdownView | null = null;
-		let activeLeaf = this.app.workspace.activeLeaf;
-
-		// 情况A: 当前聚焦的就是 Markdown
-		if (activeLeaf?.view.getViewType() === 'markdown') {
-			targetView = activeLeaf.view as MarkdownView;
-		} else {
-			// 情况B: 查找最近使用的 Markdown 视图
-			const leaves = this.app.workspace.getLeavesOfType('markdown');
-			const visibleLeaves = leaves.filter(leaf => (leaf.view as any).containerEl.isShown?.() || leaf.view.containerEl.offsetParent !== null);
-			
-			if (visibleLeaves.length > 0 && visibleLeaves[0]) {
-				targetView = visibleLeaves[0].view as MarkdownView;
-			}
-		}
-
-		// 2. 如果还没找到视图，尝试自动打开学习笔记
-		if (!targetView) {
-			new Notice('未找到笔记，正在打开学习笔记...');
-			await this.openStudyNote();
-			
-			// 等待一点时间让视图加载
-			await new Promise(resolve => setTimeout(resolve, 500));
-			
-			// 再次尝试获取
-			activeLeaf = this.app.workspace.activeLeaf;
-			if (activeLeaf?.view.getViewType() === 'markdown') {
-				targetView = activeLeaf.view as MarkdownView;
-			}
-		}
-
-		if (targetView) {
-			// 自动切换到编辑模式
-			if (targetView.getMode() === 'preview') {
-				await targetView.setState({ ...targetView.getState(), mode: 'source' }, { history: false });
-				// 等待切换完成
-				await new Promise(resolve => setTimeout(resolve, 100));
-			}
-
-			const editor = targetView.editor;
-			if (!editor) {
-				new Notice('❌ 无法获取编辑器实例');
-				return;
-			}
-
-			// 3. 格式化内容
-			const timeStr = formatTime(cue.start);
-			const sourceUrl = view.currentSource.type === 'local' && view.currentSource.file 
-				? view.currentSource.file.path 
-				: view.currentSource.url;
-				
-			const link = `[${timeStr}](obsidian://linguaflow?src=${encodeURIComponent(sourceUrl)}&t=${Math.floor(cue.start)})`;
-			
-			// 获取当前显示的语言
-			const { visibleLanguages } = useMediaStore.getState().subtitleConfig;
-			const textsToExport: string[] = [];
-
-			// 1. 优先使用多语言数据
-			if (cue.languages && Object.keys(cue.languages).length > 0) {
-				// 按照 visibleLanguages 的顺序导出
-				visibleLanguages.forEach(lang => {
-					const text = cue.languages?.[lang];
-					if (text) {
-						textsToExport.push(text);
-					}
-				});
-			} else {
-				// 2. 向后兼容逻辑
-				// 如果 visibleLanguages 包含 'en' 且有英文文本
-				if (visibleLanguages.includes('en') && cue.textEn) {
-					textsToExport.push(cue.textEn);
-				}
-				// 如果 visibleLanguages 包含 'zh' 且有中文文本
-				if (visibleLanguages.includes('zh') && cue.textZh) {
-					textsToExport.push(cue.textZh);
-				}
-				
-				// 如果没有命中任何特定语言，但有基础文本（单语字幕），且至少有一种语言可见
-				if (textsToExport.length === 0 && visibleLanguages.length > 0 && cue.text) {
-					// 避免重复：如果 text 等于 textEn 或 textZh 且已被添加，则不添加
-					if (cue.text !== cue.textEn && cue.text !== cue.textZh) {
-						textsToExport.push(cue.text);
-					}
-				}
-			}
-
-			// 如果没有选中文本（例如全部隐藏），为了防止插入空行，默认插入所有可用文本？
-			// 不，用户说“只显示一种语言...就是显示的语言”。
-			// 如果全隐藏，那就插入空文本（只带时间戳），或者用户根本不应该点击导出。
-			// 但既然点了，我们还是保留时间戳。
-			
-			const contentText = textsToExport.join(' ');
-			
-			// 纯文本格式（带时间戳链接）：- [00:00] 文本
-			let content = `- ${link}`;
-			if (contentText) {
-				content += ` ${contentText}`;
-			}
-			content += '\n';
-
-			// 4. 插入到文档末尾（如果不在光标处）或者光标处
-			// 如果编辑器刚打开，光标可能在开头。我们希望追加到末尾或特定位置。
-			// 简单起见，插入到当前光标位置。
-			
-			// 检查光标是否在文件头且没有选区，如果是，移动到文件末尾
-			const cursor = editor.getCursor();
-			if (cursor.line === 0 && cursor.ch === 0 && !editor.somethingSelected() && editor.lineCount() > 1) {
-				const lastLine = editor.lineCount() - 1;
-				const lastLineLen = editor.getLine(lastLine).length;
-				editor.setCursor({ line: lastLine, ch: lastLineLen });
-				// 加个换行
-				content = '\n' + content;
-			}
-
-			editor.replaceSelection(content);
-			new Notice('✅ 字幕已插入笔记');
-		} else {
-			new Notice('❌ 无法找到或打开笔记视图');
-		}
-	}
-
-	/**
-	 * 更新字幕样式 (Public for settings tab)
-	 */
-	public updateSubtitleStyles(): void {
-		const settings = this.settings;
-		
-		// 创建或更新自定义样式
-		let styleEl = document.getElementById('linguaflow-custom-subtitle-style');
-		if (!styleEl) {
-			styleEl = document.createElement('style');
-			styleEl.id = 'linguaflow-custom-subtitle-style';
-			document.head.appendChild(styleEl);
-		}
-
-		styleEl.textContent = `
-			.linguaflow-subtitle-item-en,
-			.linguaflow-subtitle-item-zh,
-			.linguaflow-subtitle-item-main,
-			.linguaflow-subtitle-language {
-				font-size: ${settings.subtitleFontSize}px;
-				font-weight: ${settings.subtitleFontWeight};
-				line-height: ${settings.subtitleLineHeight};
-				${settings.subtitleColor ? `color: ${settings.subtitleColor};` : ''}
-				${settings.subtitleBackgroundColor ? `background-color: ${settings.subtitleBackgroundColor};` : ''}
-			}
-
-			.linguaflow-subtitle-item-zh {
-				${settings.subtitleTranslationColor ? `color: ${settings.subtitleTranslationColor} !important;` : ''}
-			}
-
-			.linguaflow-word-highlight,
-			.linguaflow-line-highlight,
-			.linguaflow-line-highlight .linguaflow-clickable-word {
-				${settings.subtitleHighlightColor ? `color: ${settings.subtitleHighlightColor} !important;` : ''}
-			}
-		`;
-	}
-
+import {
+  Plugin,
+  TFile,
+  Menu,
+  Notice,
+  WorkspaceLeaf,
+  type App,
+} from 'obsidian';
+
+// Obsidian internal APIs not exposed in official types
+interface LanguageLearnerSettings {
+  word_folder?: string;
+  word_database?: string;
+  review_database?: string;
+}
+interface ObsidianAppInternal extends App {
+  plugins: { getPlugin(id: string): { settings?: LanguageLearnerSettings } | null };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+import {
+  type DictationProgressSnapshot,
+  type SoundPatternProgressSnapshot,
+  type LangPlayerSettings,
+  type StudyHabitProgress,
+  DEFAULT_SETTINGS,
+  CURRENT_SETTINGS_VERSION,
+  sanitizePath,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  VIEW_TYPE_PLAYER,
+  VIEW_TYPE_SUBTITLE_PANEL,
+  VIEW_TYPE_VOCABULARY,
+  VIEW_TYPE_DICTATION,
+  VIEW_TYPE_SOUND_PATTERN,
+} from './types';
+import { resetAllStores } from './store';
+
+import { NoteService } from './services/NoteService';
+import { VocabularyDbService } from './services/VocabularyDbService';
+import { ProtocolService } from './services/ProtocolService';
+import { StyleService } from './services/StyleService';
+import { MediaFileService } from './services/MediaFileService';
+import { LangPlayerView } from './views/LangPlayerView';
+import { SubtitlePanelView } from './views/SubtitlePanelView';
+import { DictationView } from './views/DictationView';
+import { SoundPatternView } from './views/SoundPatternView';
+import { VocabularyView } from './views/VocabularyView';
+import { LangPlayerSettingTab } from './views/LangPlayerSettingTab';
+import { setLanguage, t } from './i18n';
+import { runSettingsMigrations } from './settings/migrations';
+import { AI_MEANING_SECRET_ID, migrateAiMeaningSecret } from './settings/aiMeaningSecret';
+import {
+  createRuntimeRefreshSnapshot,
+  getRuntimeRefreshFlags,
+  type RuntimeRefreshSnapshot,
+} from './settings/runtimeRefresh';
+import { registerPlayerCommands } from './commands/registerPlayerCommands';
+import { pickAndLoadSubtitle, pickMediaFile } from './views/SuggestModals';
+import { logger } from './utils';
+import {
+  createDefaultStudyHabitProgress,
+  getLocalDateKey,
+  isMediaFile,
+  initSpeech,
+  disposeSpeech,
+  updateStudyHabitProgress,
+  getPlaybackProgress as readPlaybackProgress,
+  updatePlaybackProgress,
+} from './utils';
+import { FlashcardService, playWordAudio } from './services/FlashcardService';
+import type { LangPlayerPluginRef } from './context';
+
+export default class LangPlayerPlugin extends Plugin {
+  declare settings: LangPlayerSettings;
+
+  // Language Learner integration: populated if that plugin is installed & enabled
+  llVocabPaths: { word_folder: string; word_database: string; review_database: string } | null = null;
+
+  // Services
+  noteService!: NoteService;
+  protocolService!: ProtocolService;
+  styleService!: StyleService;
+  mediaFileService!: MediaFileService;
+  vocabDb!: VocabularyDbService;
+  flashcardService!: FlashcardService;
+  private runtimeRefreshSnapshot: RuntimeRefreshSnapshot | null = null;
+  private playbackProgressSaveTimer: number | null = null;
+  private settingsSaveQueue: Promise<void> = Promise.resolve();
+  private aiMeaningApiKey = '';
+
+  /** Read vocab paths from Language Learner plugin if installed & enabled. */
+  private loadLanguageLearnerPaths(): void {
+    try {
+      const llPlugin = (this.app as unknown as ObsidianAppInternal).plugins?.getPlugin?.('obsidian-language-learner');
+      const s = llPlugin?.settings;
+      const word_folder = typeof s?.word_folder === 'string' ? s.word_folder : '';
+      const word_database = typeof s?.word_database === 'string' ? s.word_database : '';
+      const review_database = typeof s?.review_database === 'string' ? s.review_database : '';
+      if (word_folder || word_database || review_database) {
+        this.llVocabPaths = {
+          word_folder,
+          word_database,
+          review_database,
+        };
+        logger.info('Language Learner detected — vocab paths synced:', this.llVocabPaths);
+      }
+    } catch {
+      // LL not installed or inaccessible — silently ignore
+    }
+  }
+
+  /** Effective vocab folder: LL's path if available, else LangPlayer's own setting. */
+  getEffectiveVocabFolder(): string {
+    return this.llVocabPaths?.word_folder || this.settings.vocabFolder || 'LangPlayer/vocabulary';
+  }
+
+  /** Effective word database path. */
+  getEffectiveWordDatabase(): string {
+    return this.llVocabPaths?.word_database || this.settings.wordDatabase || '';
+  }
+
+  /** Effective review database path. */
+  getEffectiveReviewDatabase(): string {
+    return this.llVocabPaths?.review_database || this.settings.reviewDatabase || '';
+  }
+
+  getDictationProgress(mediaKey: string): DictationProgressSnapshot | undefined {
+    return this.settings.dictationProgressByMedia?.[mediaKey];
+  }
+
+  async setDictationProgress(mediaKey: string, snapshot: DictationProgressSnapshot): Promise<void> {
+    if (!mediaKey) return;
+    if (!this.settings.dictationProgressByMedia) {
+      this.settings.dictationProgressByMedia = {};
+    }
+    this.settings.dictationProgressByMedia[mediaKey] = snapshot;
+    await this.saveSettings();
+  }
+
+  async clearDictationProgress(mediaKey: string): Promise<void> {
+    if (!mediaKey || !this.settings.dictationProgressByMedia?.[mediaKey]) return;
+    delete this.settings.dictationProgressByMedia[mediaKey];
+    await this.saveSettings();
+  }
+
+  getSoundPatternProgress(mediaKey: string): SoundPatternProgressSnapshot | undefined {
+    return this.settings.soundPatternProgressByMedia?.[mediaKey];
+  }
+
+  getAiMeaningApiKey(): string {
+    return this.aiMeaningApiKey;
+  }
+
+  setAiMeaningApiKey(apiKey: string): void {
+    this.app.secretStorage.setSecret(AI_MEANING_SECRET_ID, apiKey);
+    this.aiMeaningApiKey = apiKey;
+  }
+
+  async setSoundPatternProgress(mediaKey: string, snapshot: SoundPatternProgressSnapshot): Promise<void> {
+    if (!mediaKey) return;
+    this.settings.soundPatternProgressByMedia ??= {};
+    this.settings.soundPatternProgressByMedia[mediaKey] = snapshot;
+    await this.saveSettings();
+  }
+
+  async clearSoundPatternProgress(mediaKey: string): Promise<void> {
+    if (!mediaKey || !this.settings.soundPatternProgressByMedia?.[mediaKey]) return;
+    delete this.settings.soundPatternProgressByMedia[mediaKey];
+    await this.saveSettings();
+  }
+
+  async recordStudyActivity(sentenceDelta = 1): Promise<StudyHabitProgress> {
+    if (!this.settings.studyHabit?.enabled) {
+      return this.settings.studyHabitProgress ?? createDefaultStudyHabitProgress();
+    }
+    this.settings.studyHabitProgress = updateStudyHabitProgress(
+      this.settings.studyHabitProgress,
+      this.settings.studyHabit,
+      sentenceDelta,
+    );
+    await this.saveSettings();
+    return this.settings.studyHabitProgress;
+  }
+
+  async dismissStudyRecoveryPrompt(): Promise<StudyHabitProgress> {
+    const progress = this.settings.studyHabitProgress ?? createDefaultStudyHabitProgress();
+    this.settings.studyHabitProgress = {
+      ...progress,
+      dismissedRecoveryDate: getLocalDateKey(),
+    };
+    await this.saveSettings();
+    return this.settings.studyHabitProgress;
+  }
+
+  async onload(): Promise<void> {
+    logger.info('=== onload() START ===');
+    await this.loadSettings();
+    setLanguage(this.settings.uiLanguage);
+    // Prime the Web Speech voice cache (multilingual pronunciation).
+    initSpeech();
+
+    // Initialize services
+    this.noteService = new NoteService(this.app, () => this.settings);
+    this.mediaFileService = new MediaFileService(this.app);
+    this.vocabDb = new VocabularyDbService(this.app, this.settings.vocabFolder ?? 'LangPlayer/vocabulary');
+    this.flashcardService = new FlashcardService(
+      this.app,
+      () => this.settings,
+      () => this.getEffectiveReviewDatabase(),
+      () => this.getEffectiveWordDatabase(),
+    );
+    this.protocolService = new ProtocolService(
+      this.app,
+      (url, ts) => this.openMediaFromUrl(url, ts),
+    );
+    this.styleService = new StyleService(this.app);
+    this.styleService.update(this.settings);
+    this.registerEvent(this.app.workspace.on('layout-change', () => {
+      this.styleService.update(this.settings);
+    }));
+    this.runtimeRefreshSnapshot = createRuntimeRefreshSnapshot(this.settings);
+
+    // Auto-create default database files if not set (and not provided by Language Learner)
+    this.app.workspace.onLayoutReady(() => {
+      this.loadLanguageLearnerPaths();
+      this.vocabDb.setFolder(this.getEffectiveVocabFolder());
+      if (!this.llVocabPaths) {
+        void this.ensureDefaultDbFiles().catch((error: unknown) => {
+          logger.error('Failed to initialize vocabulary database files:', error);
+        });
+      }
+    });
+
+    // Register views
+    this.registerView(VIEW_TYPE_PLAYER, (leaf) =>
+      new LangPlayerView(leaf, this.asRef()),
+    );
+    this.registerView(VIEW_TYPE_SUBTITLE_PANEL, (leaf) =>
+      new SubtitlePanelView(leaf, this.asRef()),
+    );
+    this.registerView(VIEW_TYPE_DICTATION, (leaf) =>
+      new DictationView(leaf, this.asRef()),
+    );
+    this.registerView(VIEW_TYPE_SOUND_PATTERN, (leaf) =>
+      new SoundPatternView(leaf, this.asRef()),
+    );
+    this.registerView(VIEW_TYPE_VOCABULARY, (leaf) =>
+      new VocabularyView(leaf, this.asRef()),
+    );
+
+    // Register commands
+    this.registerCommands();
+
+    // Protocol handler
+    this.registerObsidianProtocolHandler('langplayer', (params) =>
+      this.protocolService.handle(params),
+    );
+
+    // Global click handler: click word in SR card to pronounce
+    this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
+      const target = evt.target instanceof Element
+        ? evt.target.closest<HTMLElement>('.lp-sr-word')
+        : null;
+      if (target) {
+        const word = target.getAttribute('data-word');
+        if (word && this.settings.enableWordAudio) {
+          evt.preventDefault();
+          evt.stopPropagation();
+          playWordAudio(word, this.settings.targetLanguage);
+        }
+      }
+    });
+
+    // File menu: open media files
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu: Menu, file) => {
+        if (file instanceof TFile && isMediaFile(file.path)) {
+          menu.addItem((item) => {
+            item
+              .setTitle(t('notice.openInLangPlayer'))
+              .setIcon('play-circle')
+              .onClick(async () => {
+                try {
+                  await this.openMediaFile(file);
+                } catch (e) {
+                  new Notice(`${t('notice.openMediaFailed')} — ${(e as Error).message}`);
+                  logger.error('openMediaFile error:', e);
+                }
+              });
+          });
+        }
+      }),
+    );
+
+    // Add ribbon icons
+    this.addRibbonIcon('play-circle', 'LangPlayer', () => {
+      void this.activateView(VIEW_TYPE_PLAYER).catch((error: unknown) => {
+        logger.error('Failed to open LangPlayer:', error);
+        new Notice(t('notice.openMediaFailed'));
+      });
+    });
+    // Settings tab
+    this.addSettingTab(new LangPlayerSettingTab(this.app, this));
+
+    // Register supported file extensions (wrapped in try-catch to avoid
+    // conflicts with other plugins that may have already registered these)
+    // Claiming common media extensions can conflict with other media plugins,
+    // so it's now a setting (default on). The file-menu "Open in LangPlayer"
+    // entry keeps working either way.
+    if (this.settings.takeOverMediaExtensions) {
+      try {
+        // Single source of truth: every extension isMediaFile() recognizes is
+        // also registered here, so file-menu "open" and double-click agree.
+        this.registerExtensions(
+          [...new Set([...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS])],
+          VIEW_TYPE_PLAYER,
+        );
+      } catch (e) {
+        logger.warn('Some media extensions already registered by another plugin:', e);
+      }
+    }
+
+    logger.info('LangPlayer loaded');
+  }
+
+  onunload(): void {
+    void this.flushPlaybackProgress().catch((error) => {
+      logger.warn('Failed to save playback progress while unloading:', error);
+    });
+    this.flashcardService.dispose();
+    // Reset all Zustand stores to prevent stale state on reload
+    resetAllStores();
+    disposeSpeech();
+    this.styleService.destroy();
+    logger.info('LangPlayer unloaded');
+  }
+
+  // ─── Settings ───────────────────────────────────────────────────────────
+
+  async loadSettings(): Promise<void> {
+    const rawData: unknown = await this.loadData();
+    const raw = isRecord(rawData) ? rawData : {};
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
+    const secretMigration = migrateAiMeaningSecret(this.settings, this.app.secretStorage);
+    this.aiMeaningApiKey = secretMigration.apiKey;
+
+    // ── Schema migration ────────────────────────────────────────────────────
+    // Migrations live in settings/migrations.ts (version-keyed). Run them, then
+    // stamp the current schema version.
+    const fromVersion = typeof raw.settingsVersion === 'number' ? raw.settingsVersion : 0;
+    const migrated = runSettingsMigrations(this.settings, fromVersion, CURRENT_SETTINGS_VERSION);
+    this.settings.settingsVersion = CURRENT_SETTINGS_VERSION;
+    if (migrated || secretMigration.settingsChanged) {
+      logger.info(`[LangPlayer] Migrated settings from v${fromVersion} → v${CURRENT_SETTINGS_VERSION}`);
+      await this.saveData(this.settings);
+    }
+  }
+
+  async saveSettings(): Promise<void> {
+    const save = this.settingsSaveQueue.catch(() => undefined).then(async () => {
+      await this.persistSettings();
+    });
+    this.settingsSaveQueue = save;
+    await save;
+  }
+
+  private async persistSettings(): Promise<void> {
+    // Sanitize all user-configurable path fields before persisting.
+    // Listing only string-valued keys lets us assign without an `as any` cast.
+    type StringSettingKey =
+      'audioFolder' | 'notePath' | 'vocabFolder' | 'wordDatabase' | 'reviewDatabase';
+    const pathFields: StringSettingKey[] = [
+      'audioFolder', 'notePath', 'vocabFolder',
+      'wordDatabase', 'reviewDatabase',
+    ];
+    for (const field of pathFields) {
+      const val = this.settings[field];
+      if (val) {
+        this.settings[field] = sanitizePath(val);
+      }
+    }
+
+    const refreshFlags = this.runtimeRefreshSnapshot
+      ? getRuntimeRefreshFlags(this.runtimeRefreshSnapshot, this.settings)
+      : { styles: true, language: true };
+
+    await this.saveData(this.settings);
+
+    if (refreshFlags.styles) {
+      this.styleService.update(this.settings);
+    }
+    if (refreshFlags.language) {
+      setLanguage(this.settings.uiLanguage);
+    }
+    this.runtimeRefreshSnapshot = createRuntimeRefreshSnapshot(this.settings);
+  }
+
+  private getPlaybackProgress(mediaKey: string): number | undefined {
+    return readPlaybackProgress(this.settings.playbackProgressByMedia ?? {}, mediaKey);
+  }
+
+  private setPlaybackProgress(mediaKey: string, currentTime: number, duration: number): void {
+    const progress = this.settings.playbackProgressByMedia ?? {};
+    this.settings.playbackProgressByMedia = progress;
+    updatePlaybackProgress(progress, mediaKey, currentTime, duration);
+
+    if (this.playbackProgressSaveTimer === null) {
+      this.playbackProgressSaveTimer = window.setTimeout(() => {
+        this.playbackProgressSaveTimer = null;
+        void this.saveSettings().catch((error) => {
+          logger.warn('Failed to save playback progress:', error);
+        });
+      }, 10_000);
+    }
+  }
+
+  private async flushPlaybackProgress(): Promise<void> {
+    if (this.playbackProgressSaveTimer !== null) {
+      window.clearTimeout(this.playbackProgressSaveTimer);
+      this.playbackProgressSaveTimer = null;
+      await this.saveSettings();
+      return;
+    }
+    await this.settingsSaveQueue;
+  }
+
+  // ─── Commands ───────────────────────────────────────────────────────────
+
+  private chooseAndOpenMediaFile(): void {
+    const files = this.mediaFileService.getMediaFiles();
+    if (files.length === 0) {
+      new Notice(t('notice.noMediaInVault'));
+      return;
+    }
+    pickMediaFile(this.app, files, (file) => {
+      this.openMediaFile(file).catch((e) => {
+        new Notice(`${t('notice.openMediaFailed')} — ${(e as Error).message}`);
+        logger.error('openMediaFile error:', e);
+      });
+    });
+  }
+
+  private registerCommands(): void {
+    this.addCommand({
+      id: 'open-study-hub',
+      name: t('cmd.openStudyHub'),
+      callback: async () => {
+        const candidates = ['Home.md', 'README.md'];
+        const file = candidates
+          .map((path) => this.app.vault.getAbstractFileByPath(path))
+          .find((abstractFile): abstractFile is TFile => abstractFile instanceof TFile);
+        if (!file) {
+          new Notice(t('notice.studyHubNotFound'));
+          return;
+        }
+        await this.app.workspace.getLeaf(false).openFile(file);
+      },
+    });
+    this.addCommand({
+      id: 'start-sound-pattern-training',
+      name: t('cmd.startSoundPattern'),
+      callback: () => {
+        void this.activateSoundPatternView();
+      },
+    });
+
+    this.addCommand({
+      id: 'open-player',
+      name: t('cmd.openPlayer'),
+      callback: () => {
+        this.activateView(VIEW_TYPE_PLAYER).catch((e) => {
+          new Notice(`${t('notice.openPlayerFailed')} — ${(e as Error).message}`);
+          logger.error('activateView(player) error:', e);
+        });
+      },
+    });
+
+    this.addCommand({
+      id: 'open-subtitle-panel',
+      name: t('cmd.openSubtitlePanel'),
+      callback: () => {
+        this.activateSubtitlePanel().catch((e) => {
+          new Notice(`${t('notice.openSubtitlePanelFailed')} — ${(e as Error).message}`);
+          logger.error('activateSubtitlePanel error:', e);
+        });
+      },
+    });
+
+    this.addCommand({
+      id: 'open-vocabulary',
+      name: t('cmd.openVocabulary'),
+      callback: () => {
+        this.activateView(VIEW_TYPE_VOCABULARY).catch((e) => {
+          new Notice(`${t('notice.openVocabularyFailed')} — ${(e as Error).message}`);
+          logger.error('activateView(vocabulary) error:', e);
+        });
+      },
+    });
+
+    this.addCommand({
+      id: 'open-media-file',
+      name: t('cmd.openMediaFile'),
+      callback: () => this.chooseAndOpenMediaFile(),
+    });
+
+    // Manual subtitle loading — the only path for remote-URL media (which has
+    // no sibling files to auto-detect) and for mismatched subtitle filenames.
+    this.addCommand({
+      id: 'load-subtitle-file',
+      name: t('cmd.loadSubtitle'),
+      callback: () => {
+        pickAndLoadSubtitle(this.app, this.settings.subtitleLineOrder, () => {
+          const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
+          if (existing.length === 0) {
+            this.activateSubtitlePanel(false).catch(() => {});
+          }
+        });
+      },
+    });
+
+    this.addCommand({
+      id: 'start-review',
+      name: t('cmd.startReview'),
+      callback: () => {
+        this.flashcardService.startReview();
+      },
+    });
+
+    // ─── Player Hotkey Commands ───
+    registerPlayerCommands(this);
+  }
+
+  // ─── View Activation ────────────────────────────────────────────────────
+
+  private async activateView(viewType: string): Promise<WorkspaceLeaf> {
+    const existing = this.app.workspace.getLeavesOfType(viewType);
+    if (existing.length > 0) {
+      await this.app.workspace.revealLeaf(existing[0]!);
+      return existing[0]!;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({ type: viewType, active: true });
+    await this.app.workspace.revealLeaf(leaf);
+    return leaf;
+  }
+
+  /**
+   * Open / toggle subtitle panel.
+   * @param focusPanel - if false, create the panel without stealing focus from the player.
+   *                     Used by auto-open so the player remains interactive after layout init.
+   */
+  private async activateSubtitlePanel(focusPanel = true): Promise<void> {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
+
+    if (existing.length > 0) {
+      const leaf = existing[0]!;
+      // If the panel is already the focused view → toggle close (user explicitly
+      // dismisses); otherwise it's a restored/hidden panel: reveal it.
+      // getActiveViewOfType is the public API replacement for workspace.activeLeaf.
+      const activeView = this.app.workspace.getActiveViewOfType(SubtitlePanelView);
+      if (activeView && activeView.leaf === leaf) {
+        leaf.detach();
+      } else {
+        await this.app.workspace.revealLeaf(leaf);
+      }
+      return;
+    }
+
+    const location = this.settings.subtitlePanelLocation || 'split';
+    const playerLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER);
+    let newLeaf: WorkspaceLeaf;
+
+    if (location === 'tab') {
+      newLeaf = this.app.workspace.getLeaf('tab');
+    } else if (playerLeaves.length > 0) {
+      // 'split' → horizontal split below player (default)
+      // 'right'  → vertical split, new pane right (before=false)
+      // 'left'   → vertical split, new pane left  (before=true)
+      const direction: 'vertical' | 'horizontal' =
+        (location === 'left' || location === 'right') ? 'vertical' : 'horizontal';
+      const before = location === 'left';
+      newLeaf = this.app.workspace.createLeafBySplit(playerLeaves[0]!, direction, before);
+    } else {
+      // No player open — horizontal split below active leaf
+      newLeaf = this.app.workspace.getLeaf('split', 'horizontal');
+    }
+
+    // active:false when auto-opening so player keeps focus; true when user manually opens
+    await newLeaf.setViewState({ type: VIEW_TYPE_SUBTITLE_PANEL, active: focusPanel });
+    await this.app.workspace.revealLeaf(newLeaf);
+  }
+
+  // ─── Media Opening ──────────────────────────────────────────────────────
+
+  async openMediaFile(file: TFile, timestamp?: number): Promise<void> {
+    const source = this.mediaFileService.createSourceFromFile(file, timestamp);
+    const leaf = await this.activateView(VIEW_TYPE_PLAYER);
+    const view = leaf.view;
+    if (view instanceof LangPlayerView) {
+      view.setSource(source);
+    }
+    // Auto-open subtitle panel below player without stealing focus
+    if (this.settings.subtitlePanelAutoOpen) {
+      const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
+      if (existing.length === 0) {
+        await this.activateSubtitlePanel(false);
+      }
+      // Ensure player leaf keeps focus so keyboard shortcuts and controls work
+      await this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  async openMediaFromUrl(url: string, timestamp?: number): Promise<void> {
+    // If the URL contains no protocol (i.e. it's a vault-relative path stored by saveToNote),
+    // resolve it back to a TFile so subtitle auto-loading works correctly.
+    if (!url.includes('://')) {
+      const file = this.app.vault.getAbstractFileByPath(url);
+      if (file instanceof TFile) {
+        return this.openMediaFile(file, timestamp);
+      }
+    }
+    const source = this.mediaFileService.createSourceFromUrl(url, undefined, timestamp);
+    const leaf = await this.activateView(VIEW_TYPE_PLAYER);
+    const view = leaf.view;
+    if (view instanceof LangPlayerView) {
+      view.setSource(source);
+    }
+    // Auto-open subtitle panel for URL sources too, without stealing focus
+    if (this.settings.subtitlePanelAutoOpen) {
+      const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
+      if (existing.length === 0) {
+        await this.activateSubtitlePanel(false);
+      }
+      await this.app.workspace.revealLeaf(leaf);
+    }
+  }
+
+  // ─── Ref for React Context ──────────────────────────────────────────────
+
+  /**
+   * Auto-create default word database and review database files if not set.
+   */
+  private async ensureDefaultDbFiles(): Promise<void> {
+    const defaults: Array<{ key: 'wordDatabase' | 'reviewDatabase'; path: string }> = [
+      { key: 'wordDatabase', path: 'words.md' },
+      { key: 'reviewDatabase', path: 'review.md' },
+    ];
+
+    let updated = false;
+    for (const item of defaults) {
+      if (!this.settings[item.key]) {
+        const existing = this.app.vault.getAbstractFileByPath(item.path);
+        if (!existing) {
+          try {
+            await this.app.vault.create(item.path, '');
+          } catch (e) {
+            logger.warn(`Failed to create default ${item.key} file:`, e);
+          }
+        }
+        this.settings[item.key] = item.path;
+        updated = true;
+      }
+    }
+    if (updated) {
+      await this.saveSettings();
+    }
+  }
+
+  /**
+   * Open / toggle the dictation view as its own leaf.
+   * If open and focused → detach (close); if open elsewhere → reveal.
+   * If not open → split horizontally next to the player, or open as tab.
+   */
+  private async activateDictationView(): Promise<void> {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SOUND_PATTERN)) leaf.detach();
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_DICTATION);
+
+    if (existing.length > 0) {
+      const leaf = existing[0]!;
+      const activeView = this.app.workspace.getActiveViewOfType(DictationView);
+      if (activeView && activeView.leaf === leaf) {
+        leaf.detach();
+      } else {
+        await this.app.workspace.revealLeaf(leaf);
+      }
+      return;
+    }
+
+    const playerLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER);
+    let newLeaf: WorkspaceLeaf;
+    if (playerLeaves.length > 0) {
+      newLeaf = this.app.workspace.createLeafBySplit(playerLeaves[0]!, 'horizontal', false);
+    } else {
+      newLeaf = this.app.workspace.getLeaf('tab');
+    }
+    await newLeaf.setViewState({ type: VIEW_TYPE_DICTATION, active: true });
+    await this.app.workspace.revealLeaf(newLeaf);
+  }
+
+  private async activateSoundPatternView(): Promise<void> {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_DICTATION)) leaf.detach();
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SOUND_PATTERN);
+    if (existing.length > 0) {
+        await this.app.workspace.revealLeaf(existing[0]!);
+      return;
+    }
+    const playerLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER);
+    const leaf = playerLeaves.length > 0
+      ? this.app.workspace.createLeafBySplit(playerLeaves[0]!, 'horizontal', false)
+      : this.app.workspace.getLeaf('tab');
+    await leaf.setViewState({ type: VIEW_TYPE_SOUND_PATTERN, active: true });
+    await this.app.workspace.revealLeaf(leaf);
+  }
+
+  private asRef(): LangPlayerPluginRef {
+    return {
+      settings: this.settings,
+      saveSettings: () => this.saveSettings(),
+      getAiMeaningApiKey: () => this.getAiMeaningApiKey(),
+      setAiMeaningApiKey: (apiKey: string) => this.setAiMeaningApiKey(apiKey),
+      noteService: this.noteService,
+      vocabDb: this.vocabDb,
+      flashcardService: this.flashcardService,
+      app: this.app,
+      openMediaPicker: () => this.chooseAndOpenMediaFile(),
+      openSubtitlePanel: () => this.activateSubtitlePanel(),
+      openDictationView: () => this.activateDictationView(),
+      openSoundPatternView: () => this.activateSoundPatternView(),
+      openVocabulary: async () => { await this.activateView(VIEW_TYPE_VOCABULARY); },
+      startReview: () => {
+        this.flashcardService.startReview();
+      },
+      openMediaAt: (url: string, timestamp?: number) => this.openMediaFromUrl(url, timestamp),
+      loadSubtitleFromVault: () => pickAndLoadSubtitle(this.app, this.settings.subtitleLineOrder),
+      getDictationProgress: (mediaKey: string) => this.getDictationProgress(mediaKey),
+      setDictationProgress: (mediaKey: string, snapshot: DictationProgressSnapshot) =>
+        this.setDictationProgress(mediaKey, snapshot),
+      clearDictationProgress: (mediaKey: string) => this.clearDictationProgress(mediaKey),
+      getSoundPatternProgress: (mediaKey: string) => this.getSoundPatternProgress(mediaKey),
+      setSoundPatternProgress: (mediaKey: string, snapshot: SoundPatternProgressSnapshot) =>
+        this.setSoundPatternProgress(mediaKey, snapshot),
+      clearSoundPatternProgress: (mediaKey: string) => this.clearSoundPatternProgress(mediaKey),
+      recordStudyActivity: (sentenceDelta?: number) => this.recordStudyActivity(sentenceDelta),
+      dismissStudyRecoveryPrompt: () => this.dismissStudyRecoveryPrompt(),
+      getPlaybackProgress: (mediaKey: string) => this.getPlaybackProgress(mediaKey),
+      setPlaybackProgress: (mediaKey: string, currentTime: number, duration: number) =>
+        this.setPlaybackProgress(mediaKey, currentTime, duration),
+    };
+  }
 }

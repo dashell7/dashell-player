@@ -13,20 +13,26 @@
 		"importHelpers": true,
 		"noUncheckedIndexedAccess": true,
 		"isolatedModules": true,
-		"strictNullChecks": true,
-		"strictBindCallApply": true,
+		"strict": true,
 		"allowSyntheticDefaultImports": true,
 		"useUnknownInCatchVariables": true,
 		"jsx": "react-jsx",
 		"esModuleInterop": true,
+		"resolveJsonModule": true,
 		"skipLibCheck": true,
 		"lib": [
 			"DOM",
 			"ES2022"
-		]
+		],
+		"paths": {
+			"@/*": ["src/*"]
+		}
 	},
 	"include": [
 		"src/**/*.ts",
 		"src/**/*.tsx"
+	],
+	"exclude": [
+		"src/langr/**"
 	]
 }

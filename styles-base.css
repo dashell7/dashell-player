@@ -1,0 +1,3645 @@
+/*
+ * LangPlayer static styles.
+ *
+ * Most component CSS lives here so the published plugin exposes normal static
+ * styles.css. src/services/StyleService.ts injects only the small set of CSS
+ * variables that depend on user settings.
+ */
+
+/* ─── Design Tokens ──────────────────────────────────────── */
+:root {
+  --lp-bg-primary: var(--background-primary);
+  --lp-bg-secondary: var(--background-secondary);
+  --lp-bg-hover: var(--background-modifier-hover);
+  --lp-text-normal: var(--text-normal);
+  --lp-text-muted: var(--text-muted);
+  --lp-text-faint: var(--text-faint);
+  --lp-accent: var(--interactive-accent);
+  --lp-accent-hover: var(--interactive-accent-hover);
+  --lp-border: var(--background-modifier-border);
+  --lp-border-hover: var(--background-modifier-border-hover);
+
+  --lp-vocab-unknown: var(--color-red, #e74c3c);
+  --lp-vocab-learning: var(--color-orange, #f39c12);
+  --lp-vocab-mastered: var(--color-green, #27ae60);
+  --lp-video-bg: var(--background-primary);
+  /* Overlay sits on a dark gradient over the video, so white is always
+     legible (unlike --text-on-accent, which flips with the theme accent). */
+  --lp-overlay-text: #fff;
+  --lp-overlay-text-secondary: rgba(255, 255, 255, 0.72);
+  --lp-overlay-bg: rgba(0, 0, 0, 0.6);
+  --lp-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --lp-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --lp-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --lp-radius-sm: 4px;
+  --lp-radius-md: 6px;
+  --lp-radius-lg: 8px;
+  --lp-radius-xl: 12px;
+
+  --lp-font-xs: 11px;
+  --lp-font-sm: 12px;
+  --lp-font-base: 13px;
+  --lp-font-md: 14px;
+  --lp-font-lg: 16px;
+  --lp-font-xl: 18px;
+  --lp-font-2xl: 20px;
+
+  --lp-space-xs: 4px;
+  --lp-space-sm: 6px;
+  --lp-space-md: 8px;
+  --lp-space-lg: 12px;
+  --lp-space-xl: 16px;
+  --lp-space-2xl: 20px;
+  --lp-space-3xl: 24px;
+
+  --lp-subtitle-font-size: 15px;
+  --lp-subtitle-font-weight: 500;
+  --lp-subtitle-line-height: 1.6;
+  --lp-subtitle-color: var(--text-normal);
+  --lp-subtitle-translation-color: var(--text-muted);
+  --lp-subtitle-bg: rgba(0,0,0,0.55);
+  --lp-subtitle-highlight: var(--interactive-accent);
+  --lp-player-height: 400px;
+  --lp-subtitle-width: 400px;
+
+  --lp-transition: 150ms ease;
+  --lp-transition-slow: 250ms ease;
+
+  /* Reading workspace palette. Independently implemented from the visual
+     principles of a paper-first reader; no third-party CSS or font assets. */
+  --lp-reader-canvas: #f0f1ec;
+  --lp-reader-paper: #faf9f5;
+  --lp-reader-chrome: #ffffff;
+  --lp-reader-ink: #282a27;
+  --lp-reader-muted: #72766f;
+  --lp-reader-border: #dedfd8;
+  --lp-reader-active: #e8ece4;
+  --lp-reader-shadow: 0 12px 32px rgba(42, 47, 40, 0.08);
+  --lp-reader-text-font: var(--font-text, ui-serif), Georgia, "Times New Roman", serif;
+  --lp-reader-ui-font: var(--font-interface, system-ui), sans-serif;
+}
+
+.theme-dark {
+  --lp-reader-canvas: #171816;
+  --lp-reader-paper: #20221f;
+  --lp-reader-chrome: #1c1e1b;
+  --lp-reader-ink: #e4e6e0;
+  --lp-reader-muted: #a4a89f;
+  --lp-reader-border: #363a34;
+  --lp-reader-active: #2b302a;
+  --lp-reader-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+}
+
+/* ─── View Content — kill Obsidian default padding ────── */
+.lp-view-content {
+  padding: 0 !important;
+  height: 100%;
+  overflow: hidden;
+}
+.lp-view-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.lp-view-media-shell {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: var(--background-primary);
+}
+.lp-empty-state-wrap {
+  align-items: center;
+  justify-content: center;
+}
+.lp-empty-state {
+  max-width: 560px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.lp-empty-state-icon {
+  margin-bottom: 12px;
+}
+.lp-empty-state-title {
+  margin: 0 0 8px;
+  color: var(--text-normal);
+  font-size: var(--lp-font-xl);
+}
+.lp-empty-state-description {
+  max-width: 420px;
+  margin: 0 auto 16px;
+  line-height: 1.6;
+}
+.lp-empty-state-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.lp-empty-state-steps {
+  max-width: 460px;
+  margin: 0 auto;
+  padding-left: 24px;
+  text-align: left;
+  line-height: 1.7;
+  color: var(--text-faint);
+}
+.lp-empty-state-hint {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+/* A visible learning path keeps the plugin understandable for first-time users. */
+.lp-study-flow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--lp-border);
+  background: color-mix(in srgb, var(--lp-bg-secondary) 78%, transparent);
+}
+.lp-study-flow-label {
+  margin-right: 4px;
+  color: var(--lp-text-muted);
+  font-size: var(--lp-font-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lp-study-flow-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--lp-radius-md);
+  background: transparent;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  font-size: var(--lp-font-xs);
+  transition: background var(--lp-transition), color var(--lp-transition), border-color var(--lp-transition);
+}
+.lp-study-flow-step:hover:not(:disabled),
+.lp-study-flow-step:focus-visible {
+  border-color: var(--lp-border-hover);
+  background: var(--lp-bg-hover);
+  color: var(--lp-text-normal);
+}
+.lp-study-flow-step--active {
+  border-color: color-mix(in srgb, var(--lp-accent) 45%, transparent);
+  color: var(--lp-text-normal);
+}
+.lp-study-flow-step:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.lp-study-flow-number {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--lp-border);
+  color: var(--lp-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.lp-study-flow-step--active .lp-study-flow-number {
+  background: var(--lp-accent);
+  color: var(--text-on-accent);
+}
+.lp-study-flow-arrow {
+  color: var(--lp-text-faint);
+  font-size: var(--lp-font-sm);
+}
+
+/* Dictation panel when mounted inside its own leaf.
+   overflow:hidden — the panel itself never scrolls; only the inner box
+   area scrolls (see .lp-dictation-boxes), so the progress dots and the
+   Next/Replay buttons stay pinned and visible regardless of sentence length. */
+.lp-view-content .lp-dictation-panel {
+  height: 100%;
+  max-height: none;
+  overflow: hidden;
+}
+
+/* Hide Obsidian's redundant inline view-header (the "‹ › title ⋮" bar) for
+   LangPlayer leaves on DESKTOP — the tab strip already shows the title and
+   all controls live in the view content, so this bar just wastes vertical
+   space. Kept on mobile, where it's the primary navigation affordance. */
+body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-view"] > .view-header,
+body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-subtitle-panel"] > .view-header,
+body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-dictation"] > .view-header,
+body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-sound-pattern"] > .view-header,
+body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] > .view-header {
+  display: none;
+}
+
+/* ─── Base View ──────────────────────────────────────────── */
+.langflow-view,
+.lp-view-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ─── Settings tabs ─────────────────────────────────────── */
+.lp-settings-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.lp-settings-tab-btn {
+  padding: 6px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: -1px;
+  border-radius: 0;
+}
+.lp-settings-tab-btn.is-active {
+  color: var(--text-normal);
+  border-bottom-color: var(--interactive-accent);
+  font-weight: 600;
+}
+.lp-settings-pane.is-hidden {
+  display: none;
+}
+
+/* ─── Error boundary ────────────────────────────────────── */
+.lp-error-container {
+  padding: 16px;
+  text-align: center;
+}
+.lp-error-title {
+  color: var(--text-error);
+  margin-bottom: 8px;
+}
+.lp-error-message {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  word-break: break-all;
+}
+
+/* ─── Video Player Card (Media Extended style) ─────────── */
+/* Card = full dark area; a centered column holds video + controls bar */
+.lp-player-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--background-secondary-alt, #1a1a1a);
+  border-radius: var(--lp-radius-lg);
+  overflow: hidden;
+}
+
+/* Full-width column — video fills container, aspect ratio via <video> element */
+.lp-video-column {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+/* Video area — fills remaining height above the controls bar */
+.lp-video-area {
+  position: relative;
+  flex: 1;
+  min-height: 140px;
+  overflow: hidden;
+  background: var(--lp-video-bg);
+}
+
+/* Controls bar — same width as video column, Obsidian theme background */
+.lp-controls-bar {
+  flex-shrink: 0;
+  width: 100%;
+  background: var(--background-primary);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Legacy class kept for any lingering references */
+.lp-video-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  background: var(--background-secondary-alt, #1a1a1a);
+  border-radius: var(--lp-radius-lg);
+  overflow: hidden;
+}
+
+/* ─── Legacy Buttons (non-player UI) ─────────────────────── */
+.lp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lp-space-xs);
+  border-radius: var(--lp-radius-md);
+  padding: var(--lp-space-xs) var(--lp-space-md);
+  border: none;
+  cursor: pointer;
+  transition: all var(--lp-transition);
+  font-size: var(--lp-font-sm);
+  font-family: inherit;
+  background: transparent;
+  color: var(--lp-text-normal);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.lp-btn:hover {
+  background: var(--lp-bg-hover);
+}
+
+.lp-btn:active {
+  transform: scale(0.96);
+}
+
+.lp-btn:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 1px;
+}
+
+.lp-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.lp-btn-primary {
+  background: var(--lp-accent);
+  color: var(--text-on-accent);
+}
+
+.lp-btn-primary:hover {
+  background: var(--lp-accent-hover);
+}
+
+.lp-btn-icon {
+  padding: var(--lp-space-xs);
+  border-radius: var(--lp-radius-sm);
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.lp-btn-danger {
+  color: var(--lp-vocab-unknown);
+}
+
+.lp-btn-danger:hover {
+  background: color-mix(in srgb, var(--color-red) 15%, transparent);
+}
+
+.lp-btn-muted {
+  opacity: 0.45;
+}
+
+/* ─── Player Controls System (Media Extended style) ─────── */
+.lp-controls-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 12px 6px;
+  min-height: 40px;
+}
+
+.lp-ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+.lp-ctrl-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.lp-ctrl-sep {
+  display: none;
+}
+
+/* ── Flat control button (matches media-extended: solid icons, no excessive transparency) ── */
+.lp-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-normal);
+  opacity: 1;
+  border-radius: 6px;
+  padding: 6px;
+  min-width: 36px;
+  min-height: 36px;
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 150ms ease, background 150ms ease, color 150ms ease;
+  position: relative;
+}
+
+.lp-ctrl-btn:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+  color: var(--interactive-accent);
+}
+
+.lp-ctrl-btn:active {
+  opacity: 0.85;
+}
+
+.lp-ctrl-btn:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+.lp-ctrl-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Play/pause — same style as other buttons, slightly larger icon */
+.lp-ctrl-btn--play {
+  opacity: 1;
+}
+
+/* Label buttons (text: "1.0x", "A", "B") */
+.lp-ctrl-btn--label {
+  padding: 4px 8px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  border-radius: 6px;
+}
+
+/* Extra-small buttons (offset +/-) */
+.lp-ctrl-btn--xs {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px;
+  opacity: 0.7;
+}
+
+.lp-ctrl-btn--xs:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+  color: var(--interactive-accent);
+}
+
+/* Active state — filled accent background like Media Extended */
+.lp-ctrl-btn--active {
+  opacity: 1 !important;
+  color: var(--text-on-accent, #fff) !important;
+  background: var(--interactive-accent) !important;
+  border-radius: 6px;
+}
+
+.lp-ctrl-btn--active:hover {
+  background: var(--interactive-accent-hover, var(--interactive-accent)) !important;
+  opacity: 1 !important;
+}
+
+/* Accent text (point A set) */
+.lp-ctrl-btn--accent {
+  color: var(--interactive-accent);
+  opacity: 1;
+}
+
+/* Dim (inactive toggle) */
+.lp-ctrl-btn--dim {
+  opacity: 0.55;
+}
+
+.lp-ctrl-btn--dim:hover {
+  opacity: 1;
+  background: var(--background-modifier-hover);
+  color: var(--interactive-accent);
+}
+
+/* Recording active */
+.lp-ctrl-btn--recording {
+  opacity: 1 !important;
+  color: var(--color-red, #dc3545) !important;
+  background: transparent !important;
+  animation: lp-rec-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes lp-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Badge */
+.lp-ctrl-badge {
+  font-size: 10px;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+/* Recording dot */
+.lp-rec-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-red, #dc3545);
+  animation: lp-pulse 1s ease-in-out infinite;
+}
+
+/* ── Recording listen-back row (appears after recording stops) ── */
+.lp-rec-playback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  margin: 4px 8px 0;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+  animation: lp-rec-playback-in 160ms ease-out;
+}
+
+@keyframes lp-rec-playback-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Inside the dictation panel the bar sits above the input boxes; drop the
+   side margins so it aligns flush with the boxes (the flex gap spaces it). */
+.lp-dictation-panel .lp-rec-playback {
+  margin: 0;
+}
+
+.lp-rec-playback-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent, #fff);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: filter 0.15s;
+}
+
+.lp-rec-playback-btn:hover {
+  filter: brightness(1.1);
+}
+
+.lp-rec-playback-btn--playing {
+  background: var(--color-red, #dc3545);
+}
+
+/* Now-playing indicator: shows which source is currently audible. */
+.lp-rec-playback-now {
+  flex-shrink: 0;
+  min-width: 2.1em;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  color: var(--text-on-accent, #fff);
+  background: transparent;
+  transition: background-color 0.15s, opacity 0.15s;
+  opacity: 0;
+}
+
+.lp-rec-playback-now--mine {
+  background: var(--interactive-accent, #7c3aed);
+  opacity: 1;
+}
+
+.lp-rec-playback-now--original {
+  background: var(--color-green, #2e9e4f);
+  opacity: 1;
+}
+
+.lp-rec-playback-time {
+  font-family: var(--font-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-normal);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.lp-rec-playback-time-total {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.lp-rec-playback-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
+.lp-rec-playback-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.lp-rec-playback-dismiss:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+/* ── Time display ── */
+.lp-time-display {
+  font-size: 14px;
+  color: inherit;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-monospace, monospace);
+  letter-spacing: 0.5px;
+  margin: 0 6px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.lp-time-sep {
+  opacity: 0;
+  margin: 0 4px;
+  font-size: 0;
+  display: inline-block;
+  width: 10px;
+}
+
+/* ── Dictation panel ── */
+.lp-dictation-panel {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--background-primary);
+  height: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  --lpd-font-body:  var(--font-text-size, 15px);
+  --lpd-font-ui:    var(--font-ui-medium, 13px);
+  --lpd-font-label: var(--font-ui-small, 11px);
+}
+
+/* Everything except the box area is pinned (never shrinks); the box area
+   takes the remaining height and scrolls internally only when a sentence
+   is too long for the available space — no manual window resizing needed. */
+.lp-dictation-panel > .lp-dictation-headline,
+.lp-dictation-panel > .lp-habit-recovery,
+.lp-dictation-panel > .lp-habit-card,
+.lp-dictation-panel > .lp-rec-playback,
+.lp-dictation-panel > .lp-dictation-actions,
+.lp-dictation-panel > .lp-dictation-unlock,
+.lp-dictation-panel > .lp-dictation-shortcuts {
+  flex-shrink: 0;
+}
+
+.lp-habit-recovery {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--interactive-accent) 28%, var(--background-modifier-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+.lp-habit-recovery-main {
+  min-width: 0;
+}
+
+.lp-habit-recovery-title {
+  font-size: var(--lpd-font-ui);
+  font-weight: 700;
+  color: var(--text-normal);
+  line-height: 1.3;
+}
+
+.lp-habit-recovery-body {
+  margin-top: 2px;
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.lp-habit-recovery-body strong {
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+  margin: 0 2px;
+}
+
+.lp-habit-recovery-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.lp-habit-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 8%, transparent), transparent 48%),
+    var(--background-secondary);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--background-primary) 65%, transparent);
+  --lp-habit-progress: 0%;
+}
+
+.lp-habit-card--done {
+  border-color: color-mix(in srgb, var(--color-green, #2f9e44) 34%, var(--background-modifier-border));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--color-green, #2f9e44) 10%, transparent), transparent 52%),
+    var(--background-secondary);
+}
+
+.lp-habit-goal {
+  display: grid;
+  place-items: center;
+  min-width: 58px;
+  padding: 2px 8px;
+  border-right: 1px solid var(--background-modifier-border);
+}
+
+.lp-habit-goal-value {
+  font-family: var(--font-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  font-size: 16px;
+  line-height: 1.1;
+  color: var(--text-normal);
+  font-weight: 700;
+}
+
+.lp-habit-goal-value span {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.lp-habit-goal-label {
+  margin-top: 2px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+.lp-habit-main {
+  flex: 1;
+  min-width: 110px;
+}
+
+.lp-habit-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.lp-habit-status {
+  font-size: var(--lpd-font-label);
+  color: var(--text-normal);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.lp-habit-card--done .lp-habit-status {
+  color: var(--color-green, #2f9e44);
+}
+
+.lp-habit-percent {
+  font-family: var(--font-monospace, monospace);
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lp-habit-meter {
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
+}
+
+.lp-habit-meter span {
+  display: block;
+  width: var(--lp-habit-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--interactive-accent), color-mix(in srgb, var(--interactive-accent) 72%, var(--color-green, #2f9e44)));
+  transition: width 180ms ease;
+}
+
+.lp-habit-card--done .lp-habit-meter span {
+  background: var(--color-green, #2f9e44);
+}
+
+.lp-habit-stats {
+  display: flex;
+  align-items: stretch;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.lp-habit-stat {
+  display: grid;
+  grid-template-columns: auto;
+  align-content: center;
+  justify-items: center;
+  min-width: 42px;
+  padding: 3px 7px;
+  border-radius: 7px;
+  background: var(--background-primary);
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+}
+
+.lp-habit-stat span {
+  font-size: 10px;
+  line-height: 1.1;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.lp-habit-stat strong {
+  margin-top: 1px;
+  font-family: var(--font-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.1;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-dictation-panel--empty,
+.lp-dictation-panel--done {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.lp-dictation-empty,
+.lp-dictation-done-title {
+  color: var(--text-muted);
+  font-size: var(--lpd-font-ui);
+}
+
+.lp-dictation-done-stats {
+  color: var(--text-normal);
+  font-size: var(--lpd-font-body);
+  font-weight: 600;
+}
+
+.lp-dictation-done-substats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 4px 14px;
+  font-size: var(--lpd-font-ui);
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.lp-dictation-hard-list {
+  width: min(680px, 100%);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary-alt, var(--background-secondary));
+  padding: 8px 10px;
+}
+
+.lp-dictation-hard-title {
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.lp-dictation-hard-item {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 6px;
+  font-size: var(--lpd-font-ui);
+  text-align: left;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
+.lp-dictation-hard-count {
+  color: var(--color-red, #dc3545);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-monospace, monospace);
+}
+
+.lp-dictation-hard-text {
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lp-dictation-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.lp-dictation-headline-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.lp-dictation-progress-dots {
+  display: flex;
+  align-items: flex-start;
+  align-content: flex-start;
+  flex-wrap: wrap;
+  gap: 0;
+  flex: 1;
+  min-width: 0;
+  /* Let dots wrap to several rows; if there are still more than fit (e.g.
+     a narrow panel + many sentences), scroll instead of clipping them. */
+  max-height: 72px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 2px 0 0;
+}
+
+.lp-dictation-progress-dots::-webkit-scrollbar {
+  width: 6px;
+}
+.lp-dictation-progress-dots::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+}
+
+.lp-dot {
+  --lp-dot-color: var(--background-modifier-border);
+  --lp-dot-ring: transparent;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  appearance: none;
+  margin: 0;
+}
+
+.lp-dictation-progress-dots .lp-dot,
+.lp-dictation-progress-dots .lp-dot:hover,
+.lp-dictation-progress-dots .lp-dot:active {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.lp-dot::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lp-dot-color);
+  box-shadow: 0 0 0 2px var(--lp-dot-ring);
+  transition: transform 0.1s, background 0.15s, box-shadow 0.15s;
+}
+
+.lp-dot:hover::before {
+  transform: scale(1.7);
+}
+
+.lp-dot:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+}
+
+.lp-dot--pending {
+  --lp-dot-color: var(--background-modifier-border);
+}
+
+/* Theme-driven colors (was hardcoded #4c6fff/#2f9e44/#e03131 + !important,
+   which clashed with the box colors and ignored the user's accent). */
+.lp-dot--active {
+  --lp-dot-color: var(--interactive-accent);
+  --lp-dot-ring: color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+}
+
+.lp-dot--active-ok {
+  --lp-dot-color: var(--color-green, #2f9e44);
+  --lp-dot-ring: color-mix(in srgb, var(--color-green, #2f9e44) 30%, transparent);
+}
+
+.lp-dot--active-wrong {
+  --lp-dot-color: var(--color-red, #e03131);
+  --lp-dot-ring: color-mix(in srgb, var(--color-red, #e03131) 30%, transparent);
+}
+
+.lp-dot--ok {
+  --lp-dot-color: var(--color-green, #2f9e44);
+}
+
+.lp-dot--wrong {
+  --lp-dot-color: var(--color-red, #e03131);
+}
+
+.lp-dictation-chip {
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--background-primary-alt, var(--background-secondary));
+  white-space: nowrap;
+}
+
+.lp-dictation-badge-btn {
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lp-dictation-badge-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.lp-dictation-badge-btn--on {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent, #fff);
+  border-color: transparent;
+}
+
+/* ── Box-mode input ── */
+.lp-dictation-boxes {
+  position: relative;
+  display: block;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  box-shadow: inset 0 1px 0 0 color-mix(in srgb, var(--background-modifier-border) 50%, transparent);
+  cursor: text;
+  /* Size to content for short sentences; for long ones, shrink + scroll
+     internally (min-height:0 enables the shrink) so the action buttons are
+     never pushed off-screen and no manual pane resizing is needed. */
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  line-height: 2.2;
+}
+
+/* Long sentences: tighten box size / spacing automatically so more fits in
+   the same height (React adds --compact when the answer is long). */
+.lp-dictation-boxes--compact {
+  padding: 10px 12px;
+  line-height: 1.9;
+}
+.lp-dictation-boxes--compact .lp-box {
+  min-width: 13px;
+  height: 24px;
+  font-size: var(--lpd-font-body);
+}
+.lp-dictation-boxes--compact .lp-dictation-word {
+  gap: 3px;
+  margin: 0 1px;
+}
+.lp-dictation-boxes--compact .lp-dictation-sep {
+  height: 24px;
+  font-size: var(--lpd-font-body);
+}
+.lp-dictation-boxes--compact .lp-dictation-sep--space {
+  width: 11px;
+  height: 24px;
+}
+
+@keyframes lp-dictation-correct-flash {
+  0%   { background: color-mix(in srgb, var(--color-green, #28a745) 22%, var(--background-secondary)); }
+  100% { background: var(--background-secondary); }
+}
+
+.lp-dictation-boxes--correct {
+  border-color: var(--color-green, #28a745);
+  animation: lp-dictation-correct-flash 350ms ease-out;
+}
+
+.lp-dictation-word {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin: 0 2px;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+/* Match .lp-box's vertical box (height + centering) so punctuation shares
+   the exact same vertical center as the letters instead of floating up. */
+.lp-dictation-sep {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  color: var(--text-faint, var(--text-muted));
+  font-size: calc(var(--lpd-font-body) + 2px);
+  white-space: pre;
+  vertical-align: bottom;
+}
+
+/* Whitespace-only sep: enforce a visible word gap that does not collapse */
+.lp-dictation-sep--space {
+  display: inline-block;
+  width: 16px;
+  height: 30px;
+  vertical-align: bottom;
+}
+
+.lp-box {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 30px;
+  padding: 0 2px;
+  font-family: var(--font-monospace, ui-monospace, monospace);
+  font-size: calc(var(--lpd-font-body) + 2px);
+  font-weight: 500;
+  line-height: 1;
+  border-bottom: 2px solid var(--background-modifier-border);
+  border-radius: 5px 5px 0 0;
+  color: var(--text-normal);
+  transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+  user-select: none;
+}
+
+.lp-box--empty {
+  color: transparent;
+}
+
+.lp-box--ok {
+  color: var(--text-normal);
+  border-bottom-color: var(--color-green, #28a745);
+}
+
+.lp-box--wrong {
+  color: var(--color-red, #dc3545);
+  border-bottom-color: var(--color-red, #dc3545);
+  background: color-mix(in srgb, var(--color-red, #dc3545) 13%, transparent);
+}
+
+.lp-box--reveal {
+  color: var(--text-normal);
+  border-bottom-color: var(--text-faint, var(--text-muted));
+  background: color-mix(in srgb, var(--interactive-accent) 8%, transparent);
+}
+
+.lp-box--hinted {
+  color: var(--interactive-accent);
+  border-bottom-color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.lp-box--current {
+  border-bottom-color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 9%, transparent);
+}
+
+/* Clean blinking caret, shown only in the *empty* current box. */
+.lp-box--current.lp-box--empty::after {
+  content: '';
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  width: 2px;
+  height: 56%;
+  transform: translateX(-50%);
+  border-radius: 1px;
+  background: var(--interactive-accent);
+  animation: lp-caret-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes lp-caret-blink {
+  0%, 50%      { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+.lp-dictation-hidden-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  cursor: text;
+  font: inherit;
+  outline: none;
+}
+
+.lp-dictation-empty-inline {
+  color: var(--text-muted);
+  font-size: var(--lpd-font-ui);
+  padding: 4px 0;
+}
+
+.lp-dictation-kbd {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 5px;
+  font-family: var(--font-monospace, ui-monospace, monospace);
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  background: var(--background-modifier-border);
+  border-radius: 3px;
+  line-height: 1.2;
+  opacity: 0.8;
+}
+
+.lp-dictation-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  margin-top: 2px;
+  opacity: 0.75;
+}
+
+.lp-dictation-shortcuts .lp-dictation-kbd {
+  margin-left: 0;
+}
+
+.lp-dictation-shortcut-label {
+  margin-right: 2px;
+}
+
+.lp-dictation-shortcut-sep {
+  margin: 0 4px;
+  opacity: 0.5;
+}
+
+.lp-dictation-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.lp-dictation-actions .lp-btn {
+  padding: 9px 12px;
+  font-size: var(--lpd-font-ui);
+  border-radius: 8px;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+}
+
+.lp-dictation-actions .lp-btn:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+}
+
+.lp-dictation-actions .lp-btn-primary,
+.lp-dictation-actions .lp-btn-primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--interactive-accent);
+  color: var(--text-on-accent, #fff);
+}
+
+.lp-dictation-actions .lp-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.lp-dictation-answer {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--background-primary-alt, var(--background-secondary));
+  font-size: var(--lpd-font-body);
+  line-height: 1.6;
+  color: var(--text-normal);
+}
+
+.lp-dictation-answer-label {
+  font-size: var(--lpd-font-label);
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.lp-dictation-answer-text {
+  word-break: break-word;
+}
+
+.lp-dictation-unlock {
+  display: flex;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.lp-dictation-unlock-link {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: var(--lpd-font-label);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.lp-dictation-unlock-link:hover {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover);
+}
+
+.lp-dictation-unlock-esc {
+  opacity: 0.6;
+  margin-left: 4px;
+}
+
+/* ── Volume (inline slider) ── */
+.lp-volume-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.lp-volume-inline {
+  overflow: hidden;
+  width: 0;
+  opacity: 0;
+  transition: width 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 150ms ease;
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+
+.lp-volume-inline--open {
+  width: 80px;
+  opacity: 1;
+  padding: 0 8px 0 2px;
+  overflow: visible;
+}
+
+.lp-vol-track {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(128, 128, 128, 0.3);
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: height 100ms ease;
+}
+
+.lp-vol-track:hover {
+  height: 5px;
+  border-radius: 3px;
+}
+
+.lp-vol-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--interactive-accent);
+  min-width: 0;
+}
+
+/* Thumb — sibling of fill, positioned at left: pct% on the track */
+.lp-vol-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translateX(-50%) translateY(-50%) scale(0);
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  border: 2px solid var(--interactive-accent);
+  pointer-events: none;
+  transition: transform 120ms ease;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  z-index: 2;
+}
+
+.lp-volume-wrap:hover .lp-vol-thumb,
+.lp-vol-track:active .lp-vol-thumb {
+  transform: translateX(-50%) translateY(-50%) scale(1);
+}
+
+/* ── Subtitle Offset ── */
+.lp-offset-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-left: 4px;
+}
+
+.lp-offset-value {
+  font-size: 12px;
+  opacity: 0.45;
+  width: 38px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-monospace, monospace);
+  line-height: 1;
+}
+
+/* ── Popup Menus (rendered via portal) ── */
+.lp-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.lp-popup-menu {
+  position: fixed;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: var(--lp-shadow-lg);
+  z-index: 10000;
+  white-space: nowrap;
+  min-width: 100px;
+  color: var(--text-normal);
+  margin-top: -6px;
+  transform: translate(-50%, -100%);
+}
+
+.lp-popup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  gap: 10px;
+  color: var(--text-normal);
+  transition: background 80ms ease;
+}
+
+.lp-popup-item:hover {
+  background: var(--background-modifier-hover);
+}
+
+.lp-popup-item--active {
+  color: var(--lp-accent) !important;
+  background: transparent !important;
+  font-weight: 600;
+}
+
+.lp-popup-item--active:hover {
+  background: var(--background-modifier-hover) !important;
+}
+
+.lp-popup-item-desc {
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.lp-popup-divider {
+  height: 1px;
+  background: var(--background-modifier-border);
+  margin: 3px 0;
+}
+
+/* ─── Subtitle Cards ─────────────────────────────────────── */
+.lp-subtitle-card {
+  position: relative;
+  margin: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: box-shadow 200ms;
+}
+
+.lp-subtitle-card:hover {
+  box-shadow: 0 0 0 1px var(--background-modifier-border);
+}
+
+/* ── Play icon — circular, absolutely positioned, vertically centered ── */
+.lp-play-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  /* Theme-aware so the icon is visible on BOTH light and dark cards
+     (was rgba white → invisible white-on-white in light mode). */
+  background: color-mix(in srgb, var(--text-normal) 14%, transparent);
+  color: var(--text-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-left: 2px;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 150ms, background 150ms;
+  cursor: pointer;
+}
+/* Show on hover */
+.lp-subtitle-card:hover .lp-play-icon {
+  opacity: 0.7;
+}
+/* Active/playing card: semi-transparent theme accent */
+.lp-subtitle-card-active .lp-play-icon {
+  opacity: 0.85;
+  background: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+}
+.lp-play-icon:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--text-normal) 24%, transparent);
+}
+.lp-subtitle-card-active .lp-play-icon:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+}
+
+/* ── Save/star icon — symmetric with play icon, on the right ── */
+.lp-save-icon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text-normal) 14%, transparent);
+  color: var(--text-normal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity 150ms, background 150ms;
+  cursor: pointer;
+}
+/* Show on hover */
+.lp-subtitle-card:hover .lp-save-icon {
+  opacity: 0.7;
+}
+/* Active/playing card: semi-transparent theme accent */
+.lp-subtitle-card-active .lp-save-icon {
+  opacity: 0.85;
+  background: color-mix(in srgb, var(--interactive-accent) 35%, transparent);
+}
+.lp-save-icon:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--text-normal) 24%, transparent);
+}
+.lp-subtitle-card-active .lp-save-icon:hover {
+  background: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+}
+/* Touch devices have no hover — keep the action icons faintly visible so
+   "play" / "save to note" stay discoverable. */
+@media (hover: none) {
+  .lp-play-icon, .lp-save-icon { opacity: 0.45; }
+}
+/* Keyboard focus must reveal the (otherwise hover-only) icons. */
+.lp-play-icon:focus-visible,
+.lp-save-icon:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 1px;
+}
+
+/* ── English line ── */
+.lp-subtitle-line-en {
+  padding: 8px 36px 8px 36px;
+  font-size: var(--lp-subtitle-font-size, 14px);
+  line-height: 1.6;
+}
+
+/* ── Chinese line ── */
+.lp-subtitle-line-zh {
+  padding: 6px 36px 8px 36px;
+  font-size: calc(var(--lp-subtitle-font-size, 14px) - 1px);
+  line-height: 1.6;
+}
+
+/* ── Time ── */
+.lp-subtitle-time {
+  font-size: 10px;
+  padding: 4px 14px 0 36px;
+}
+
+/* ═══ DARK MODE ═══ */
+.theme-dark .lp-subtitle-line-en {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+}
+.theme-dark .lp-subtitle-line-zh {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-faint);
+}
+.theme-dark .lp-subtitle-card:hover .lp-subtitle-line-en {
+  background: rgba(255, 255, 255, 0.09);
+}
+.theme-dark .lp-subtitle-card:hover .lp-subtitle-line-zh {
+  background: rgba(255, 255, 255, 0.05);
+}
+.theme-dark .lp-subtitle-card-active .lp-subtitle-line-en {
+  background: rgba(255, 255, 255, 0.10);
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.theme-dark .lp-subtitle-card-active .lp-subtitle-line-zh {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-normal);
+}
+.theme-dark .lp-subtitle-time {
+  color: var(--text-faint);
+}
+.theme-dark .lp-subtitle-card-active .lp-subtitle-time {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+/* ═══ LIGHT MODE ═══ */
+.theme-light .lp-subtitle-line-en {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-muted);
+}
+.theme-light .lp-subtitle-line-zh {
+  background: rgba(0, 0, 0, 0.025);
+  color: var(--text-faint);
+}
+.theme-light .lp-subtitle-card:hover .lp-subtitle-line-en {
+  background: rgba(0, 0, 0, 0.08);
+}
+.theme-light .lp-subtitle-card:hover .lp-subtitle-line-zh {
+  background: rgba(0, 0, 0, 0.04);
+}
+.theme-light .lp-subtitle-card-active .lp-subtitle-line-en {
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.theme-light .lp-subtitle-card-active .lp-subtitle-line-zh {
+  background: rgba(0, 0, 0, 0.035);
+  color: var(--text-normal);
+}
+.theme-light .lp-subtitle-time {
+  color: var(--text-faint);
+}
+.theme-light .lp-subtitle-card-active .lp-subtitle-time {
+  color: var(--interactive-accent);
+  font-weight: 600;
+}
+
+/* ── Clickable word hover uses Obsidian accent ── */
+.lp-subtitle-card .lp-word:hover {
+  color: var(--interactive-accent);
+  text-decoration: underline;
+}
+
+/* ─── (Feed Dashboard CSS removed — moved to rss-dashboard plugin) ─── */
+
+/* ─── Word Interactions ──────────────────────────────────── */
+.lp-word {
+  cursor: pointer;
+  transition: background var(--lp-transition);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.lp-word:hover {
+  background: var(--lp-bg-hover);
+}
+
+/* Search match highlight (subtitle search) */
+.lp-word--match {
+  background: var(--text-highlight-bg, rgba(255, 208, 0, 0.45));
+  color: var(--text-normal);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--text-highlight-bg, rgba(255, 208, 0, 0.45));
+}
+
+
+/* ─── Controls Overlay (inside video, Media Extended style) ── */
+.lp-controls-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0.25s ease;
+  pointer-events: none;
+  /* Dark gradient from bottom — white icons stay visible */
+  background: linear-gradient(to top, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.35) 60%, transparent 100%);
+  padding-top: 32px;
+}
+.lp-controls-overlay.lp-controls-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.lp-controls-overlay .lp-controls {
+  border-top: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+
+/* All buttons inside overlay: WHITE icons (Media Extended style) */
+.lp-controls-overlay .lp-ctrl-btn {
+  color: var(--lp-overlay-text) !important;
+  opacity: 0.85;
+}
+.lp-controls-overlay .lp-ctrl-btn:hover {
+  opacity: 1;
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent, #fff) !important;
+}
+/* Play button in overlay — same as other overlay buttons (white icon, no fill) */
+.lp-controls-overlay .lp-ctrl-btn--play {
+  opacity: 1 !important;
+}
+/* Active state: accent background */
+.lp-controls-overlay .lp-ctrl-btn--active {
+  color: var(--text-on-accent, #fff) !important;
+  background: var(--interactive-accent) !important;
+  opacity: 1 !important;
+}
+.lp-controls-overlay .lp-ctrl-btn--recording {
+  color: var(--color-red) !important;
+  background: transparent !important;
+}
+.lp-controls-overlay .lp-time-display {
+  color: var(--lp-overlay-text-secondary);
+}
+.lp-controls-overlay .lp-offset-value {
+  color: var(--lp-overlay-text-secondary);
+  opacity: 0.7;
+}
+.lp-controls-overlay .lp-ctrl-btn--label {
+  color: var(--lp-overlay-text) !important;
+  opacity: 0.9;
+}
+.lp-controls-overlay .lp-ctrl-btn--dim {
+  opacity: 0.55 !important;
+  color: var(--lp-overlay-text-secondary) !important;
+}
+.lp-controls-overlay .lp-ctrl-btn--dim:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--lp-overlay-text) 15%, transparent);
+}
+.lp-controls-overlay .lp-ctrl-btn--accent {
+  color: var(--interactive-accent) !important;
+  opacity: 1;
+}
+.lp-controls-overlay .lp-ctrl-btn--xs {
+  opacity: 0.7 !important;
+  color: var(--lp-overlay-text-secondary) !important;
+}
+.lp-controls-overlay .lp-ctrl-btn--xs:hover {
+  opacity: 1 !important;
+  background: color-mix(in srgb, var(--lp-overlay-text) 12%, transparent);
+}
+.lp-controls-overlay input[type="range"] {
+  accent-color: var(--interactive-accent);
+}
+.lp-controls-overlay .lp-vol-track {
+  background: color-mix(in srgb, var(--lp-overlay-text) 20%, transparent);
+}
+.lp-controls-overlay .lp-vol-fill {
+  background: var(--lp-overlay-text);
+  opacity: 0.8;
+}
+.lp-controls-overlay .lp-vol-thumb {
+  background: var(--lp-overlay-text);
+}
+.lp-controls-overlay .lp-rec-dot {
+  background: var(--color-red);
+}
+/* Progress bar inside overlay */
+.lp-controls-overlay .lp-progress-bar {
+  background: color-mix(in srgb, var(--lp-overlay-text) 25%, transparent);
+}
+.lp-controls-overlay .lp-progress-fill {
+  background: var(--interactive-accent);
+}
+.lp-controls-overlay .lp-progress-fill::after {
+  background: var(--lp-overlay-text);
+}
+.lp-controls-overlay .lp-progress-hover-line {
+  background: color-mix(in srgb, var(--lp-overlay-text) 50%, transparent);
+}
+
+.lp-controls-bar .lp-controls {
+  border-top: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+}
+
+/* ─── Controls ───────────────────────────────────────────── */
+.lp-controls input[type="range"] {
+  accent-color: var(--lp-accent);
+  cursor: pointer;
+}
+
+.lp-controls input[type="range"]:focus-visible {
+  outline: 2px solid var(--lp-accent);
+  outline-offset: 2px;
+}
+
+/* ─── Progress Bar ───────────────────────────────────────── */
+.lp-progress-wrap {
+  touch-action: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 100%;
+  padding: 5px 0 2px;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.lp-progress-bar {
+  height: 3px;
+  background: var(--background-modifier-border);
+  cursor: pointer;
+  position: relative;
+  transition: height 100ms ease;
+  flex-shrink: 0;
+}
+
+.lp-progress-wrap:hover .lp-progress-bar {
+  height: 5px;
+}
+
+.lp-progress-fill {
+  height: 100%;
+  background: var(--interactive-accent);
+  position: relative;
+}
+
+/* Hover indicator line */
+.lp-progress-hover-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--text-muted);
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Thumb dot — solid white circle, hidden by default, visible on hover/drag */
+.lp-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%) scale(0);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  border: 2px solid var(--interactive-accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  transition: transform 100ms ease;
+  z-index: 3;
+}
+
+.lp-progress-wrap:hover .lp-progress-fill::after,
+.lp-progress-wrap--dragging .lp-progress-fill::after {
+  transform: translateY(-50%) scale(1);
+}
+
+.lp-progress-wrap--dragging {
+  cursor: grabbing;
+}
+.lp-progress-wrap--dragging .lp-progress-bar {
+  height: 5px;
+}
+
+/* Time tooltip */
+.lp-progress-tooltip {
+  position: absolute;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  background: var(--lp-overlay-bg);
+  color: var(--lp-overlay-text);
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-monospace, monospace);
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 30;
+  line-height: 1.3;
+}
+
+/* Overlay progress bar uses theme colors (set above in overlay section) */
+
+/* ─── Mobile / Tablet Responsive ────────────────────────── */
+.is-mobile .lp-controls-row {
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  padding: 4px 8px 8px;
+}
+.is-mobile .lp-study-flow {
+  gap: 4px;
+  padding: 6px;
+}
+.is-mobile .lp-study-flow-label {
+  flex-basis: 100%;
+}
+.is-mobile .lp-study-flow-step {
+  flex: 1 1 calc(50% - 8px);
+  min-height: 40px;
+  justify-content: center;
+  font-size: 13px;
+}
+.is-mobile .lp-study-flow-arrow {
+  display: none;
+}
+.is-mobile .lp-vocab-page-header {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+.is-mobile .lp-vocab-heading {
+  min-width: 0;
+}
+.is-mobile .lp-vocab-toolbar-actions {
+  justify-content: stretch;
+}
+.is-mobile .lp-vocab-toolbar-actions .lp-btn,
+.is-mobile .lp-vocab-export {
+  flex: 1 1 140px;
+  justify-content: center;
+}
+.is-mobile .lp-vocab-stats {
+  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  padding: 10px 12px;
+}
+.is-mobile .lp-vocab-row,
+.is-mobile .lp-vocab-header {
+  grid-template-columns: 34px minmax(90px, 1fr) minmax(120px, 1.4fr) 104px;
+}
+.is-mobile .lp-vocab-row > :nth-child(4),
+.is-mobile .lp-vocab-header > :nth-child(4),
+.is-mobile .lp-vocab-row > :nth-child(5),
+.is-mobile .lp-vocab-header > :nth-child(5) {
+  display: none;
+}
+.is-mobile .lp-ctrl-btn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+}
+.is-mobile .lp-ctrl-btn--label {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.is-mobile .lp-ctrl-btn--xs {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 6px;
+}
+.is-mobile .lp-volume-wrap {
+  display: none;
+}
+.is-mobile .lp-ctrl-spacer {
+  flex-basis: 100%;
+  min-width: 0;
+  height: 0;
+}
+.is-mobile .lp-progress-wrap {
+  padding: 10px 0 4px;
+}
+.is-mobile .lp-progress-bar {
+  height: 5px;
+}
+.is-mobile .lp-progress-fill::after {
+  transform: translateY(-50%) scale(1);
+  width: 18px;
+  height: 18px;
+  right: -9px;
+}
+.is-mobile .lp-time-display {
+  font-size: 13px;
+}
+.is-mobile .lp-dictation-panel {
+  padding: 10px 8px 12px;
+}
+.is-mobile .lp-dictation-headline {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.is-mobile .lp-habit-recovery {
+  align-items: stretch;
+  flex-direction: column;
+}
+.is-mobile .lp-habit-recovery-actions {
+  justify-content: stretch;
+}
+.is-mobile .lp-habit-recovery-actions .lp-btn {
+  flex: 1 1 120px;
+  min-height: 36px;
+}
+.is-mobile .lp-habit-card {
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.is-mobile .lp-habit-goal {
+  min-width: 54px;
+  border-right: 1px solid var(--background-modifier-border);
+}
+.is-mobile .lp-habit-main {
+  flex: 1 1 140px;
+}
+.is-mobile .lp-habit-stats {
+  flex: 1 1 100%;
+}
+.is-mobile .lp-habit-stat {
+  flex: 1;
+}
+.is-mobile .lp-dictation-actions {
+  gap: 6px;
+}
+.is-mobile .lp-dictation-actions .lp-btn {
+  min-height: 44px;
+  font-size: 14px;
+}
+.is-mobile .lp-dictation-done-substats {
+  grid-template-columns: 1fr;
+}
+.is-mobile .lp-dictation-hard-item {
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+/* Phones are narrow — tighten letter spacing so sentences wrap to fewer
+   rows (vertical alignment stays correct: box/sep heights are unchanged). */
+.is-mobile .lp-dictation-word {
+  gap: 3px;
+  margin: 0 1px;
+}
+.is-mobile .lp-dictation-sep--space {
+  width: 11px;
+}
+.is-mobile .lp-dictation-boxes {
+  padding: 12px 12px;
+}
+/* Recording listen-back: enlarge tap targets for touch. */
+.is-mobile .lp-rec-playback {
+  gap: 8px;
+  padding: 5px 8px;
+}
+.is-mobile .lp-rec-playback-btn {
+  width: 38px;
+  height: 38px;
+}
+.is-mobile .lp-rec-playback-dismiss {
+  width: 34px;
+  height: 34px;
+}
+.is-mobile .lp-rec-playback-time {
+  font-size: 13px;
+}
+/* Subtitle list rows + word lookup: comfortable tap height on touch. */
+.is-mobile .lf-clickable-text,
+.is-mobile .lp-clickable-text {
+  line-height: 1.9;
+}
+
+/* ─── Card ───────────────────────────────────────────────── */
+.lp-card {
+  background: var(--lp-bg-secondary);
+  border-radius: var(--lp-radius-lg);
+  padding: var(--lp-space-lg);
+  box-shadow: var(--lp-shadow-sm);
+}
+
+/* ─── Modal ──────────────────────────────────────────────── */
+.lp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: lp-fade-in 150ms ease;
+}
+
+.lp-modal {
+  background: var(--lp-bg-primary);
+  border-radius: var(--lp-radius-xl);
+  padding: var(--lp-space-2xl);
+  box-shadow: var(--lp-shadow-lg);
+  max-width: 480px;
+  width: 90%;
+  animation: lp-slide-up 200ms ease;
+}
+
+/* ── Spin animation ── */
+@keyframes lp-spin {
+  to { transform: rotate(360deg); }
+}
+.lp-spin {
+  animation: lp-spin 1s linear infinite;
+}
+
+/* ─── Input ──────────────────────────────────────────────── */
+.lp-input {
+  width: 100%;
+  padding: var(--lp-space-sm) var(--lp-space-md);
+  font-size: var(--lp-font-base);
+  background: var(--lp-bg-secondary);
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-md);
+  color: var(--lp-text-normal);
+  transition: border-color var(--lp-transition);
+}
+
+.lp-input:focus {
+  border-color: var(--lp-accent);
+  outline: none;
+}
+
+.lp-input::placeholder {
+  color: var(--lp-text-faint);
+}
+
+/* ─── Badge ──────────────────────────────────────────────── */
+.lp-badge {
+  font-size: var(--lp-font-xs);
+  background: var(--lp-accent);
+  color: var(--text-on-accent);
+  border-radius: 10px;
+  padding: 1px 6px;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ─── Table ──────────────────────────────────────────────── */
+.lp-table-row {
+  transition: background var(--lp-transition);
+}
+
+.lp-table-row:hover {
+  background: var(--lp-bg-hover);
+}
+
+/* Sortable column header — looks like plain header text but is a real,
+   keyboard-focusable <button>. */
+.lp-sort-header {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.lp-sort-header:hover {
+  color: var(--text-normal);
+}
+.lp-sort-header:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Vocabulary word as a click-to-pronounce control: looks like plain text,
+   hints interactivity on hover, keyboard-focusable. */
+.lp-word-speak {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.lp-word-speak:hover {
+  color: var(--interactive-accent);
+  text-decoration: underline dotted;
+}
+.lp-word-speak:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────── */
+.lp-scrollable::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.lp-scrollable::-webkit-scrollbar-thumb {
+  background: var(--lp-border);
+  border-radius: 3px;
+}
+
+.lp-scrollable::-webkit-scrollbar-thumb:hover {
+  background: var(--lp-text-faint);
+}
+
+/* ─── Animations ─────────────────────────────────────────── */
+@keyframes lp-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes lp-slide-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes lp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.lp-loading {
+  animation: lp-pulse 1.5s ease-in-out infinite;
+}
+
+/* ─── SR Card Clickable Word (click to pronounce) ──────── */
+.lp-sr-word {
+  cursor: pointer;
+  color: var(--text-accent);
+  transition: color 0.3s ease, transform 0.15s ease;
+  display: inline-block;
+}
+
+.lp-sr-word:hover {
+  color: var(--text-accent);
+  transform: scale(1.05);
+}
+
+.lp-sr-word:active {
+  transform: scale(0.95);
+}
+
+/* Style h4 in SR modal as clickable (Language Learner compatibility) */
+.sr-modal-content h4 {
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.sr-modal-content h4:hover {
+  color: var(--text-accent);
+}
+
+/* ─── Popup Search ────────────────────────────────────────── */
+.lp-popup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: transparent;
+}
+
+.lp-popup-search {
+  position: fixed;
+  z-index: 10001;
+  width: 360px;
+  max-height: 500px;
+  background: var(--lp-bg-primary);
+  border: 1px solid var(--lp-border);
+  border-radius: var(--lp-radius-lg);
+  box-shadow: var(--lp-shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: lp-slide-up 150ms ease-out;
+}
+
+.lp-popup-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--lp-border);
+  cursor: move;
+  user-select: none;
+}
+
+.lp-popup-word {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--lp-text-normal);
+}
+
+.lp-popup-status {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.lp-popup-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--lp-border);
+  background: var(--lp-bg-secondary);
+}
+
+.lp-popup-tab {
+  flex: 1;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: none;
+  background: none;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 150ms;
+}
+
+.lp-popup-tab:hover {
+  color: var(--lp-text-normal);
+  background: var(--lp-bg-hover);
+}
+
+.lp-popup-tab.active {
+  color: var(--lp-accent);
+  border-bottom-color: var(--lp-accent);
+  font-weight: 500;
+}
+
+.lp-popup-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 12px;
+  max-height: 300px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.lp-popup-footer {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--lp-border);
+  background: var(--lp-bg-secondary);
+}
+
+.lp-popup-status-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--lp-border);
+  background: var(--lp-bg-secondary);
+  justify-content: center;
+}
+
+.lp-input-sm {
+  padding: 3px 8px !important;
+  font-size: 12px !important;
+}
+
+.lp-btn-sm {
+  padding: 3px 8px !important;
+  font-size: 12px !important;
+  gap: 4px !important;
+}
+
+/* ─── Dictionary HTML Content ─────────────────────────────── */
+.lp-dict-html {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--lp-text-normal);
+}
+
+.lp-dict-html a {
+  color: var(--lp-accent);
+  text-decoration: none;
+}
+
+.lp-dict-html a:hover {
+  text-decoration: underline;
+}
+
+.lp-dict-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.lp-dict-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.lp-dict-rank {
+  font-size: 11px;
+  color: var(--lp-text-muted);
+}
+
+.lp-dict-prons {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.lp-dict-pron {
+  font-size: 12px;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lp-dict-pron:hover {
+  color: var(--lp-accent);
+}
+
+.lp-dict-section {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--lp-border);
+}
+
+.lp-dict-section:last-child {
+  border-bottom: none;
+}
+
+.lp-dict-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+  color: var(--lp-accent);
+}
+
+.lp-dict-details {
+  margin-bottom: 6px;
+}
+
+.lp-dict-details summary {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--lp-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.lp-dict-details summary:hover {
+  color: var(--lp-accent);
+}
+
+.lp-dict-details[open] > summary {
+  margin-bottom: 4px;
+}
+
+.lp-dict-speaker {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--lp-accent);
+}
+
+.lp-dict-speaker:hover {
+  color: var(--lp-accent-hover);
+}
+
+.lp-dict-google-src {
+  font-size: 14px;
+  color: var(--lp-text-muted);
+  margin-bottom: 4px;
+}
+
+.lp-dict-google-arrow {
+  text-align: center;
+  color: var(--lp-accent);
+  font-size: 16px;
+  margin: 4px 0;
+}
+
+.lp-dict-google-tgt {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--lp-text-normal);
+}
+
+/* ─── Vocabulary status colors (5-level) ──────────────────── */
+.lp-vocab-ignore { color: var(--lp-text-faint); opacity: 0.5; }
+.lp-vocab-learning { border-bottom: 2px solid var(--color-orange, #f39c12); }
+.lp-vocab-familiar { border-bottom: 2px solid var(--color-blue, #3498db); }
+.lp-vocab-known { border-bottom: 2px solid var(--color-green, #27ae60); }
+.lp-vocab-learned { /* no decoration — fully mastered */ }
+
+/* ─── Audio Layout (moved here from the legacy styles-base.css) ─────── */
+.lp-audio-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--background-primary);
+}
+.lp-audio-visual {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 32px 24px;
+  min-height: 0;
+  overflow: hidden;
+}
+.lp-audio-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  min-height: 0;
+  width: 100%;
+}
+.lp-audio-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 40px;
+}
+.lp-audio-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: var(--interactive-accent);
+  opacity: 0.35;
+  height: 6px;
+  transition: height 0.1s ease;
+}
+@keyframes lp-bar-pulse {
+  0%, 100% { height: 6px; opacity: 0.5; }
+  50%      { height: 32px; opacity: 1; }
+}
+.lp-audio-bars--playing .lp-audio-bar {
+  animation: lp-bar-pulse 0.9s ease-in-out infinite;
+  opacity: 1;
+}
+.lp-audio-bars--playing .lp-audio-bar:nth-child(1) { animation-duration: 0.85s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(2) { animation-duration: 0.7s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(3) { animation-duration: 1.0s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(4) { animation-duration: 0.75s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(5) { animation-duration: 0.9s; }
+@keyframes lp-bar-rec {
+  0%, 100% { height: 8px;  background: var(--color-red); }
+  50%      { height: 28px; background: color-mix(in srgb, var(--color-red) 80%, black); }
+}
+.lp-audio-bars--recording .lp-audio-bar {
+  animation: lp-bar-rec 0.5s ease-in-out infinite;
+}
+.lp-audio-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+.lp-audio-subtitle-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 680px;
+  text-align: center;
+}
+.lp-audio-sub-en {
+  font-size: 1.125rem;
+  line-height: 1.5;
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.lp-audio-sub-zh {
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.lp-audio-sub-placeholder {
+  font-size: 1.25rem;
+  color: var(--text-faint);
+  letter-spacing: 4px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-audio-bar { transition: none; }
+  .lp-audio-bars--playing .lp-audio-bar,
+  .lp-audio-bars--recording .lp-audio-bar { animation: none; }
+}
+
+.lp-setting-value {
+  min-width: 3.5em;
+  padding: 2px 7px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.lp-notice-undo {
+  margin-left: 6px;
+  color: var(--interactive-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.lp-vocab-panel,
+.lp-vocab-table-shell {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Vocabulary is a reading list, not a form full of boxed controls. Obsidian
+   themes may apply a default button surface, so reset it within this view and
+   reintroduce only the selected/hover states that communicate interaction. */
+.lp-vocab-panel button {
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none !important;
+}
+.lp-vocab-panel .lp-btn:not(.lp-btn-primary) {
+  border: 0 !important;
+  background: transparent !important;
+}
+.lp-vocab-panel .lp-btn:not(.lp-btn-primary):hover {
+  background: var(--lp-bg-hover) !important;
+}
+.lp-vocab-panel .lp-btn-primary {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+.lp-vocab-panel .lp-word-speak,
+.lp-vocab-panel .lp-sort-header {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.lp-vocab-page-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 68px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--lp-border);
+  background: color-mix(in srgb, var(--lp-bg-secondary) 72%, transparent);
+}
+.lp-vocab-heading {
+  min-width: 220px;
+  flex: 1 1 260px;
+}
+.lp-vocab-heading-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-normal);
+}
+.lp-vocab-heading-title h2 {
+  margin: 0;
+  font-size: var(--lp-font-lg);
+  font-weight: 650;
+}
+.lp-vocab-heading p {
+  margin: 4px 0 0 26px;
+  color: var(--text-muted);
+  font-size: var(--lp-font-sm);
+}
+.lp-vocab-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.lp-vocab-export {
+  flex: 0 0 auto;
+  margin-left: 4px;
+}
+
+.lp-flex-spacer { flex: 1; }
+.lp-panel-message {
+  padding: 24px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.lp-modal-title { margin-bottom: 12px; }
+.lp-modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lp-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.lp-field-label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--lp-text-muted);
+  font-size: var(--lp-font-xs);
+}
+.lp-input-multiline {
+  min-height: 60px;
+  resize: vertical;
+}
+.lp-vocab-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(72px, 1fr));
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.lp-vocab-progress-wrap {
+  grid-column: 1 / -1;
+  width: 100%;
+  padding-top: 2px;
+}
+.lp-vocab-progress {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--lp-radius-sm);
+  background: var(--background-modifier-border);
+}
+.lp-vocab-progress > div { transition: width 300ms; }
+.lp-vocab-progress-mastered { background: var(--lp-vocab-mastered); }
+.lp-vocab-progress-learning { background: var(--lp-vocab-learning); }
+.lp-vocab-progress-unknown { background: var(--lp-vocab-unknown); }
+.lp-vocab-stat-card {
+  padding: 8px 6px;
+  border: 1px solid color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+  border-radius: var(--lp-radius-md);
+  background: var(--background-primary);
+  text-align: center;
+}
+.lp-vocab-stat-value {
+  font-size: var(--lp-font-2xl);
+  font-weight: 600;
+}
+.lp-vocab-stat-label {
+  color: var(--text-muted);
+  font-size: var(--lp-font-xs);
+}
+.lp-media-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background-color: transparent;
+}
+.lp-hidden-media { display: none; }
+.lp-subtitle-line-empty { min-height: 28px; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(2) { animation-delay: 0.12s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(3) { animation-delay: 0.24s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(4) { animation-delay: 0.36s; }
+.lp-audio-bars--playing .lp-audio-bar:nth-child(5) { animation-delay: 0.48s; }
+.lp-action-grow { flex: 1; }
+.lp-vocab-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lp-space-sm);
+  padding: var(--lp-space-md) var(--lp-space-lg);
+  border-bottom: 1px solid var(--lp-border);
+}
+.lp-vocab-search {
+  flex: 1;
+  min-width: 120px;
+}
+.lp-vocab-filter-btn,
+.lp-vocab-count { font-size: 11px; }
+.lp-vocab-filter-btn {
+  min-height: 28px;
+  padding: 4px 8px;
+  color: var(--text-muted);
+}
+.lp-vocab-filter-btn.lp-btn-primary {
+  color: var(--interactive-accent) !important;
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent) !important;
+}
+.lp-vocab-count {
+  align-self: center;
+  color: var(--text-muted);
+}
+.lp-display-contents { display: contents; }
+.lp-vocab-row,
+.lp-vocab-header {
+  display: grid;
+  grid-template-columns: 42px minmax(120px, 1.15fr) minmax(200px, 2fr) 104px minmax(140px, 1.15fr) 126px;
+  align-items: center;
+}
+.lp-vocab-row {
+  box-sizing: border-box;
+  padding: var(--lp-space-sm) var(--lp-space-lg);
+  border-bottom: 1px solid var(--background-modifier-border-hover);
+  font-size: var(--lp-font-base);
+}
+.lp-vocab-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 7px var(--lp-space-lg);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-faint);
+  font-size: var(--lp-font-xs);
+}
+.lp-vocab-status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lp-vocab-status-cell .lp-btn-icon,
+.lp-vocab-actions-cell .lp-btn-icon {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  color: var(--text-muted);
+}
+.lp-vocab-status-cell .lp-btn-icon:hover,
+.lp-vocab-actions-cell .lp-btn-icon:hover {
+  color: var(--text-normal);
+}
+.lp-vocab-status-unknown { color: var(--lp-vocab-unknown); }
+.lp-vocab-status-learning { color: var(--lp-vocab-learning); }
+.lp-vocab-status-mastered { color: var(--lp-vocab-mastered); }
+.lp-vocab-word-cell,
+.lp-vocab-definition-cell,
+.lp-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lp-vocab-word-cell {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+.lp-vocab-definition-cell { color: var(--text-muted); }
+.lp-vocab-meta-cell {
+  color: var(--text-faint);
+  font-size: var(--lp-font-xs);
+}
+.lp-vocab-actions-cell {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.lp-virtual-list {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.lp-vocab-empty {
+  padding: var(--lp-space-3xl);
+  color: var(--text-muted);
+  text-align: center;
+}
+.lp-vocab-empty--guided {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 160px;
+  justify-content: center;
+}
+.lp-vocab-empty--guided strong {
+  color: var(--text-normal);
+}
+.lp-vocab-empty--guided span {
+  max-width: 360px;
+  line-height: 1.5;
+}
+.lp-vocab-empty--guided .lp-btn {
+  margin-top: 4px;
+}
+.lp-subtitle-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.lp-subtitle-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.lp-subtitle-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.lp-subtitle-toolbar-group--end {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.lp-subtitle-count {
+  min-width: 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.lp-subtitle-search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.lp-subtitle-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: 13px;
+}
+.lp-subtitle-search-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.lp-subtitle-search-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.lp-control-divider {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--background-modifier-border);
+}
+.lp-offset-control {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+.lp-subtitle-overlay {
+  position: absolute;
+  z-index: 10;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+  pointer-events: auto;
+}
+.lp-subtitle-overlay--bottom { bottom: 12px; }
+.lp-subtitle-overlay--top { top: 16px; }
+.lp-subtitle-overlay-line {
+  max-width: 80%;
+  padding: 4px 12px;
+  border-radius: 4px;
+  background-color: var(--lp-subtitle-bg);
+  font-size: var(--lp-subtitle-font-size);
+  font-weight: var(--lp-subtitle-font-weight);
+  line-height: var(--lp-subtitle-line-height);
+  text-align: center;
+  text-shadow: 0 0 4px rgba(0,0,0,0.9), 0 1px 6px rgba(0,0,0,0.8), 0 0 12px rgba(0,0,0,0.5);
+}
+.lp-subtitle-list-message {
+  padding: var(--lp-space-xl);
+  color: var(--lp-text-muted);
+  font-size: var(--lp-font-base);
+  text-align: center;
+}
+.lp-icon,
+.lp-icon-placeholder {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+/* ─── Android tablet interaction hardening ─────────────────────────────── */
+.lp-vol-track {
+  touch-action: none;
+}
+
+/* On a tablet there is enough room to keep the volume slider visible. On a
+   phone the mute button remains available and the slider stays out of the
+   crowded control row. */
+@media (max-width: 680px) {
+  .is-mobile .lp-volume-wrap {
+    display: none;
+  }
+}
+
+@media (min-width: 681px) {
+  .is-mobile .lp-study-flow {
+    flex-wrap: nowrap;
+    gap: 3px;
+    overflow-x: auto;
+    padding: 6px 8px;
+  }
+  .is-mobile .lp-study-flow-label {
+    flex: 0 0 auto;
+    flex-basis: auto;
+  }
+  .is-mobile .lp-study-flow-step {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 44px;
+    justify-content: center;
+    padding: 6px 8px;
+  }
+  .is-mobile .lp-study-flow-arrow {
+    display: inline;
+    flex: 0 0 auto;
+  }
+
+  .is-mobile .lp-volume-wrap {
+    display: flex;
+  }
+  .is-mobile .lp-volume-inline {
+    width: 80px;
+    opacity: 1;
+    padding: 0 8px 0 2px;
+    overflow: visible;
+  }
+  .is-mobile .lp-ctrl-spacer {
+    flex: 1 1 16px;
+    flex-basis: auto;
+    height: auto;
+  }
+}
+
+/* The virtualized vocabulary list must reserve the same space as its touch
+   targets; otherwise react-window clips the edit/delete buttons on Android. */
+.is-mobile .lp-vocab-row {
+  grid-template-columns: 44px minmax(90px, 1fr) minmax(120px, 1.4fr) 104px;
+  padding: 2px 12px;
+}
+.is-mobile .lp-vocab-header {
+  grid-template-columns: 44px minmax(90px, 1fr) minmax(120px, 1.4fr) 104px;
+  padding: 7px 12px;
+}
+.is-mobile .lp-vocab-status-cell .lp-btn-icon,
+.is-mobile .lp-vocab-actions-cell .lp-btn-icon {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+}
+.is-mobile .lp-vocab-actions-cell {
+  gap: 0;
+}
+.is-mobile .lp-vocab-toolbar-actions .lp-btn,
+.is-mobile .lp-vocab-export,
+.is-mobile .lp-vocab-filter-btn {
+  min-height: 44px;
+}
+
+/* ─── Sound-pattern practice ───────────────────────────────────────────── */
+.lp-sound-pattern {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--lp-space-xl, 20px);
+  color: var(--text-normal);
+}
+.lp-sound-pattern--empty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: var(--text-muted);
+}
+.lp-sound-pattern-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 650;
+}
+.lp-sound-pattern-head span {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  font-weight: 500;
+}
+.lp-sound-pattern-stage {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 22px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-primary-alt);
+}
+.lp-sound-pattern-count {
+  font-size: 2rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-align: center;
+}
+.lp-sound-pattern-muted {
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.lp-sound-pattern-actions,
+.lp-sound-pattern-rates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lp-sound-pattern-actions .lp-btn,
+.lp-sound-pattern-rates .lp-btn,
+.lp-sound-pattern-stage > .lp-btn {
+  min-height: 36px;
+}
+.lp-sound-pattern-link {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.lp-sound-pattern-label {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.lp-sound-pattern-meaning,
+.lp-sound-pattern-text {
+  white-space: pre-wrap;
+  line-height: 1.65;
+  font-size: 1.05rem;
+}
+.lp-sound-pattern-text {
+  padding: 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+}
+.lp-sound-pattern-error {
+  color: var(--text-error);
+  line-height: 1.5;
+}
+@media (max-width: 480px) {
+  .lp-sound-pattern { padding: 12px; }
+  .lp-sound-pattern-stage { padding: 16px; }
+  .lp-sound-pattern-actions .lp-btn { flex: 1 1 140px; }
+}
+
+/* ─── Paper-first reader theme ──────────────────────────────────────────── */
+.lp-view-root,
+.lp-view-media-shell,
+.lp-subtitle-panel,
+.lp-sound-pattern {
+  background: var(--lp-reader-canvas);
+  color: var(--lp-reader-ink);
+}
+
+.lp-study-flow {
+  min-height: 40px;
+  padding: 4px 10px;
+  border-color: var(--lp-reader-border);
+  background: var(--lp-reader-chrome);
+  font-family: var(--lp-reader-ui-font);
+}
+
+.lp-study-flow-step {
+  min-height: 32px;
+  border-radius: 6px;
+}
+
+.lp-study-flow-step--active {
+  border-color: transparent;
+  background: var(--lp-reader-active);
+  color: var(--lp-reader-ink);
+}
+
+.lp-study-flow-number {
+  background: color-mix(in srgb, var(--lp-reader-ink) 9%, transparent);
+  color: var(--lp-reader-muted);
+}
+
+.lp-view-media-shell {
+  padding: 14px clamp(10px, 2vw, 24px) 16px;
+}
+
+.lp-player-card,
+.lp-audio-layout {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  border: 1px solid var(--lp-reader-border);
+  border-radius: 8px;
+  background: var(--lp-reader-paper);
+  box-shadow: var(--lp-reader-shadow);
+}
+
+.lp-player-card,
+.lp-video-layout,
+.lp-video-area {
+  background: #11120f;
+}
+
+.lp-controls-bar,
+.lp-audio-layout > .lp-controls {
+  border-color: var(--lp-reader-border);
+  background: var(--lp-reader-chrome);
+}
+
+.lp-controls-row {
+  min-height: 40px;
+  padding: 3px 10px 5px;
+  font-family: var(--lp-reader-ui-font);
+}
+
+.lp-ctrl-btn {
+  color: var(--lp-reader-muted);
+}
+
+.lp-ctrl-btn:hover {
+  background: color-mix(in srgb, var(--lp-reader-ink) 8%, transparent);
+  color: var(--lp-reader-ink);
+}
+
+.lp-audio-visual {
+  padding: clamp(20px, 4vw, 52px);
+  background: var(--lp-reader-paper);
+}
+
+.lp-audio-center {
+  gap: 28px;
+}
+
+.lp-audio-title {
+  color: var(--lp-reader-muted);
+  font-family: var(--lp-reader-ui-font);
+}
+
+.lp-audio-subtitle-area {
+  max-width: 760px;
+  gap: 12px;
+}
+
+.lp-audio-sub-en {
+  color: var(--lp-reader-ink);
+  font-family: var(--lp-reader-text-font);
+  font-size: clamp(1.25rem, 2.1vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.65;
+}
+
+.lp-audio-sub-zh {
+  color: var(--lp-reader-muted);
+  font-size: clamp(0.95rem, 1.4vw, 1.1rem);
+  line-height: 1.75;
+}
+
+.lp-subtitle-toolbar,
+.lp-subtitle-search-row {
+  border-color: var(--lp-reader-border);
+  background: var(--lp-reader-chrome);
+  font-family: var(--lp-reader-ui-font);
+}
+
+.lp-subtitle-panel > div:last-child {
+  background: var(--lp-reader-paper);
+}
+
+.lp-subtitle-card {
+  max-width: 820px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--lp-reader-border);
+  border-radius: 0;
+  transition: background 150ms ease;
+}
+
+.lp-subtitle-card:hover {
+  background: color-mix(in srgb, var(--lp-reader-ink) 5%, transparent);
+  box-shadow: none;
+}
+
+.lp-subtitle-card-active {
+  background: var(--lp-reader-active);
+}
+
+.theme-light .lp-subtitle-line-en,
+.theme-light .lp-subtitle-line-zh,
+.theme-dark .lp-subtitle-line-en,
+.theme-dark .lp-subtitle-line-zh,
+.theme-light .lp-subtitle-card:hover .lp-subtitle-line-en,
+.theme-light .lp-subtitle-card:hover .lp-subtitle-line-zh,
+.theme-dark .lp-subtitle-card:hover .lp-subtitle-line-en,
+.theme-dark .lp-subtitle-card:hover .lp-subtitle-line-zh,
+.theme-light .lp-subtitle-card-active .lp-subtitle-line-en,
+.theme-light .lp-subtitle-card-active .lp-subtitle-line-zh,
+.theme-dark .lp-subtitle-card-active .lp-subtitle-line-en,
+.theme-dark .lp-subtitle-card-active .lp-subtitle-line-zh {
+  background: transparent;
+}
+
+.lp-subtitle-line-en {
+  padding: 13px 42px 5px;
+  color: var(--lp-reader-ink) !important;
+  font-family: var(--lp-reader-text-font);
+  font-size: max(var(--lp-subtitle-font-size, 15px), 16px);
+  line-height: 1.7;
+}
+
+.lp-subtitle-line-zh {
+  padding: 3px 42px 13px;
+  color: var(--lp-reader-muted) !important;
+  line-height: 1.7;
+}
+
+.lp-subtitle-time {
+  padding: 8px 42px 0;
+  color: var(--lp-reader-muted);
+  font-family: var(--lp-reader-ui-font);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-sound-pattern {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.lp-sound-pattern--empty {
+  min-height: 100%;
+  padding: 24px;
+  color: var(--lp-reader-muted);
+  font-family: var(--lp-reader-ui-font);
+}
+
+.lp-sound-pattern-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 40px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--lp-reader-border);
+  background: var(--lp-reader-chrome);
+  color: var(--lp-reader-ink);
+  font-family: var(--lp-reader-ui-font);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.lp-sound-pattern-head span {
+  color: var(--lp-reader-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.lp-sound-pattern-stage {
+  width: min(760px, calc(100% - 40px));
+  min-height: calc(100% - 40px);
+  align-content: center;
+  gap: 18px;
+  margin: 0 auto;
+  padding: clamp(32px, 7vh, 72px) clamp(4px, 3vw, 28px);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--lp-reader-ink);
+}
+
+.lp-sound-pattern-count {
+  color: var(--lp-reader-ink);
+  font-family: var(--lp-reader-text-font);
+  font-size: clamp(2.6rem, 8vw, 4.6rem);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.lp-sound-pattern-muted {
+  color: var(--lp-reader-muted);
+  font-family: var(--lp-reader-ui-font);
+  text-align: center;
+}
+
+.lp-sound-pattern-actions,
+.lp-sound-pattern-rates {
+  justify-content: center;
+}
+
+.lp-sound-pattern-actions .lp-btn,
+.lp-sound-pattern-rates .lp-btn,
+.lp-sound-pattern-stage > .lp-btn {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--lp-reader-border);
+  border-radius: 6px;
+  background: var(--lp-reader-chrome);
+  color: var(--lp-reader-ink);
+  font-family: var(--lp-reader-ui-font);
+}
+
+.lp-sound-pattern-actions .lp-btn-primary,
+.lp-sound-pattern-rates .lp-btn-primary,
+.lp-sound-pattern-stage > .lp-btn-primary {
+  border-color: var(--lp-accent);
+  background: var(--lp-accent);
+  color: var(--text-on-accent);
+}
+
+.lp-sound-pattern-link {
+  justify-self: center;
+  color: var(--lp-reader-muted);
+  font-family: var(--lp-reader-ui-font);
+  text-decoration: none;
+}
+
+.lp-sound-pattern-link:hover {
+  color: var(--lp-reader-ink);
+  text-decoration: underline;
+}
+
+.lp-sound-pattern-label {
+  color: var(--lp-reader-muted);
+  font-family: var(--lp-reader-ui-font);
+  font-size: 0.75rem;
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.lp-sound-pattern-meaning,
+.lp-sound-pattern-text {
+  max-width: 68ch;
+  margin: 0 auto;
+  color: var(--lp-reader-ink);
+  font-family: var(--lp-reader-text-font);
+  font-size: clamp(1.2rem, 2.3vw, 1.55rem);
+  line-height: 1.8;
+  text-align: center;
+}
+
+.lp-sound-pattern-text {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.lp-sound-pattern-error {
+  text-align: center;
+}
+
+.lp-sound-pattern-error .lp-btn {
+  margin-inline-start: 8px;
+}
+
+.lp-sound-pattern-error .lp-btn {
+  margin-inline-start: 8px;
+}
+
+@media (max-width: 680px) {
+  .lp-view-media-shell {
+    padding: 0;
+  }
+
+  .lp-player-card,
+  .lp-audio-layout {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .lp-study-flow {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .lp-study-flow-label,
+  .lp-study-flow-arrow {
+    display: none;
+  }
+
+  .lp-study-flow-step {
+    flex: 0 0 auto;
+    min-height: 40px;
+  }
+
+  .lp-sound-pattern-stage {
+    width: calc(100% - 24px);
+    padding: 28px 4px 40px;
+  }
+
+  .lp-subtitle-line-en {
+    padding-top: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lp-subtitle-card,
+  .lp-study-flow-step,
+  .lp-sound-pattern .lp-btn {
+    transition: none;
+  }
+}

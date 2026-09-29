@@ -1,105 +1,63 @@
-import { TFile, Vault, normalizePath } from 'obsidian';
+import { App, TFolder, normalizePath } from 'obsidian';
+import { VIDEO_EXTENSIONS, AUDIO_EXTENSIONS, SUBTITLE_EXTENSIONS } from '../types';
 
-/**
- * 将 Obsidian TFile 转换为 webview 可访问的 resource:// URL
- * @param file - Obsidian 文件对象
- * @param vault - Vault 实例
- * @returns resource:// 协议的 URL
- */
-export function getResourceUrl(file: TFile, vault: Vault): string {
-	// 使用 Obsidian 的 getResourcePath 方法获取可访问的 URL
-	// 这个方法会返回正确的 app://local/ URL
-	const resourcePath = vault.adapter.getResourcePath(file.path);
-	
-	console.log('[fileUtils] Original path:', file.path);
-	console.log('[fileUtils] Resource URL:', resourcePath);
-	
-	return resourcePath;
+export function getFileExtension(path: string): string {
+  // Strip query params and hash only for URLs (not local file paths with # in name)
+  let clean = path;
+  if (clean.includes('://')) {
+    clean = clean.split('?')[0]!.split('#')[0]!;
+  }
+  return clean.split('.').pop()?.toLowerCase() ?? '';
 }
 
-/**
- * 检查文件是否为媒体文件
- * @param file - 文件对象
- * @returns 是否为媒体文件
- */
-export function isMediaFile(file: TFile): boolean {
-	const mediaExtensions = [
-		// 视频格式
-		'mp4', 'mkv', 'webm', 'ogv', 'avi', 'mov', 'flv', 'wmv', 'm4v', '3gp',
-		// 音频格式
-		'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
-	];
-	
-	return mediaExtensions.includes(file.extension.toLowerCase());
+export function isMediaFile(path: string): boolean {
+  const ext = getFileExtension(path);
+  return VIDEO_EXTENSIONS.has(ext) || AUDIO_EXTENSIONS.has(ext);
 }
 
-/**
- * 检查是否为音频文件
- * @param file - 文件对象或文件名/路径
- * @returns 是否为音频文件
- */
-export function isAudioFile(file: TFile | string): boolean {
-	const extension = typeof file === 'string' 
-		? file.split('.').pop()?.toLowerCase() 
-		: file.extension.toLowerCase();
-		
-	if (!extension) return false;
-	
-	const audioExtensions = [
-		'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'
-	];
-	
-	return audioExtensions.includes(extension);
+export function isSubtitleFile(path: string): boolean {
+  return (SUBTITLE_EXTENSIONS as readonly string[]).includes(getFileExtension(path));
 }
 
-/**
- * 解析时间戳字符串为秒数
- * 支持格式：
- * - 纯秒数: "120"
- * - 分:秒: "2:30"
- * - 时:分:秒: "1:30:45"
- * @param timestamp - 时间戳字符串
- * @returns 秒数
- */
-export function parseTimestamp(timestamp: string): number {
-	if (!timestamp) return 0;
-	
-	// 纯数字
-	if (/^\d+$/.test(timestamp)) {
-		return parseInt(timestamp, 10);
-	}
-	
-	// HH:MM:SS 或 MM:SS
-	const parts = timestamp.split(':').map(Number);
-	
-	if (parts.length === 2) {
-		// MM:SS
-		const [minutes = 0, seconds = 0] = parts;
-		return minutes * 60 + seconds;
-	} else if (parts.length === 3) {
-		// HH:MM:SS
-		const [hours = 0, minutes = 0, seconds = 0] = parts;
-		return hours * 3600 + minutes * 60 + seconds;
-	}
-	
-	return 0;
-}
-
-/**
- * 格式化秒数为时间字符串
- * @param seconds - 秒数
- * @returns 格式化的时间字符串（HH:MM:SS 或 MM:SS）
- */
 export function formatTime(seconds: number): string {
-	if (isNaN(seconds) || seconds === 0) return '00:00';
-	
-	const hours = Math.floor(seconds / 3600);
-	const minutes = Math.floor((seconds % 3600) / 60);
-	const secs = Math.floor(seconds % 60);
-	
-	if (hours > 0) {
-		return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-	}
-	
-	return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Local calendar date as `YYYY-MM-DD`. */
+export function formatDateYMD(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Local date + time as `YYYY-MM-DD HH:mm`. */
+export function formatDateYMDHM(d: Date = new Date()): string {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${formatDateYMD(d)} ${hh}:${mm}`;
+}
+
+/**
+ * Create a vault folder and any missing parents. No-op if it already exists;
+ * throws if a path segment is occupied by a file. Single source of truth for
+ * the previously-triplicated "ensure folder" logic.
+ */
+export async function ensureVaultFolder(app: App, path: string): Promise<void> {
+  const normalized = normalizePath(path).replace(/^\/+/, '');
+  if (!normalized) return;
+  let current = '';
+  for (const part of normalized.split('/').filter(Boolean)) {
+    current = current ? `${current}/${part}` : part;
+    const existing = app.vault.getAbstractFileByPath(current);
+    if (!existing) {
+      await app.vault.createFolder(current);
+    } else if (!(existing instanceof TFolder)) {
+      throw new Error(`Path is occupied by a file: ${current}`);
+    }
+  }
 }
