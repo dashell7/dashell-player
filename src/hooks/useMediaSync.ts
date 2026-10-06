@@ -1,3 +1,4 @@
+import { useStoreApi } from '../store/mediaSession';
 import { useCallback, useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { PlayerRef, SubtitleCue } from '../types';
@@ -17,12 +18,16 @@ import { usePlugin } from '../context';
 const CURRENT_TIME_PUBLISH_DELTA_S = 0.1;
 
 export function useMediaSync(playerRef: RefObject<PlayerRef | null>) {
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
+  const useLoopStoreApi = useStoreApi(useLoopStore);
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
   const plugin = usePlugin();
   const rafRef = useRef<number>(0);
   const seekingLockRef = useRef(false);
   const seekLockTimeoutRef = useRef<number | null>(null);
   const lastPublishedTimeRef = useRef<number>(-1);
   const lastFrameTimeRef = useRef<number>(-1);
+  const lastInputsRef = useRef<unknown[]>([]);
 
   const syncLoop = useCallback(() => {
     const player = playerRef.current;
@@ -37,21 +42,24 @@ export function useMediaSync(playerRef: RefObject<PlayerRef | null>) {
     // seeking). Avoids running getState + binary search + mode logic 60×/sec on
     // a paused player, while still reacting instantly to a seek-while-paused
     // (which changes currentTime and falls through below).
-    if (currentTime === lastFrameTimeRef.current) {
+    const subState = useSubtitleStoreApi.getState();
+    const loopState = useLoopStoreApi.getState();
+    const inputs = [subState.subtitles, subState.practiceMode, subState.activeIndex, loopState.mode, player];
+    if (currentTime === lastFrameTimeRef.current && inputs.every((value, i) => value === lastInputsRef.current[i])) {
       rafRef.current = window.requestAnimationFrame(syncLoop);
       return;
     }
     lastFrameTimeRef.current = currentTime;
+    lastInputsRef.current = inputs;
 
-    const { subtitles, offset, activeIndex, playheadIndex, practiceMode } = useSubtitleStore.getState();
-    const { mode } = useLoopStore.getState();
-    const adjustedTime = currentTime - offset;
+    const { subtitles, activeIndex, playheadIndex, practiceMode } = useSubtitleStoreApi.getState();
+    const { mode } = useLoopStoreApi.getState();
 
     // Throttle currentTime publishes to ≥0.1s delta — see CURRENT_TIME_PUBLISH_DELTA_S.
     if (Math.abs(currentTime - lastPublishedTimeRef.current) >= CURRENT_TIME_PUBLISH_DELTA_S) {
       lastPublishedTimeRef.current = currentTime;
-      usePlaybackStore.getState().setCurrentTime(currentTime);
-      const { source, duration, playing } = usePlaybackStore.getState();
+      usePlaybackStoreApi.getState().setCurrentTime(currentTime);
+      const { source, duration, playing } = usePlaybackStoreApi.getState();
       if (playing && source?.url && duration > 0) {
         plugin.setPlaybackProgress(source.url, currentTime, duration);
       }
@@ -60,12 +68,12 @@ export function useMediaSync(playerRef: RefObject<PlayerRef | null>) {
     // Find active subtitle at current time.
     // Always update playheadIndex for UI follow (subtitle panel, timeline context),
     // while activeIndex can remain locked by an active practice view.
-    const newIndex = findIndexAtTime(subtitles, adjustedTime);
+    const newIndex = findIndexAtTime(subtitles, currentTime);
     if (newIndex !== playheadIndex) {
-      useSubtitleStore.getState().setPlayheadIndex(newIndex);
+      useSubtitleStoreApi.getState().setPlayheadIndex(newIndex);
     }
     if (practiceMode === 'none' && newIndex !== activeIndex) {
-      useSubtitleStore.getState().setActiveIndex(newIndex);
+      useSubtitleStoreApi.getState().setActiveIndex(newIndex);
     }
 
     // Helper: set seeking lock with tracked timeout
@@ -81,26 +89,26 @@ export function useMediaSync(playerRef: RefObject<PlayerRef | null>) {
     // Handle playback modes
     switch (mode.type) {
       case 'segmentPlay':
-        if (adjustedTime >= mode.end) {
+        if (currentTime >= mode.end) {
           player.pauseVideo();
-          useLoopStore.getState().exitMode();
+          useLoopStoreApi.getState().exitMode();
         }
         break;
 
       case 'segmentLoop':
-        if (adjustedTime >= mode.end) {
+        if (currentTime >= mode.end) {
           const { current, total, index } = mode;
           if (current + 1 < total) {
             // Still have loops remaining — seek back to start of this segment
-            useLoopStore.getState().incrementLoopCount();
+            useLoopStoreApi.getState().incrementLoopCount();
             setSeekLock();
-            player.seekTo(mode.start + offset, 'seconds');
+            player.seekTo(mode.start, 'seconds');
           } else {
             // Finished looping this segment — advance to the next subtitle
             const nextIdx = index + 1;
             const nextCue = subtitles[nextIdx];
-            if (nextCue) {
-              useLoopStore.getState().enterMode({
+            if (nextCue && plugin.settings.autoPlayNext && practiceMode === 'none') {
+              useLoopStoreApi.getState().enterMode({
                 type: 'segmentLoop',
                 start: nextCue.start,
                 end: nextCue.end,
@@ -109,26 +117,27 @@ export function useMediaSync(playerRef: RefObject<PlayerRef | null>) {
                 index: nextIdx,
               });
               setSeekLock();
-              player.seekTo(nextCue.start + offset, 'seconds');
+              player.seekTo(nextCue.start, 'seconds');
             } else {
               // No more subtitles — exit loop mode
-              useLoopStore.getState().exitMode();
+              useLoopStoreApi.getState().exitMode();
+              player.pauseVideo();
             }
           }
         }
         break;
 
       case 'infiniteLoop':
-        if (adjustedTime >= mode.end) {
+        if (currentTime >= mode.end) {
           setSeekLock();
-          player.seekTo(mode.start + offset, 'seconds');
+          player.seekTo(mode.start, 'seconds');
         }
         break;
 
       case 'abRepeat':
-        if (adjustedTime >= mode.pointB) {
+        if (currentTime >= mode.pointB) {
           setSeekLock();
-          player.seekTo(mode.pointA + offset, 'seconds');
+          player.seekTo(mode.pointA, 'seconds');
         }
         break;
     }

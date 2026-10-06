@@ -14,6 +14,7 @@ import type { VocabEntry } from '../store/vocabularyStore';
 import type { LangPlayerSettings } from '../types';
 import { logger, speakText } from '../utils';
 import { t } from '../i18n';
+import { replaceManagedSection, reviewBlocks, removeLegacyOwnedCards, transformOwnedCards } from './managedDatabase';
 
 /**
  * Play word pronunciation through the Web Speech API. LangPlayer makes no
@@ -82,73 +83,49 @@ export class FlashcardService {
   async refreshReviewDb(entries: VocabEntry[]): Promise<void> {
     const settings = this.getSettings();
     const reviewPath = this.getReviewDbPath();
-    if (!reviewPath) return;
-
-    try {
-      const file = this.app.vault.getAbstractFileByPath(reviewPath);
-      if (!file || !(file instanceof TFile)) {
-        logger.warn('[FlashcardService] Invalid review database path:', reviewPath);
-        return;
-      }
-
-      await this.app.vault.process(file, (existingText) => {
-        const oldRecords = this.parseSRComments(existingText);
-        const tag = settings.flashcardTag || '#flashcards';
-        const cards = entries
-          .filter((e) => e.definition || e.translation)
-          .sort((a, b) => a.word.localeCompare(b.word))
-          .map((e) => this.formatReviewCard(e, oldRecords[e.word]))
-          .join('\n');
-        return `${tag}\n\n${cards}`;
-      });
-    } catch (error) {
-      logger.error('[FlashcardService] refreshReviewDb failed:', error);
-    }
+    if (!reviewPath) throw new Error('Review database path is empty');
+    const file = this.app.vault.getAbstractFileByPath(reviewPath);
+    if (!(file instanceof TFile)) throw new Error('Review database file does not exist');
+    await this.app.vault.process(file, existingText => {
+      const records = reviewBlocks(existingText);
+      const externalWords = new Set(records.filter(r => !r.owned).map(r => r.word));
+      const oldRecords = new Map(records.filter(r => r.owned).map(r => [r.word, r.sr]));
+      const cards = entries.filter(e => (e.definition || e.translation) && !externalWords.has(e.word))
+        .sort((a, b) => a.word.localeCompare(b.word))
+        .map(e => this.formatReviewCard(e, oldRecords.get(e.word))).join('\n');
+      const hasRegion = existingText.includes('<!-- langplayer:review:start -->');
+      const preserved = hasRegion ? existingText : removeLegacyOwnedCards(existingText);
+      return replaceManagedSection(preserved, 'review', `${settings.flashcardTag || '#flashcards'}\n\n${cards}`);
+    });
   }
 
-  /**
-   * Add/update a single word in the review database.
-   */
   async addWordToReviewDb(entry: VocabEntry): Promise<void> {
-    const settings = this.getSettings();
-    const reviewPath = this.getReviewDbPath();
-    if (!reviewPath) return;
-
-    try {
-      let file = this.app.vault.getAbstractFileByPath(reviewPath);
-      if (!file || !(file instanceof TFile)) {
-        logger.warn('[FlashcardService] Invalid review database path:', reviewPath);
-        return;
+    const path = this.getReviewDbPath();
+    const file = this.app.vault.getAbstractFileByPath(path);
+    if (!(file instanceof TFile)) throw new Error('Review database file does not exist');
+    await this.app.vault.process(file, content => {
+      const existing = reviewBlocks(content).find(r => r.word === entry.word);
+      if (existing && !existing.owned) return content;
+      const card = this.formatReviewCard(entry, existing?.sr);
+      // Preserve every other card, including cards already inside the region.
+      const start = '<!-- langplayer:review:start -->';
+      const end = '<!-- langplayer:review:end -->';
+      const a = content.indexOf(start), b = content.indexOf(end);
+      if (a >= 0 && b > a) {
+        const body = content.slice(a + start.length, b);
+        const blocks = body.split(/(?=^#word\r?$)/m);
+        const next = blocks.filter(block => !reviewBlocks(block).some(r => r.owned && r.word === entry.word)).join('');
+        return replaceManagedSection(content, 'review', `${next.trimEnd()}\n\n${card}`);
       }
-
-      const tag = settings.flashcardTag || '#flashcards';
-      await this.app.vault.process(file, (content) => {
-        const oldRecords = this.parseSRComments(content);
-        const newCard = this.formatReviewCard(entry, oldRecords[entry.word]);
-        const firstCard = content.search(/^#word\n/m);
-        const preamble = firstCard >= 0 ? content.slice(0, firstCard) : content;
-        const blocks = firstCard >= 0
-          ? content.slice(firstCard).split(/(?=^#word\n)/m)
-          : [];
-        const safeWord = escapeHtml(entry.word);
-        const htmlMarker = `data-word="${safeWord}"`;
-        const legacyHeading = `#### ${entry.word}\n`;
-        let replaced = false;
-        const nextBlocks = blocks.flatMap((block) => {
-          const matches = block.includes(htmlMarker) || block.includes(legacyHeading);
-          if (!matches) return [block];
-          if (replaced) return [];
-          replaced = true;
-          return [newCard];
-        });
-
-        if (!replaced) nextBlocks.push(newCard);
-        const prefix = preamble.trim() ? preamble.trimEnd() + '\n\n' : `${tag}\n\n`;
-        return prefix + nextBlocks.join('\n').trimStart();
+      let replaced = false;
+      const updated = transformOwnedCards(content, block => {
+        if (!reviewBlocks(block).some(r => r.word === entry.word)) return block;
+        if (replaced) return '';
+        replaced = true;
+        return card;
       });
-    } catch (error) {
-      logger.error('[FlashcardService] addWordToReviewDb failed:', error);
-    }
+      return replaced ? updated : replaceManagedSection(content, 'review', `${this.getSettings().flashcardTag || '#flashcards'}\n\n${card}`);
+    });
   }
 
   // ─── Word Database (单词库) ───────────────────────────────────────────
@@ -165,13 +142,12 @@ export class FlashcardService {
    */
   async refreshWordDb(entries: VocabEntry[]): Promise<void> {
     const wordPath = this.getWordDbPath();
-    if (!wordPath) return;
+    if (!wordPath) throw new Error('Word database path is empty');
 
     try {
       const file = this.app.vault.getAbstractFileByPath(wordPath);
       if (!file || !(file instanceof TFile)) {
-        logger.warn('[FlashcardService] Invalid word database path:', wordPath);
-        return;
+        throw new Error('Word database file does not exist');
       }
 
       // Group by status
@@ -198,9 +174,10 @@ export class FlashcardService {
         .join('\n');
 
       const text = sections + '\n#### 反向查询\n' + allWords;
-      await this.app.vault.process(file, () => text);
+      await this.app.vault.process(file, existing => replaceManagedSection(existing, 'words', text));
     } catch (error) {
       logger.error('[FlashcardService] refreshWordDb failed:', error);
+      throw error;
     }
   }
 
@@ -221,6 +198,7 @@ export class FlashcardService {
       this.refreshTimer = null;
       void this.runRefresh(entries).catch((error: unknown) => {
         logger.error('[FlashcardService] Scheduled database refresh failed:', error);
+        new Notice(t('notice.flashcardsGenerateFailed'));
       });
     }, delay);
   }
@@ -343,19 +321,4 @@ export class FlashcardService {
    * Parse existing SR scheduling comments from review database content.
    * Returns map of word → SR comment.
    */
-  private parseSRComments(text: string): Record<string, string> {
-    const records: Record<string, string> = {};
-    const regex = /#word[\s\S]*?(<!--SR.*?-->)/g;
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      const wordMatch = /#### (.+?)[\s\S]+(<!--SR.*-->)/.exec(match[0]);
-      if (wordMatch && wordMatch[1] && wordMatch[2]) {
-        // Strip HTML tags to get plain word
-        const plainWord = wordMatch[1].replace(/<[^>]+>/g, '').replace(/🔊/g, '').trim();
-        records[plainWord] = wordMatch[2];
-      }
-    }
-    return records;
-  }
-
 }

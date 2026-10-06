@@ -50,19 +50,27 @@ export function registerPlayerCommands(plugin: PlayerCommandHost): void {
   });
 
   playerCmd('player-prev-subtitle', t('cmd.prevSub'), () => {
+    if (useSubtitleStore.getState().practiceMode === 'dictation') {
+      dispatchLpEvent('lp-practice-navigate', {direction: 'previous'});
+      return;
+    }
     const p = usePlaybackStore.getState().playerRef;
     if (!p) return;
-    const { subtitles, activeIndex, offset } = useSubtitleStore.getState();
+    const { subtitles, activeIndex } = useSubtitleStore.getState();
     const sub = subtitles[Math.max(0, activeIndex - 1)];
-    if (sub) p.seekTo(sub.start + offset, 'seconds');
+    if (sub) p.seekTo(sub.start, 'seconds');
   });
 
   playerCmd('player-next-subtitle', t('cmd.nextSub'), () => {
+    if (useSubtitleStore.getState().practiceMode === 'dictation') {
+      dispatchLpEvent('lp-practice-navigate', {direction: 'next'});
+      return;
+    }
     const p = usePlaybackStore.getState().playerRef;
     if (!p) return;
-    const { subtitles, activeIndex, offset } = useSubtitleStore.getState();
+    const { subtitles, activeIndex } = useSubtitleStore.getState();
     const sub = subtitles[Math.min(subtitles.length - 1, activeIndex + 1)];
-    if (sub) p.seekTo(sub.start + offset, 'seconds');
+    if (sub) p.seekTo(sub.start, 'seconds');
   });
 
   playerCmd('player-rewind', t('cmd.rewind'), () => {
@@ -81,11 +89,15 @@ export function registerPlayerCommands(plugin: PlayerCommandHost): void {
   });
 
   playerCmd('player-replay-current', t('cmd.replayCurrent'), () => {
+    if (useSubtitleStore.getState().practiceMode === 'dictation') {
+      dispatchLpEvent('lp-practice-navigate', {direction: 'replay'});
+      return;
+    }
     const p = usePlaybackStore.getState().playerRef;
     if (!p) return;
     const st = useSubtitleStore.getState();
     const cue = st.subtitles[st.activeIndex];
-    if (cue) p.seekTo(cue.start + st.offset, 'seconds');
+    if (cue) p.seekTo(cue.start, 'seconds');
   });
 
   playerCmd('player-volume-up', t('cmd.volumeUp'), () => {
@@ -165,12 +177,10 @@ export function registerPlayerCommands(plugin: PlayerCommandHost): void {
       loopState.clearPoints();
       loopState.exitMode();
     } else if (loopState.pointA !== null) {
-      const offset = useSubtitleStore.getState().offset;
-      const cur = usePlaybackStore.getState().currentTime - offset;
+      const cur = usePlaybackStore.getState().currentTime;
       dispatchLpEvent('lp-start-ab-repeat', { a: loopState.pointA, b: cur });
     } else {
-      const offset = useSubtitleStore.getState().offset;
-      const cur = usePlaybackStore.getState().currentTime - offset;
+      const cur = usePlaybackStore.getState().currentTime;
       useLoopStore.getState().setPointA(cur);
     }
   });

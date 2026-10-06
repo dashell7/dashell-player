@@ -1,3 +1,4 @@
+import { useStoreApi } from '../../store/mediaSession';
 import React, { useCallback, useMemo, useState } from 'react';
 import { SubtitleList } from './SubtitleList';
 import { useSubtitleStore } from '../../store/subtitleStore';
@@ -10,13 +11,15 @@ import { Icon } from '../shared/Icon';
 import { t } from '../../i18n';
 
 export function SubtitlePanel() {
+  const useUIStoreApi = useStoreApi(useUIStore);
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
   const showTime = useUIStore((s) => s.subtitleShowTime);
   const showEn = useUIStore((s) => s.subtitleShowEn);
   const showZh = useUIStore((s) => s.subtitleShowZh);
-  const { setSubtitleShowTime, setSubtitleShowEn, setSubtitleShowZh } = useUIStore.getState();
+  const { setSubtitleShowTime, setSubtitleShowEn, setSubtitleShowZh } = useUIStoreApi.getState();
   const subtitles = useSubtitleStore((s) => s.subtitles);
   const subtitleCount = subtitles.length;
-  const offset = useSubtitleStore((s) => s.offset);
   const dictationOpen = useDictationStore((s) => s.dictationOpen);
   const recorderState = useRecordingStore((s) => s.recorderState);
   const isRecordingBusy =
@@ -43,8 +46,8 @@ export function SubtitlePanel() {
 
   const handleImportAll = useCallback(async () => {
     if (!mediaCtx || importing) return;
-    const cues = useSubtitleStore.getState().subtitles;
-    const source = usePlaybackStore.getState().source;
+    const cues = useSubtitleStoreApi.getState().subtitles;
+    const source = usePlaybackStoreApi.getState().source;
     if (cues.length === 0) return;
     setImporting(true);
     try {
@@ -90,8 +93,6 @@ export function SubtitlePanel() {
 
         {/* Right: display toggles + dictation */}
         <div className="lp-subtitle-toolbar-group lp-subtitle-toolbar-group--end">
-          <OffsetControl offset={offset} />
-          <Divider />
           <ToggleBtn label={t('subtitle.showEn')} active={showEn} onClick={() => setSubtitleShowEn(!showEn)} />
           <ToggleBtn label={t('subtitle.showZh')} active={showZh} onClick={() => setSubtitleShowZh(!showZh)} />
           <ToggleBtn label={t('subtitle.showTime')} active={showTime} onClick={() => setSubtitleShowTime(!showTime)} />
@@ -174,36 +175,6 @@ function ImportBtn({ importing, onClick, title }: { importing: boolean; onClick:
 
 function Divider() {
   return <span className="lp-control-divider" />;
-}
-
-function OffsetControl({ offset }: { offset: number }) {
-  return (
-    <div className="lp-offset-control">
-      <button
-        type="button"
-        className="lp-ctrl-btn"
-        onClick={() => useSubtitleStore.getState().adjustOffset(-0.5)}
-        aria-label={t('subtitle.offsetEarlier')}
-        title={t('subtitle.offsetEarlier')}
-      >-</button>
-      <button
-        type="button"
-        className={`lp-ctrl-btn lp-ctrl-btn--label${offset !== 0 ? ' lp-ctrl-btn--accent' : ''}`}
-        onClick={() => useSubtitleStore.getState().setOffset(0)}
-        aria-label={t('subtitle.offsetReset')}
-        title={t('subtitle.offsetReset')}
-      >
-        {offset === 0 ? t('subtitle.offsetLabel') : `${offset > 0 ? '+' : ''}${offset.toFixed(1)}s`}
-      </button>
-      <button
-        type="button"
-        className="lp-ctrl-btn"
-        onClick={() => useSubtitleStore.getState().adjustOffset(0.5)}
-        aria-label={t('subtitle.offsetLater')}
-        title={t('subtitle.offsetLater')}
-      >+</button>
-    </div>
-  );
 }
 
 function ToggleBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {

@@ -1,4 +1,4 @@
-import { App, Notice, TFile, normalizePath } from 'obsidian';
+import { App, Notice, TFile, normalizePath, parseYaml } from 'obsidian';
 import type { LangPlayerSettings, SubtitleCue, MediaSource } from '../types';
 import { formatTime, formatDateYMD, formatDateYMDHM, ensureVaultFolder } from '../utils';
 import { logger } from '../utils';
@@ -29,26 +29,56 @@ export class NoteService {
     return { path: normalizePath(`${noteRoot}/${fileName}.md`), cleanTitle };
   }
 
-  /** Find the study note for a source, creating it from the template if absent. */
-  private async findOrCreateNote(source: MediaSource): Promise<TFile | null> {
-    const { path, cleanTitle } = this.buildNotePath(source);
-    const existing = this.app.vault.getAbstractFileByPath(path);
-    if (existing instanceof TFile) return existing;
-    if (existing) return null; // path occupied by a folder
+  private pending = new Map<string, Promise<TFile | null>>();
 
-    const folder = path.substring(0, path.lastIndexOf('/'));
+  private findOrCreateNote(source: MediaSource): Promise<TFile | null> {
+    const identity = source.file?.path ?? source.url;
+    const key = `${this.getSettings().notePath}\n${identity}`;
+    const pending = this.pending.get(key);
+    if (pending) return pending;
+    const task = this.createSourceNote(source, identity).finally(() => this.pending.delete(key));
+    this.pending.set(key, task);
+    return task;
+  }
+
+  private async createSourceNote(source: MediaSource, identity: string): Promise<TFile | null> {
+    const {path: basePath, cleanTitle} = this.buildNotePath(source);
+    const folder = basePath.slice(0, basePath.lastIndexOf('/'));
     if (folder) await ensureVaultFolder(this.app, folder);
-
-    const now = new Date();
-    const rawTemplate = await this.loadTemplate(this.getSettings().noteTemplate, cleanTitle);
-    const content = rawTemplate
-      .replace(/\{\{title\}\}/g, cleanTitle)
-      .replace(/\{\{date\}\}/g, formatDateYMD(now))
-      .replace(/\{\{isoDate\}\}/g, now.toISOString())
-      .replace(/\{\{url\}\}/g, source.url)
-      .replace(/\{\{source\}\}/g, source.url);
-    const created = await this.app.vault.create(path, content);
-    return created instanceof TFile ? created : null;
+    let hash = 2166136261;
+    for (const char of identity) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619);
+    const suffix = (hash >>> 0).toString(16);
+    for (let n = 0; ; n++) {
+      const path = n === 0 ? basePath : `${basePath.slice(0, -3)} (${suffix}${n > 1 ? `-${n}` : ''}).md`;
+      const existing = this.app.vault.getAbstractFileByPath(path);
+      if (existing instanceof TFile) {
+        const content = await this.app.vault.read(existing);
+        const match = /^---\r?\n([^]*?)\r?\n---/.exec(content);
+        const fm = match ? parseYaml(match[1]!) as Record<string, unknown> : null;
+        const stored = fm?.langplayerSource ?? fm?.source;
+        if (stored === identity || stored === source.url) return existing;
+        continue; // Occupied by another source (or an unrelated note).
+      }
+      if (existing) continue;
+      const now = new Date();
+      const rawTemplate = await this.loadTemplate(this.getSettings().noteTemplate, cleanTitle);
+      const content = rawTemplate
+        .replace(/"\{\{title\}\}"/g, () => JSON.stringify(cleanTitle))
+        .replace(/"\{\{(?:url|source)\}\}"/g, () => JSON.stringify(source.url))
+        .replace(/\{\{title\}\}/g, () => cleanTitle)
+        .replace(/\{\{date\}\}/g, () => formatDateYMD(now))
+        .replace(/\{\{isoDate\}\}/g, () => now.toISOString())
+        .replace(/\{\{(?:url|source)\}\}/g, () => source.url);
+      let created: TFile;
+      try { created = await this.app.vault.create(path, content); }
+      catch (error) {
+        if (!this.app.vault.getAbstractFileByPath(path)) throw error;
+        n--;
+        continue;
+      }
+      await this.app.fileManager.processFrontMatter(created, fm => { (fm as Record<string, unknown>).langplayerSource = identity; });
+      return created;
+    }
   }
 
   /** Build the `[mm:ss](obsidian://langplayer?...)` deep link for a cue. */
@@ -57,7 +87,7 @@ export class NoteService {
     // TFile; for remote URLs use the URL directly.
     const srcParam = source.file ? source.file.path : source.url;
     const encodedSrc = encodeURIComponent(srcParam);
-    return `[${formatTime(cue.start)}](obsidian://langplayer?src=${encodedSrc}&t=${cue.start})`;
+    return `[${formatTime(cue.start)}](obsidian://langplayer?vault=${encodeURIComponent(this.app.vault.getName())}&src=${encodedSrc}&t=${cue.start})`;
   }
 
   /** Format a cue as `link text` honoring the en/zh display toggles. */

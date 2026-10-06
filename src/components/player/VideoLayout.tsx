@@ -1,9 +1,10 @@
+import { useMediaSessionId, useStoreApi } from '../../store/mediaSession';
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Platform } from 'obsidian';
 import type { PlayerRef, MediaSource } from '../../types';
-import { MediaPlayer } from './MediaPlayer';
+import { MediaPlaybackStatus, MediaPlayer } from './MediaPlayer';
 import { SubtitleOverlay } from '../subtitle/SubtitleOverlay';
-import { SubtitleControls } from '../subtitle/SubtitleControls';
+import { notifyPlaybackBarActivity, PlaybackBar } from '../subtitle/PlaybackBar';
 import { useMediaSync } from '../../hooks/useMediaSync';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useUIStore } from '../../store/uiStore';
@@ -15,6 +16,8 @@ interface VideoLayoutProps {
 }
 
 export function VideoLayout({ source }: VideoLayoutProps) {
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const mediaSessionId = useMediaSessionId();
   const playerRef = useRef<PlayerRef>(null);
   const videoWrapRef = useRef<HTMLDivElement>(null);
   const overlayMode = useUIStore((s) => s.overlayMode);
@@ -31,7 +34,7 @@ export function VideoLayout({ source }: VideoLayoutProps) {
   const togglePlay = useCallback(() => {
     const p = playerRef.current;
     if (!p) return;
-    usePlaybackStore.getState().playing ? p.pauseVideo() : p.playVideo();
+    usePlaybackStoreApi.getState().playing ? p.pauseVideo() : p.playVideo();
   }, []);
 
   // Hover-based keyboard shortcuts (desktop only): track mouse position, listen at document level.
@@ -52,13 +55,13 @@ export function VideoLayout({ source }: VideoLayoutProps) {
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
-        usePlaybackStore.getState().playing ? p.pauseVideo() : p.playVideo();
+        usePlaybackStoreApi.getState().playing ? p.pauseVideo() : p.playVideo();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         p.seekTo(Math.max(0, p.getCurrentTime() - 5), 'seconds');
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        p.seekTo(Math.min(usePlaybackStore.getState().duration, p.getCurrentTime() + 5), 'seconds');
+        p.seekTo(Math.min(usePlaybackStoreApi.getState().duration, p.getCurrentTime() + 5), 'seconds');
       }
     };
     document.addEventListener('keydown', handler);
@@ -71,25 +74,25 @@ export function VideoLayout({ source }: VideoLayoutProps) {
       ref={videoWrapRef}
       onMouseEnter={() => { isMouseOver.current = true; }}
       onMouseLeave={() => { isMouseOver.current = false; }}
+      onMouseMove={() => notifyPlaybackBarActivity(mediaSessionId)}
     >
       {/* Full-width column — video fills container, aspect ratio via CSS */}
       <div className="lp-video-column">
-        <div className="lp-video-area" onClick={togglePlay}>
+        <div className="lp-video-area" onClick={togglePlay} onMouseMove={() => notifyPlaybackBarActivity(mediaSessionId)}>
           <MediaPlayer
             ref={playerRef}
             source={source}
             mediaType="video"
             onReady={handleReady}
           />
+          <MediaPlaybackStatus onRetry={() => playerRef.current?.reload()} />
           {overlayMode !== 'off' && (
             <SubtitleOverlay />
           )}
         </div>
 
-        {/* Controls bar — same width as video, Obsidian theme background */}
-        <div className="lp-controls-bar">
-          <SubtitleControls playerRef={playerRef} />
-        </div>
+        {/* The shell handles fixed/floating placement and Aloud visibility rules. */}
+        <PlaybackBar playerRef={playerRef} />
       </div>
     </div>
   );

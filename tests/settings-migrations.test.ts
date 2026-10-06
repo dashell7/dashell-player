@@ -72,21 +72,52 @@ describe('runSettingsMigrations', () => {
     expect(s.playbackProgressByMedia).toEqual({});
   });
 
-  it('adds safe sound-pattern and AI-meaning defaults for a v8 user', () => {
-    const s = freshSettings();
-    delete (s as Partial<LangPlayerSettings>).soundPattern;
-    delete (s as Partial<LangPlayerSettings>).soundPatternProgressByMedia;
-    delete (s as Partial<LangPlayerSettings>).aiMeaning;
+  it('does not recreate removed sound-pattern defaults and preserves existing training data', () => {
+    const s = freshSettings() as LangPlayerSettings & Record<string, unknown>;
+    const progress = { media: { subtitleFingerprint: 'hash', cueProgress: {}, updatedAt: 7 } };
+    s.soundPatternProgressByMedia = progress;
+    s.aiMeaning = { enabled: true, endpoint: 'https://example.test', model: 'model' };
+    delete s.soundPattern;
     runSettingsMigrations(s, 8, CURRENT_SETTINGS_VERSION);
-    expect(s.soundPattern.repetitionTarget).toBe(30);
-    expect(s.soundPatternProgressByMedia).toEqual({});
-    expect(s.aiMeaning).toMatchObject({ enabled: false, model: '' });
+    expect(s).not.toHaveProperty('soundPattern');
+    expect(s.soundPatternProgressByMedia).toBe(progress);
+    expect(s.aiMeaning).toEqual({ enabled: true, endpoint: 'https://example.test', model: 'model' });
   });
 
-  it('normalizes AI meaning settings at v10 without a persisted key', () => {
+  it('repairs Aloud-style playback bar settings for a v10 user', () => {
+    const s = freshSettings() as LangPlayerSettings & Record<string, unknown>;
+    s.playbackBarVisibility = 'invalid';
+    s.playbackBarDisplay = 'invalid';
+    s.playbackBarPosition = 'invalid';
+    s.playbackBarAutoHideMs = 99999;
+    runSettingsMigrations(s, 10, CURRENT_SETTINGS_VERSION);
+    expect(s.playbackBarVisibility).toBe('always');
+    expect(s.playbackBarDisplay).toBe('fixed');
+    expect(s.playbackBarPosition).toBe('bottom');
+    expect(s.playbackBarAutoHideMs).toBe(10000);
+  });
+
+  it('adds and sanitizes subtitle associations for a v12 user', () => {
+    const s = freshSettings() as LangPlayerSettings & Record<string, unknown>;
+    s.subtitleFileByMedia = {
+      ' file:Course/lesson.mp4 ': ' Course\\lesson.en.srt ',
+      blankPath: '  ',
+      invalidValue: 1,
+    };
+
+    runSettingsMigrations(s, 12, CURRENT_SETTINGS_VERSION);
+
+    expect(s.subtitleFileByMedia).toEqual({
+      'file:Course/lesson.mp4': 'Course/lesson.en.srt',
+    });
+  });
+
+  it('initializes subtitle associations when upgrading from v12 without data', () => {
     const s = freshSettings();
-    s.aiMeaning = { enabled: true, endpoint: ' https://api.example.test/v1/ ', model: ' model ' };
-    runSettingsMigrations(s, 9, CURRENT_SETTINGS_VERSION);
-    expect(s.aiMeaning).toEqual({ enabled: true, endpoint: 'https://api.example.test/v1/', model: 'model' });
+    delete (s as Partial<LangPlayerSettings>).subtitleFileByMedia;
+
+    runSettingsMigrations(s, 12, CURRENT_SETTINGS_VERSION);
+
+    expect(s.subtitleFileByMedia).toEqual({});
   });
 });

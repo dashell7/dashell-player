@@ -22,8 +22,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 import {
   type DictationProgressSnapshot,
-  type SoundPatternProgressSnapshot,
   type LangPlayerSettings,
+  type MediaSource,
   type StudyHabitProgress,
   DEFAULT_SETTINGS,
   CURRENT_SETTINGS_VERSION,
@@ -34,7 +34,6 @@ import {
   VIEW_TYPE_SUBTITLE_PANEL,
   VIEW_TYPE_VOCABULARY,
   VIEW_TYPE_DICTATION,
-  VIEW_TYPE_SOUND_PATTERN,
 } from './types';
 import { resetAllStores } from './store';
 
@@ -46,12 +45,11 @@ import { MediaFileService } from './services/MediaFileService';
 import { LangPlayerView } from './views/LangPlayerView';
 import { SubtitlePanelView } from './views/SubtitlePanelView';
 import { DictationView } from './views/DictationView';
-import { SoundPatternView } from './views/SoundPatternView';
 import { VocabularyView } from './views/VocabularyView';
 import { LangPlayerSettingTab } from './views/LangPlayerSettingTab';
 import { setLanguage, t } from './i18n';
 import { runSettingsMigrations } from './settings/migrations';
-import { AI_MEANING_SECRET_ID, migrateAiMeaningSecret } from './settings/aiMeaningSecret';
+import { migratePluginDataFromLegacyId } from './settings/pluginIdMigration';
 import {
   createRuntimeRefreshSnapshot,
   getRuntimeRefreshFlags,
@@ -59,7 +57,15 @@ import {
 } from './settings/runtimeRefresh';
 import { registerPlayerCommands } from './commands/registerPlayerCommands';
 import { pickAndLoadSubtitle, pickMediaFile } from './views/SuggestModals';
-import { logger } from './utils';
+import {
+  buildSubtitleAssociationKey,
+  isSubtitleFile,
+  logger,
+  normalizeSubtitleAssociations,
+  removeSubtitleAssociationsForDeletedFile,
+  subtitleAssociationsEqual,
+  updateSubtitleAssociationsForRename,
+} from './utils';
 import {
   createDefaultStudyHabitProgress,
   getLocalDateKey,
@@ -72,6 +78,8 @@ import {
 } from './utils';
 import { FlashcardService, playWordAudio } from './services/FlashcardService';
 import type { LangPlayerPluginRef } from './context';
+import { useVocabularyStore } from './store/vocabularyStore';
+import { getActiveMediaSession } from './store/mediaSession';
 
 export default class LangPlayerPlugin extends Plugin {
   declare settings: LangPlayerSettings;
@@ -89,7 +97,7 @@ export default class LangPlayerPlugin extends Plugin {
   private runtimeRefreshSnapshot: RuntimeRefreshSnapshot | null = null;
   private playbackProgressSaveTimer: number | null = null;
   private settingsSaveQueue: Promise<void> = Promise.resolve();
-  private aiMeaningApiKey = '';
+  private subtitlePanelCreation: Promise<WorkspaceLeaf> | null = null;
 
   /** Read vocab paths from Language Learner plugin if installed & enabled. */
   private loadLanguageLearnerPaths(): void {
@@ -146,32 +154,6 @@ export default class LangPlayerPlugin extends Plugin {
     await this.saveSettings();
   }
 
-  getSoundPatternProgress(mediaKey: string): SoundPatternProgressSnapshot | undefined {
-    return this.settings.soundPatternProgressByMedia?.[mediaKey];
-  }
-
-  getAiMeaningApiKey(): string {
-    return this.aiMeaningApiKey;
-  }
-
-  setAiMeaningApiKey(apiKey: string): void {
-    this.app.secretStorage.setSecret(AI_MEANING_SECRET_ID, apiKey);
-    this.aiMeaningApiKey = apiKey;
-  }
-
-  async setSoundPatternProgress(mediaKey: string, snapshot: SoundPatternProgressSnapshot): Promise<void> {
-    if (!mediaKey) return;
-    this.settings.soundPatternProgressByMedia ??= {};
-    this.settings.soundPatternProgressByMedia[mediaKey] = snapshot;
-    await this.saveSettings();
-  }
-
-  async clearSoundPatternProgress(mediaKey: string): Promise<void> {
-    if (!mediaKey || !this.settings.soundPatternProgressByMedia?.[mediaKey]) return;
-    delete this.settings.soundPatternProgressByMedia[mediaKey];
-    await this.saveSettings();
-  }
-
   async recordStudyActivity(sentenceDelta = 1): Promise<StudyHabitProgress> {
     if (!this.settings.studyHabit?.enabled) {
       return this.settings.studyHabitProgress ?? createDefaultStudyHabitProgress();
@@ -195,6 +177,32 @@ export default class LangPlayerPlugin extends Plugin {
     return this.settings.studyHabitProgress;
   }
 
+  private watchVocabulary(db: VocabularyDbService): () => void {
+    let vocabRefreshTimer: number | null = null;
+    let vocabRefreshGeneration = 0;
+    const offVocabulary = db.subscribe(() => {
+      const generation = ++vocabRefreshGeneration;
+      if (vocabRefreshTimer !== null) window.clearTimeout(vocabRefreshTimer);
+      vocabRefreshTimer = window.setTimeout(() => {
+        vocabRefreshTimer = null;
+        void db.getAll().then(entries => {
+          if (generation !== vocabRefreshGeneration || this.vocabDb !== db) return;
+          useVocabularyStore.getState().setEntries(entries);
+          this.flashcardService.scheduleRefresh(entries);
+        }).catch(error => {
+          logger.error('Failed to refresh vocabulary:', error);
+          new Notice(t('notice.vocabUpdateFailed'));
+        });
+      }, 50);
+    });
+    return () => {
+      vocabRefreshGeneration++;
+      offVocabulary();
+      if (vocabRefreshTimer !== null) window.clearTimeout(vocabRefreshTimer);
+
+    };
+  }
+
   async onload(): Promise<void> {
     logger.info('=== onload() START ===');
     await this.loadSettings();
@@ -212,12 +220,15 @@ export default class LangPlayerPlugin extends Plugin {
       () => this.getEffectiveReviewDatabase(),
       () => this.getEffectiveWordDatabase(),
     );
+    this.register(this.watchVocabulary(this.vocabDb));
+    this.register(() => this.vocabDb.dispose());
     this.protocolService = new ProtocolService(
       this.app,
       (url, ts) => this.openMediaFromUrl(url, ts),
     );
     this.styleService = new StyleService(this.app);
     this.styleService.update(this.settings);
+    this.registerSubtitleAssociationMaintenance();
     this.registerEvent(this.app.workspace.on('layout-change', () => {
       this.styleService.update(this.settings);
     }));
@@ -225,6 +236,9 @@ export default class LangPlayerPlugin extends Plugin {
 
     // Auto-create default database files if not set (and not provided by Language Learner)
     this.app.workspace.onLayoutReady(() => {
+      for (const leaf of this.app.workspace.getLeavesOfType('langplayer-sound-pattern')) {
+        leaf.detach();
+      }
       this.loadLanguageLearnerPaths();
       this.vocabDb.setFolder(this.getEffectiveVocabFolder());
       if (!this.llVocabPaths) {
@@ -243,9 +257,6 @@ export default class LangPlayerPlugin extends Plugin {
     );
     this.registerView(VIEW_TYPE_DICTATION, (leaf) =>
       new DictationView(leaf, this.asRef()),
-    );
-    this.registerView(VIEW_TYPE_SOUND_PATTERN, (leaf) =>
-      new SoundPatternView(leaf, this.asRef()),
     );
     this.registerView(VIEW_TYPE_VOCABULARY, (leaf) =>
       new VocabularyView(leaf, this.asRef()),
@@ -296,9 +307,9 @@ export default class LangPlayerPlugin extends Plugin {
     );
 
     // Add ribbon icons
-    this.addRibbonIcon('play-circle', 'LangPlayer', () => {
+    this.addRibbonIcon('play-circle', t('app.name'), () => {
       void this.activateView(VIEW_TYPE_PLAYER).catch((error: unknown) => {
-        logger.error('Failed to open LangPlayer:', error);
+        logger.error('Failed to open Dashell Player:', error);
         new Notice(t('notice.openMediaFailed'));
       });
     });
@@ -341,11 +352,24 @@ export default class LangPlayerPlugin extends Plugin {
   // ─── Settings ───────────────────────────────────────────────────────────
 
   async loadSettings(): Promise<void> {
+    const dataMigration = await migratePluginDataFromLegacyId({
+      adapter: this.app.vault.adapter,
+      configDir: this.app.vault.configDir,
+      manifest: this.manifest,
+      legacyPluginId: 'langplayer',
+      saveData: (data) => this.saveData(data),
+    });
+    if (dataMigration === 'migrated') {
+      new Notice(t('notice.pluginDataMigrated'));
+    } else if (dataMigration === 'invalid' || dataMigration === 'failed') {
+      new Notice(t('notice.pluginDataMigrationFailed'));
+      throw new Error(`Dashell Player legacy data migration ${dataMigration}`);
+    }
+
     const rawData: unknown = await this.loadData();
     const raw = isRecord(rawData) ? rawData : {};
     this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
-    const secretMigration = migrateAiMeaningSecret(this.settings, this.app.secretStorage);
-    this.aiMeaningApiKey = secretMigration.apiKey;
+    this.settings.subtitleFileByMedia = normalizeSubtitleAssociations(this.settings.subtitleFileByMedia);
 
     // ── Schema migration ────────────────────────────────────────────────────
     // Migrations live in settings/migrations.ts (version-keyed). Run them, then
@@ -353,7 +377,7 @@ export default class LangPlayerPlugin extends Plugin {
     const fromVersion = typeof raw.settingsVersion === 'number' ? raw.settingsVersion : 0;
     const migrated = runSettingsMigrations(this.settings, fromVersion, CURRENT_SETTINGS_VERSION);
     this.settings.settingsVersion = CURRENT_SETTINGS_VERSION;
-    if (migrated || secretMigration.settingsChanged) {
+    if (migrated) {
       logger.info(`[LangPlayer] Migrated settings from v${fromVersion} → v${CURRENT_SETTINGS_VERSION}`);
       await this.saveData(this.settings);
     }
@@ -396,6 +420,9 @@ export default class LangPlayerPlugin extends Plugin {
       setLanguage(this.settings.uiLanguage);
     }
     this.runtimeRefreshSnapshot = createRuntimeRefreshSnapshot(this.settings);
+    // Media views keep the same settings object for their lifetime. Notify
+    // mounted React controls so toolbar display settings apply immediately.
+    window.dispatchEvent(new CustomEvent('langplayer-settings-changed'));
   }
 
   private getPlaybackProgress(mediaKey: string): number | undefined {
@@ -425,6 +452,100 @@ export default class LangPlayerPlugin extends Plugin {
       return;
     }
     await this.settingsSaveQueue;
+  }
+
+  // ─── Subtitle associations ───────────────────────────────────────────────
+
+  /**
+   * Persisted associations use vault paths, not Obsidian's temporary resource
+   * URLs. Keep them coherent when users reorganize or remove their media.
+   */
+  private registerSubtitleAssociationMaintenance(): void {
+    this.registerEvent(this.app.vault.on('rename', (file, oldPath) => {
+      const next = updateSubtitleAssociationsForRename(
+        this.settings.subtitleFileByMedia ?? {},
+        oldPath,
+        file.path,
+        !(file instanceof TFile) || isSubtitleFile(oldPath) || isSubtitleFile(file.path),
+      );
+      void this.replaceSubtitleAssociations(next);
+    }));
+
+    this.registerEvent(this.app.vault.on('delete', (file) => {
+      const next = removeSubtitleAssociationsForDeletedFile(
+        this.settings.subtitleFileByMedia ?? {},
+        file.path,
+        !(file instanceof TFile) || isSubtitleFile(file.path),
+      );
+      void this.replaceSubtitleAssociations(next);
+    }));
+  }
+
+  getSubtitleAssociationPath(source: MediaSource): string | undefined {
+    const key = buildSubtitleAssociationKey(source);
+    return key ? this.settings.subtitleFileByMedia?.[key] : undefined;
+  }
+
+  getAssociatedSubtitleFile(source: MediaSource): TFile | null {
+    const path = this.getSubtitleAssociationPath(source);
+    if (!path) return null;
+    const file = this.app.vault.getAbstractFileByPath(path);
+    return file instanceof TFile && isSubtitleFile(file.path) ? file : null;
+  }
+
+  async rememberSubtitleAssociation(source: MediaSource, subtitleFile: TFile): Promise<void> {
+    const key = buildSubtitleAssociationKey(source);
+    if (!key || !isSubtitleFile(subtitleFile.path)) return;
+
+    const current = this.settings.subtitleFileByMedia ?? {};
+    if (current[key] === subtitleFile.path) return;
+    await this.replaceSubtitleAssociations({ ...current, [key]: subtitleFile.path });
+  }
+
+  async clearSubtitleAssociation(source: MediaSource): Promise<void> {
+    const key = buildSubtitleAssociationKey(source);
+    if (!key || !this.settings.subtitleFileByMedia?.[key]) return;
+    const next = { ...this.settings.subtitleFileByMedia };
+    delete next[key];
+    await this.replaceSubtitleAssociations(next);
+  }
+
+  private async replaceSubtitleAssociations(next: Record<string, string>): Promise<void> {
+    const current = this.settings.subtitleFileByMedia ?? {};
+    if (subtitleAssociationsEqual(current, next)) return;
+    this.settings.subtitleFileByMedia = next;
+    await this.saveSettings();
+  }
+
+  private getActivePlayerView(): LangPlayerView | null {
+    const activeSessionId = getActiveMediaSession();
+    const views = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER)
+      .map((leaf) => leaf.view)
+      .filter((view): view is LangPlayerView => view instanceof LangPlayerView);
+    return views.find((view) => view.sessionId === activeSessionId && view.getCurrentSource())
+      ?? this.app.workspace.getActiveViewOfType(LangPlayerView);
+  }
+
+  private loadSubtitleFromVault(): void {
+    const playerView = this.getActivePlayerView();
+    const source = playerView?.getCurrentSource();
+    if (!playerView || !source) {
+      new Notice(t('notice.openMediaBeforeSubtitle'));
+      return;
+    }
+
+    pickAndLoadSubtitle(this.app, this.settings.subtitleLineOrder, {
+      sessionId: playerView.sessionId,
+      isCurrent: () => playerView.isCurrentSource(source),
+      onLoaded: (subtitleFile) => {
+        void this.rememberSubtitleAssociation(source, subtitleFile).catch((error: unknown) => {
+          logger.warn('Failed to remember subtitle association:', error);
+        });
+        void this.ensureSubtitlePanelVisible(playerView.leaf).catch((error: unknown) => {
+          logger.warn('Failed to show subtitle panel after manual load:', error);
+        });
+      },
+    });
   }
 
   // ─── Commands ───────────────────────────────────────────────────────────
@@ -459,14 +580,6 @@ export default class LangPlayerPlugin extends Plugin {
         await this.app.workspace.getLeaf(false).openFile(file);
       },
     });
-    this.addCommand({
-      id: 'start-sound-pattern-training',
-      name: t('cmd.startSoundPattern'),
-      callback: () => {
-        void this.activateSoundPatternView();
-      },
-    });
-
     this.addCommand({
       id: 'open-player',
       name: t('cmd.openPlayer'),
@@ -511,14 +624,7 @@ export default class LangPlayerPlugin extends Plugin {
     this.addCommand({
       id: 'load-subtitle-file',
       name: t('cmd.loadSubtitle'),
-      callback: () => {
-        pickAndLoadSubtitle(this.app, this.settings.subtitleLineOrder, () => {
-          const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
-          if (existing.length === 0) {
-            this.activateSubtitlePanel(false).catch(() => {});
-          }
-        });
-      },
+      callback: () => this.loadSubtitleFromVault(),
     });
 
     this.addCommand({
@@ -570,28 +676,50 @@ export default class LangPlayerPlugin extends Plugin {
       return;
     }
 
-    const location = this.settings.subtitlePanelLocation || 'split';
-    const playerLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER);
-    let newLeaf: WorkspaceLeaf;
-
-    if (location === 'tab') {
-      newLeaf = this.app.workspace.getLeaf('tab');
-    } else if (playerLeaves.length > 0) {
-      // 'split' → horizontal split below player (default)
-      // 'right'  → vertical split, new pane right (before=false)
-      // 'left'   → vertical split, new pane left  (before=true)
-      const direction: 'vertical' | 'horizontal' =
-        (location === 'left' || location === 'right') ? 'vertical' : 'horizontal';
-      const before = location === 'left';
-      newLeaf = this.app.workspace.createLeafBySplit(playerLeaves[0]!, direction, before);
-    } else {
-      // No player open — horizontal split below active leaf
-      newLeaf = this.app.workspace.getLeaf('split', 'horizontal');
-    }
-
-    // active:false when auto-opening so player keeps focus; true when user manually opens
-    await newLeaf.setViewState({ type: VIEW_TYPE_SUBTITLE_PANEL, active: focusPanel });
+    const newLeaf = await this.getOrCreateSubtitlePanelLeaf();
+    if (focusPanel) await newLeaf.setViewState({ type: VIEW_TYPE_SUBTITLE_PANEL, active: true });
     await this.app.workspace.revealLeaf(newLeaf);
+  }
+
+  private async ensureSubtitlePanelVisible(playerLeaf?: WorkspaceLeaf): Promise<void> {
+    const leaf = await this.getOrCreateSubtitlePanelLeaf();
+    await this.app.workspace.revealLeaf(leaf);
+    if (playerLeaf) await this.app.workspace.revealLeaf(playerLeaf);
+  }
+
+  private async getOrCreateSubtitlePanelLeaf(): Promise<WorkspaceLeaf> {
+    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
+    if (existing.length > 0) return existing[0]!;
+    if (this.subtitlePanelCreation) return this.subtitlePanelCreation;
+
+    const creation = (async (): Promise<WorkspaceLeaf> => {
+      const current = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
+      if (current.length > 0) return current[0]!;
+
+      const location = this.settings.subtitlePanelLocation || 'split';
+      const playerLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER);
+      let leaf: WorkspaceLeaf;
+
+      if (location === 'tab') {
+        leaf = this.app.workspace.getLeaf('tab');
+      } else if (playerLeaves.length > 0) {
+        const direction: 'vertical' | 'horizontal' =
+          (location === 'left' || location === 'right') ? 'vertical' : 'horizontal';
+        leaf = this.app.workspace.createLeafBySplit(playerLeaves[0]!, direction, location === 'left');
+      } else {
+        leaf = this.app.workspace.getLeaf('split', 'horizontal');
+      }
+
+      await leaf.setViewState({ type: VIEW_TYPE_SUBTITLE_PANEL, active: false });
+      return leaf;
+    })();
+
+    this.subtitlePanelCreation = creation;
+    try {
+      return await creation;
+    } finally {
+      if (this.subtitlePanelCreation === creation) this.subtitlePanelCreation = null;
+    }
   }
 
   // ─── Media Opening ──────────────────────────────────────────────────────
@@ -603,14 +731,9 @@ export default class LangPlayerPlugin extends Plugin {
     if (view instanceof LangPlayerView) {
       view.setSource(source);
     }
-    // Auto-open subtitle panel below player without stealing focus
+    // Keep the subtitle panel visible beside the player without leaving it focused.
     if (this.settings.subtitlePanelAutoOpen) {
-      const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
-      if (existing.length === 0) {
-        await this.activateSubtitlePanel(false);
-      }
-      // Ensure player leaf keeps focus so keyboard shortcuts and controls work
-      await this.app.workspace.revealLeaf(leaf);
+      await this.ensureSubtitlePanelVisible(leaf);
     }
   }
 
@@ -631,11 +754,7 @@ export default class LangPlayerPlugin extends Plugin {
     }
     // Auto-open subtitle panel for URL sources too, without stealing focus
     if (this.settings.subtitlePanelAutoOpen) {
-      const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
-      if (existing.length === 0) {
-        await this.activateSubtitlePanel(false);
-      }
-      await this.app.workspace.revealLeaf(leaf);
+      await this.ensureSubtitlePanelVisible(leaf);
     }
   }
 
@@ -676,7 +795,6 @@ export default class LangPlayerPlugin extends Plugin {
    * If not open → split horizontally next to the player, or open as tab.
    */
   private async activateDictationView(): Promise<void> {
-    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_SOUND_PATTERN)) leaf.detach();
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_DICTATION);
 
     if (existing.length > 0) {
@@ -701,49 +819,33 @@ export default class LangPlayerPlugin extends Plugin {
     await this.app.workspace.revealLeaf(newLeaf);
   }
 
-  private async activateSoundPatternView(): Promise<void> {
-    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_DICTATION)) leaf.detach();
-    const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SOUND_PATTERN);
-    if (existing.length > 0) {
-        await this.app.workspace.revealLeaf(existing[0]!);
-      return;
-    }
-    const playerLeaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_PLAYER);
-    const leaf = playerLeaves.length > 0
-      ? this.app.workspace.createLeafBySplit(playerLeaves[0]!, 'horizontal', false)
-      : this.app.workspace.getLeaf('tab');
-    await leaf.setViewState({ type: VIEW_TYPE_SOUND_PATTERN, active: true });
-    await this.app.workspace.revealLeaf(leaf);
-  }
-
   private asRef(): LangPlayerPluginRef {
     return {
       settings: this.settings,
       saveSettings: () => this.saveSettings(),
-      getAiMeaningApiKey: () => this.getAiMeaningApiKey(),
-      setAiMeaningApiKey: (apiKey: string) => this.setAiMeaningApiKey(apiKey),
       noteService: this.noteService,
       vocabDb: this.vocabDb,
       flashcardService: this.flashcardService,
       app: this.app,
       openMediaPicker: () => this.chooseAndOpenMediaFile(),
       openSubtitlePanel: () => this.activateSubtitlePanel(),
+      ensureSubtitlePanelVisible: (playerLeaf?: WorkspaceLeaf) => this.ensureSubtitlePanelVisible(playerLeaf),
       openDictationView: () => this.activateDictationView(),
-      openSoundPatternView: () => this.activateSoundPatternView(),
       openVocabulary: async () => { await this.activateView(VIEW_TYPE_VOCABULARY); },
       startReview: () => {
         this.flashcardService.startReview();
       },
       openMediaAt: (url: string, timestamp?: number) => this.openMediaFromUrl(url, timestamp),
-      loadSubtitleFromVault: () => pickAndLoadSubtitle(this.app, this.settings.subtitleLineOrder),
+      loadSubtitleFromVault: () => this.loadSubtitleFromVault(),
+      getSubtitleAssociationPath: (source: MediaSource) => this.getSubtitleAssociationPath(source),
+      getAssociatedSubtitleFile: (source: MediaSource) => this.getAssociatedSubtitleFile(source),
+      rememberSubtitleAssociation: (source: MediaSource, subtitleFile: TFile) =>
+        this.rememberSubtitleAssociation(source, subtitleFile),
+      clearSubtitleAssociation: (source: MediaSource) => this.clearSubtitleAssociation(source),
       getDictationProgress: (mediaKey: string) => this.getDictationProgress(mediaKey),
       setDictationProgress: (mediaKey: string, snapshot: DictationProgressSnapshot) =>
         this.setDictationProgress(mediaKey, snapshot),
       clearDictationProgress: (mediaKey: string) => this.clearDictationProgress(mediaKey),
-      getSoundPatternProgress: (mediaKey: string) => this.getSoundPatternProgress(mediaKey),
-      setSoundPatternProgress: (mediaKey: string, snapshot: SoundPatternProgressSnapshot) =>
-        this.setSoundPatternProgress(mediaKey, snapshot),
-      clearSoundPatternProgress: (mediaKey: string) => this.clearSoundPatternProgress(mediaKey),
       recordStudyActivity: (sentenceDelta?: number) => this.recordStudyActivity(sentenceDelta),
       dismissStudyRecoveryPrompt: () => this.dismissStudyRecoveryPrompt(),
       getPlaybackProgress: (mediaKey: string) => this.getPlaybackProgress(mediaKey),

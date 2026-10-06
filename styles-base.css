@@ -153,71 +153,6 @@
   margin-top: 4px;
 }
 
-/* A visible learning path keeps the plugin understandable for first-time users. */
-.lp-study-flow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--lp-border);
-  background: color-mix(in srgb, var(--lp-bg-secondary) 78%, transparent);
-}
-.lp-study-flow-label {
-  margin-right: 4px;
-  color: var(--lp-text-muted);
-  font-size: var(--lp-font-xs);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.lp-study-flow-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 30px;
-  padding: 4px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--lp-radius-md);
-  background: transparent;
-  color: var(--lp-text-muted);
-  cursor: pointer;
-  font-size: var(--lp-font-xs);
-  transition: background var(--lp-transition), color var(--lp-transition), border-color var(--lp-transition);
-}
-.lp-study-flow-step:hover:not(:disabled),
-.lp-study-flow-step:focus-visible {
-  border-color: var(--lp-border-hover);
-  background: var(--lp-bg-hover);
-  color: var(--lp-text-normal);
-}
-.lp-study-flow-step--active {
-  border-color: color-mix(in srgb, var(--lp-accent) 45%, transparent);
-  color: var(--lp-text-normal);
-}
-.lp-study-flow-step:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-.lp-study-flow-number {
-  display: inline-grid;
-  width: 18px;
-  height: 18px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--lp-border);
-  color: var(--lp-text-muted);
-  font-size: 10px;
-  font-weight: 700;
-}
-.lp-study-flow-step--active .lp-study-flow-number {
-  background: var(--lp-accent);
-  color: var(--text-on-accent);
-}
-.lp-study-flow-arrow {
-  color: var(--lp-text-faint);
-  font-size: var(--lp-font-sm);
-}
-
 /* Dictation panel when mounted inside its own leaf.
    overflow:hidden — the panel itself never scrolls; only the inner box
    area scrolls (see .lp-dictation-boxes), so the progress dots and the
@@ -235,7 +170,6 @@
 body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-view"] > .view-header,
 body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-subtitle-panel"] > .view-header,
 body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-dictation"] > .view-header,
-body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-sound-pattern"] > .view-header,
 body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] > .view-header {
   display: none;
 }
@@ -314,12 +248,14 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   flex-direction: column;
   height: 100%;
   width: 100%;
+  position: relative;
 }
 
 /* Video area — fills remaining height above the controls bar */
 .lp-video-area {
   position: relative;
   flex: 1;
+  order: 1;
   min-height: 140px;
   overflow: hidden;
   background: var(--lp-video-bg);
@@ -331,6 +267,71 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   width: 100%;
   background: var(--background-primary);
   border-top: 1px solid var(--background-modifier-border);
+}
+
+/* Aloud-style shared playback toolbar shell. Fixed bars stay in the flex
+   layout; hidden fixed bars keep their measured height to prevent media jumps. */
+.lp-playback-bar {
+  position: relative;
+  z-index: 24;
+  box-sizing: border-box;
+  min-height: 56px;
+  overflow: visible;
+  transition: opacity 150ms ease, visibility 150ms ease, transform 150ms ease;
+}
+
+.lp-playback-bar--fixed {
+  order: 2;
+}
+
+.lp-playback-bar--fixed.lp-playback-bar--top {
+  order: 0;
+  border-top: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.lp-playback-bar--floating {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  width: auto;
+  min-height: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: color-mix(in srgb, var(--background-primary) 94%, transparent);
+  box-shadow: var(--shadow-s, 0 4px 14px rgba(0, 0, 0, 0.25));
+  backdrop-filter: blur(8px);
+}
+
+.lp-playback-bar--floating.lp-playback-bar--top {
+  top: 8px;
+}
+
+.lp-playback-bar--floating.lp-playback-bar--bottom {
+  bottom: 8px;
+}
+
+.lp-playback-bar.is-hidden.lp-playback-bar--fixed {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.lp-playback-bar.is-hidden.lp-playback-bar--floating {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(4px);
+}
+
+.lp-playback-bar--top.lp-playback-bar--floating.is-hidden {
+  transform: translateY(-4px);
+}
+
+.lp-playback-bar .lp-controls {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 /* Legacy class kept for any lingering references */
@@ -470,6 +471,47 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   color: var(--interactive-accent);
 }
 
+.lp-speed-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.lp-speed-popover {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  min-width: 170px;
+  padding: 5px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s, 0 4px 14px rgba(0, 0, 0, 0.28));
+}
+
+.lp-playback-bar--top .lp-speed-popover {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.lp-speed-popover input[type='range'] {
+  width: 126px;
+  accent-color: var(--interactive-accent);
+}
+
+.lp-speed-popover output {
+  min-width: 34px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller, 11px);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .lp-ctrl-btn:active {
   opacity: 0.85;
 }
@@ -497,20 +539,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   font-weight: 500;
   letter-spacing: 0;
   border-radius: 6px;
-}
-
-/* Extra-small buttons (offset +/-) */
-.lp-ctrl-btn--xs {
-  min-width: 24px;
-  min-height: 24px;
-  padding: 3px;
-  opacity: 0.7;
-}
-
-.lp-ctrl-btn--xs:hover {
-  opacity: 1;
-  background: var(--background-modifier-hover);
-  color: var(--interactive-accent);
 }
 
 /* Active state — filled accent background like Media Extended */
@@ -1487,24 +1515,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   transform: translateX(-50%) translateY(-50%) scale(1);
 }
 
-/* ── Subtitle Offset ── */
-.lp-offset-ctrl {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  margin-left: 4px;
-}
-
-.lp-offset-value {
-  font-size: 12px;
-  opacity: 0.45;
-  width: 38px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  font-family: var(--font-monospace, monospace);
-  line-height: 1;
-}
-
 /* ── Popup Menus (rendered via portal) ── */
 .lp-popup-backdrop {
   position: fixed;
@@ -1833,10 +1843,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
 .lp-controls-overlay .lp-time-display {
   color: var(--lp-overlay-text-secondary);
 }
-.lp-controls-overlay .lp-offset-value {
-  color: var(--lp-overlay-text-secondary);
-  opacity: 0.7;
-}
 .lp-controls-overlay .lp-ctrl-btn--label {
   color: var(--lp-overlay-text) !important;
   opacity: 0.9;
@@ -1852,14 +1858,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
 .lp-controls-overlay .lp-ctrl-btn--accent {
   color: var(--interactive-accent) !important;
   opacity: 1;
-}
-.lp-controls-overlay .lp-ctrl-btn--xs {
-  opacity: 0.7 !important;
-  color: var(--lp-overlay-text-secondary) !important;
-}
-.lp-controls-overlay .lp-ctrl-btn--xs:hover {
-  opacity: 1 !important;
-  background: color-mix(in srgb, var(--lp-overlay-text) 12%, transparent);
 }
 .lp-controls-overlay input[type="range"] {
   accent-color: var(--interactive-accent);
@@ -2008,22 +2006,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   gap: 2px 4px;
   padding: 4px 8px 8px;
 }
-.is-mobile .lp-study-flow {
-  gap: 4px;
-  padding: 6px;
-}
-.is-mobile .lp-study-flow-label {
-  flex-basis: 100%;
-}
-.is-mobile .lp-study-flow-step {
-  flex: 1 1 calc(50% - 8px);
-  min-height: 40px;
-  justify-content: center;
-  font-size: 13px;
-}
-.is-mobile .lp-study-flow-arrow {
-  display: none;
-}
 .is-mobile .lp-vocab-page-header {
   align-items: stretch;
   flex-direction: column;
@@ -2065,11 +2047,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   min-height: 44px;
   padding: 8px 10px;
   font-size: 14px;
-}
-.is-mobile .lp-ctrl-btn--xs {
-  min-width: 36px;
-  min-height: 36px;
-  padding: 6px;
 }
 .is-mobile .lp-volume-wrap {
   display: none;
@@ -2614,16 +2591,22 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
   background: var(--background-primary);
 }
 .lp-audio-visual {
   flex: 1;
+  order: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 12px 32px 24px;
   min-height: 0;
   overflow: hidden;
+}
+
+.lp-audio-layout > audio {
+  order: 1;
 }
 .lp-audio-center {
   flex: 1;
@@ -2881,6 +2864,57 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   object-fit: contain;
   background-color: transparent;
 }
+
+/* Loading, buffering, and failure feedback stay inside the player shell so
+   they do not change the reader or subtitle panel layout. */
+.lp-media-status {
+  position: absolute;
+  z-index: 28;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 9px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+  font-size: var(--font-ui-small);
+  transform: translate(-50%, -50%);
+}
+
+.lp-media-status--error {
+  color: var(--text-error);
+}
+
+.lp-media-status-spinner {
+  animation: lp-media-status-spin 0.9s linear infinite;
+}
+
+.lp-media-status-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  padding: 3px 7px;
+  border: 0;
+  border-radius: var(--radius-s, 4px);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+  font: inherit;
+}
+
+.lp-media-status-retry:hover {
+  background: var(--interactive-hover);
+}
+
+@keyframes lp-media-status-spin {
+  to { transform: rotate(360deg); }
+}
 .lp-hidden-media { display: none; }
 .lp-subtitle-line-empty { min-height: 28px; }
 .lp-audio-bars--playing .lp-audio-bar:nth-child(2) { animation-delay: 0.12s; }
@@ -3077,11 +3111,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   margin: 0 2px;
   background: var(--background-modifier-border);
 }
-.lp-offset-control {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-}
 .lp-subtitle-overlay {
   position: absolute;
   z-index: 10;
@@ -3134,28 +3163,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
 }
 
 @media (min-width: 681px) {
-  .is-mobile .lp-study-flow {
-    flex-wrap: nowrap;
-    gap: 3px;
-    overflow-x: auto;
-    padding: 6px 8px;
-  }
-  .is-mobile .lp-study-flow-label {
-    flex: 0 0 auto;
-    flex-basis: auto;
-  }
-  .is-mobile .lp-study-flow-step {
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: 44px;
-    justify-content: center;
-    padding: 6px 8px;
-  }
-  .is-mobile .lp-study-flow-arrow {
-    display: inline;
-    flex: 0 0 auto;
-  }
-
   .is-mobile .lp-volume-wrap {
     display: flex;
   }
@@ -3198,129 +3205,12 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   min-height: 44px;
 }
 
-/* ─── Sound-pattern practice ───────────────────────────────────────────── */
-.lp-sound-pattern {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: var(--lp-space-xl, 20px);
-  color: var(--text-normal);
-}
-.lp-sound-pattern--empty {
-  min-height: 180px;
-  display: grid;
-  place-items: center;
-  text-align: center;
-  color: var(--text-muted);
-}
-.lp-sound-pattern-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-weight: 650;
-}
-.lp-sound-pattern-head span {
-  color: var(--text-muted);
-  font-size: 0.9em;
-  font-weight: 500;
-}
-.lp-sound-pattern-stage {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-  padding: 22px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  background: var(--background-primary-alt);
-}
-.lp-sound-pattern-count {
-  font-size: 2rem;
-  font-variant-numeric: tabular-nums;
-  font-weight: 650;
-  text-align: center;
-}
-.lp-sound-pattern-muted {
-  color: var(--text-muted);
-  line-height: 1.5;
-}
-.lp-sound-pattern-actions,
-.lp-sound-pattern-rates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.lp-sound-pattern-actions .lp-btn,
-.lp-sound-pattern-rates .lp-btn,
-.lp-sound-pattern-stage > .lp-btn {
-  min-height: 36px;
-}
-.lp-sound-pattern-link {
-  justify-self: start;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  text-decoration: underline;
-}
-.lp-sound-pattern-label {
-  color: var(--text-muted);
-  font-size: 0.86rem;
-  font-weight: 600;
-}
-.lp-sound-pattern-meaning,
-.lp-sound-pattern-text {
-  white-space: pre-wrap;
-  line-height: 1.65;
-  font-size: 1.05rem;
-}
-.lp-sound-pattern-text {
-  padding: 12px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 4px;
-  background: var(--background-primary);
-}
-.lp-sound-pattern-error {
-  color: var(--text-error);
-  line-height: 1.5;
-}
-@media (max-width: 480px) {
-  .lp-sound-pattern { padding: 12px; }
-  .lp-sound-pattern-stage { padding: 16px; }
-  .lp-sound-pattern-actions .lp-btn { flex: 1 1 140px; }
-}
-
 /* ─── Paper-first reader theme ──────────────────────────────────────────── */
 .lp-view-root,
 .lp-view-media-shell,
-.lp-subtitle-panel,
-.lp-sound-pattern {
+.lp-subtitle-panel {
   background: var(--lp-reader-canvas);
   color: var(--lp-reader-ink);
-}
-
-.lp-study-flow {
-  min-height: 40px;
-  padding: 4px 10px;
-  border-color: var(--lp-reader-border);
-  background: var(--lp-reader-chrome);
-  font-family: var(--lp-reader-ui-font);
-}
-
-.lp-study-flow-step {
-  min-height: 32px;
-  border-radius: 6px;
-}
-
-.lp-study-flow-step--active {
-  border-color: transparent;
-  background: var(--lp-reader-active);
-  color: var(--lp-reader-ink);
-}
-
-.lp-study-flow-number {
-  background: color-mix(in srgb, var(--lp-reader-ink) 9%, transparent);
-  color: var(--lp-reader-muted);
 }
 
 .lp-view-media-shell {
@@ -3462,143 +3352,6 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
   font-variant-numeric: tabular-nums;
 }
 
-.lp-sound-pattern {
-  width: 100%;
-  max-width: none;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-}
-
-.lp-sound-pattern--empty {
-  min-height: 100%;
-  padding: 24px;
-  color: var(--lp-reader-muted);
-  font-family: var(--lp-reader-ui-font);
-}
-
-.lp-sound-pattern-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  min-height: 40px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--lp-reader-border);
-  background: var(--lp-reader-chrome);
-  color: var(--lp-reader-ink);
-  font-family: var(--lp-reader-ui-font);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.lp-sound-pattern-head span {
-  color: var(--lp-reader-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.lp-sound-pattern-stage {
-  width: min(760px, calc(100% - 40px));
-  min-height: calc(100% - 40px);
-  align-content: center;
-  gap: 18px;
-  margin: 0 auto;
-  padding: clamp(32px, 7vh, 72px) clamp(4px, 3vw, 28px);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--lp-reader-ink);
-}
-
-.lp-sound-pattern-count {
-  color: var(--lp-reader-ink);
-  font-family: var(--lp-reader-text-font);
-  font-size: clamp(2.6rem, 8vw, 4.6rem);
-  font-weight: 500;
-  line-height: 1;
-}
-
-.lp-sound-pattern-muted {
-  color: var(--lp-reader-muted);
-  font-family: var(--lp-reader-ui-font);
-  text-align: center;
-}
-
-.lp-sound-pattern-actions,
-.lp-sound-pattern-rates {
-  justify-content: center;
-}
-
-.lp-sound-pattern-actions .lp-btn,
-.lp-sound-pattern-rates .lp-btn,
-.lp-sound-pattern-stage > .lp-btn {
-  min-height: 40px;
-  padding: 8px 14px;
-  border: 1px solid var(--lp-reader-border);
-  border-radius: 6px;
-  background: var(--lp-reader-chrome);
-  color: var(--lp-reader-ink);
-  font-family: var(--lp-reader-ui-font);
-}
-
-.lp-sound-pattern-actions .lp-btn-primary,
-.lp-sound-pattern-rates .lp-btn-primary,
-.lp-sound-pattern-stage > .lp-btn-primary {
-  border-color: var(--lp-accent);
-  background: var(--lp-accent);
-  color: var(--text-on-accent);
-}
-
-.lp-sound-pattern-link {
-  justify-self: center;
-  color: var(--lp-reader-muted);
-  font-family: var(--lp-reader-ui-font);
-  text-decoration: none;
-}
-
-.lp-sound-pattern-link:hover {
-  color: var(--lp-reader-ink);
-  text-decoration: underline;
-}
-
-.lp-sound-pattern-label {
-  color: var(--lp-reader-muted);
-  font-family: var(--lp-reader-ui-font);
-  font-size: 0.75rem;
-  letter-spacing: 0;
-  text-align: center;
-}
-
-.lp-sound-pattern-meaning,
-.lp-sound-pattern-text {
-  max-width: 68ch;
-  margin: 0 auto;
-  color: var(--lp-reader-ink);
-  font-family: var(--lp-reader-text-font);
-  font-size: clamp(1.2rem, 2.3vw, 1.55rem);
-  line-height: 1.8;
-  text-align: center;
-}
-
-.lp-sound-pattern-text {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-}
-
-.lp-sound-pattern-error {
-  text-align: center;
-}
-
-.lp-sound-pattern-error .lp-btn {
-  margin-inline-start: 8px;
-}
-
-.lp-sound-pattern-error .lp-btn {
-  margin-inline-start: 8px;
-}
-
 @media (max-width: 680px) {
   .lp-view-media-shell {
     padding: 0;
@@ -3611,35 +3364,257 @@ body:not(.is-mobile) .workspace-leaf-content[data-type="langplayer-vocabulary"] 
     box-shadow: none;
   }
 
-  .lp-study-flow {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-  }
-
-  .lp-study-flow-label,
-  .lp-study-flow-arrow {
-    display: none;
-  }
-
-  .lp-study-flow-step {
-    flex: 0 0 auto;
-    min-height: 40px;
-  }
-
-  .lp-sound-pattern-stage {
-    width: calc(100% - 24px);
-    padding: 28px 4px 40px;
-  }
-
   .lp-subtitle-line-en {
     padding-top: 11px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lp-subtitle-card,
-  .lp-study-flow-step,
-  .lp-sound-pattern .lp-btn {
+  .lp-subtitle-card {
     transition: none;
+  }
+}
+
+/* Media player polish: keep the media stage spacious and make its primary
+   controls and audio now-playing hierarchy easier to scan. */
+.lp-view-media-shell {
+  padding: 16px clamp(12px, 2vw, 32px) 20px;
+}
+
+.lp-player-card,
+.lp-audio-layout {
+  max-width: 1480px;
+  border-radius: 10px;
+}
+
+.lp-audio-visual {
+  gap: 24px;
+  padding: 36px 40px;
+}
+
+.lp-audio-title {
+  width: min(100%, 860px);
+  margin: 0;
+  color: var(--lp-reader-ink);
+  font-family: var(--lp-reader-ui-font);
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.lp-audio-center {
+  gap: 32px;
+}
+
+.lp-audio-bars {
+  height: 56px;
+  gap: 8px;
+}
+
+.lp-audio-bar {
+  width: 6px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+@keyframes lp-bar-pulse {
+  0%, 100% { height: 10px; opacity: 0.5; }
+  50% { height: 48px; opacity: 1; }
+}
+
+.lp-audio-subtitle-area {
+  max-width: 840px;
+  gap: 12px;
+}
+
+.lp-audio-sub-en {
+  color: var(--lp-reader-ink);
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+.lp-audio-sub-zh {
+  color: var(--lp-reader-muted);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.lp-playback-bar .lp-controls-row {
+  min-height: 56px;
+  gap: 6px;
+  padding: 7px 14px;
+}
+
+.lp-playback-bar .lp-ctrl-group {
+  gap: 4px;
+}
+
+.lp-playback-bar .lp-ctrl-btn {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 8px;
+}
+
+.lp-playback-bar .lp-ctrl-btn--play {
+  min-width: 46px;
+  min-height: 46px;
+}
+
+@media (max-width: 680px) {
+  .lp-view-media-shell {
+    padding: 0;
+  }
+
+  .lp-player-card,
+  .lp-audio-layout {
+    border-radius: 0;
+  }
+
+  .lp-audio-visual {
+    gap: 18px;
+    padding: 24px 18px;
+  }
+
+  .lp-audio-title {
+    font-size: 18px;
+  }
+
+  .lp-audio-center {
+    gap: 22px;
+  }
+
+  .lp-audio-sub-en {
+    font-size: 20px;
+  }
+
+  .lp-playback-bar .lp-controls-row {
+    gap: 2px;
+    padding: 5px 8px 7px;
+  }
+
+  .lp-playback-bar .lp-ctrl-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Size the media controls against their pane, since Obsidian split widths can
+   change without the app viewport changing. */
+.lp-video-column,
+.lp-audio-layout {
+  container-name: lp-player;
+  container-type: inline-size;
+}
+
+.lp-subtitle-panel {
+  container-name: lp-subtitles;
+  container-type: inline-size;
+  min-width: 0;
+  min-height: 0;
+}
+
+.lp-video-column,
+.lp-audio-layout,
+.lp-subtitle-panel > .lp-virtual-list {
+  min-width: 0;
+}
+
+@container lp-player (max-width: 760px) {
+  .lp-playback-bar .lp-controls-row {
+    display: grid;
+    grid-template-columns: max-content max-content max-content minmax(0, 1fr) max-content;
+    grid-template-areas: "playback volume time spacer settings" "learning learning learning spacer settings";
+    align-items: center;
+    gap: 2px 4px;
+    padding-inline: 8px;
+  }
+
+  .lp-controls-row > .lp-ctrl-group:nth-child(1) { grid-area: playback; }
+  .lp-controls-row > .lp-volume-wrap { grid-area: volume; }
+  .lp-controls-row > .lp-time-display { grid-area: time; }
+  .lp-controls-row > .lp-ctrl-spacer { grid-area: spacer; min-width: 0; }
+  .lp-controls-row > .lp-ctrl-sep { display: none; }
+  .lp-controls-row > .lp-ctrl-group:nth-child(5) { grid-area: learning; }
+  .lp-controls-row > .lp-ctrl-group:nth-child(7) {
+    grid-area: settings;
+    justify-self: end;
+  }
+
+  .lp-playback-bar .lp-ctrl-group { gap: 1px; }
+  .lp-playback-bar .lp-ctrl-btn {
+    min-width: 36px;
+    min-height: 36px;
+    padding: 5px;
+  }
+  .lp-playback-bar .lp-ctrl-btn--play {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}
+
+@container lp-player (max-width: 430px) {
+  .lp-playback-bar .lp-controls-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "playback playback" "time volume" "learning settings";
+    row-gap: 3px;
+  }
+
+  .lp-controls-row > .lp-ctrl-group { min-width: 0; flex-wrap: wrap; }
+  .lp-controls-row > .lp-time-display { justify-self: start; }
+  .lp-controls-row > .lp-volume-wrap { justify-self: end; }
+  .lp-controls-row > .lp-ctrl-group:nth-child(5),
+  .lp-controls-row > .lp-ctrl-group:nth-child(7) {
+    justify-content: flex-start;
+  }
+}
+
+@container lp-player (max-width: 540px) {
+  .lp-playback-bar .lp-controls-row { padding-inline: 4px; }
+
+  .lp-volume-inline--open {
+    width: 48px;
+    padding-inline: 4px;
+  }
+}
+
+@container lp-subtitles (max-width: 620px) {
+  .lp-subtitle-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+    gap: 2px;
+  }
+
+  .lp-subtitle-toolbar-group {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .lp-subtitle-toolbar-group--end { justify-content: flex-start; }
+  .lp-subtitle-card { max-width: none; }
+  .lp-subtitle-time { padding-inline: 20px; }
+}
+
+@container lp-subtitles (max-width: 360px) {
+  .lp-subtitle-toolbar { padding-inline: 6px; }
+  .lp-subtitle-toolbar-group,
+  .lp-subtitle-toolbar-group--end { gap: 2px; }
+  .lp-subtitle-toolbar .lp-ctrl-btn { min-width: 38px; min-height: 38px; }
+  .lp-subtitle-toolbar .lp-ctrl-btn--label { min-width: 38px; padding-inline: 5px; }
+  .lp-subtitle-time { padding-inline: 12px; }
+}
+
+@container lp-subtitles (max-width: 360px) {
+  .is-mobile .lp-subtitle-toolbar .lp-ctrl-btn,
+  .is-mobile .lp-subtitle-toolbar .lp-ctrl-btn--label {
+    min-width: 44px;
+    min-height: 44px;
   }
 }

@@ -1,3 +1,4 @@
+import { useStoreApi } from '../../store/mediaSession';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DictationSessionStats, SubtitleCue } from '../../types';
 import { DEFAULT_DICTATION_HOTKEYS } from '../../types';
@@ -22,7 +23,7 @@ import {
   normalizeDictationDisplay,
 } from '../../utils';
 import { t } from '../../i18n';
-import { dispatchLpEvent, onLpEvent } from '../../constants/events';
+import { dispatchLpEvent, useLpEventListener } from '../../constants/events';
 
 const MONITOR_TICK_MS = 100;
 const MONITOR_END_TOLERANCE_S = 0.05;
@@ -94,6 +95,13 @@ function safeStats(input: Partial<DictationSessionStats> | undefined): Dictation
 }
 
 export function DictationPanel() {
+  const listenLpEvent = useLpEventListener();
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
+  const useDictationStoreApi = useStoreApi(useDictationStore);
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const useLoopStoreApi = useStoreApi(useLoopStore);
+  const useUIStoreApi = useStoreApi(useUIStore);
+  const useRecordingStoreApi = useStoreApi(useRecordingStore);
   const plugin = usePlugin();
 
   const boxInputs = useDictationStore((s) => s.boxInputs);
@@ -279,10 +287,10 @@ export function DictationPanel() {
 
   const flushProgressSnapshot = useCallback(async () => {
     if (!mediaKey || subtitles.length === 0) return;
-    const curCueId = selectCurrentSubtitle(useSubtitleStore.getState())?.id;
+    const curCueId = selectCurrentSubtitle(useSubtitleStoreApi.getState())?.id;
     const snapshot = {
-      checkedCueIds: [...useDictationStore.getState().dictationCheckedCueIds],
-      wrongCueIds: [...useDictationStore.getState().dictationWrongCueIds],
+      checkedCueIds: [...useDictationStoreApi.getState().dictationCheckedCueIds],
+      wrongCueIds: [...useDictationStoreApi.getState().dictationWrongCueIds],
       failTotalByCue: { ...failTotalByCueRef.current },
       stats: { ...sessionStatsRef.current },
       subtitleFingerprint,
@@ -316,7 +324,7 @@ export function DictationPanel() {
     let seekConfirmed = false;
     const intervalId = window.setInterval(() => {
       if (gen !== replayMonitorGenRef.current) return;
-      const player = usePlaybackStore.getState().playerRef;
+      const player = usePlaybackStoreApi.getState().playerRef;
       if (!player) return;
       const ct = player.getCurrentTime();
 
@@ -329,10 +337,10 @@ export function DictationPanel() {
 
       if (ct < plan.end - MONITOR_END_TOLERANCE_S) return;
 
-      const loopMode = useLoopStore.getState().mode;
+      const loopMode = useLoopStoreApi.getState().mode;
       const isLooping = loopMode.type === 'segmentLoop' || loopMode.type === 'infiniteLoop';
-      const { phase: curPhase } = useDictationStore.getState();
-      if (curPhase === 'playing') useDictationStore.getState().setPhase('awaitInput');
+      const { phase: curPhase } = useDictationStoreApi.getState();
+      if (curPhase === 'playing') useDictationStoreApi.getState().setPhase('awaitInput');
       if (!isLooping) player.pauseVideo();
 
       if (replayMonitorRef.current === intervalId && gen === replayMonitorGenRef.current) {
@@ -345,22 +353,21 @@ export function DictationPanel() {
   }, [clearReplayMonitor]);
 
   const startDictationPlaybackForCue = useCallback((targetCue: SubtitleCue) => {
-    const player = usePlaybackStore.getState().playerRef;
+    const player = usePlaybackStoreApi.getState().playerRef;
     if (!player) return;
     // Mutual exclusion: starting the original sentence stops any in-progress
     // recording playback so the two audio sources never overlap.
     dispatchLpEvent('langplayer-stop-recording-playback');
-    const offset = useSubtitleStore.getState().offset;
-    const start = Math.max(0, targetCue.start + offset);
-    const end = Math.max(start, targetCue.end + offset);
-    useDictationStore.getState().setReplayPlan({ cueId: targetCue.id, start, end });
-    useDictationStore.getState().setPhase('playing');
+    const start = Math.max(0, targetCue.start);
+    const end = Math.max(start, targetCue.end);
+    useDictationStoreApi.getState().setReplayPlan({ cueId: targetCue.id, start, end });
+    useDictationStoreApi.getState().setPhase('playing');
 
-    const loopMode = useLoopStore.getState().mode;
+    const loopMode = useLoopStoreApi.getState().mode;
     const pending = pendingLoopRetargetRef.current;
     pendingLoopRetargetRef.current = null;
     if (loopMode.type === 'segmentLoop') {
-      useLoopStore.getState().enterMode({
+      useLoopStoreApi.getState().enterMode({
         type: 'segmentLoop',
         start: targetCue.start,
         end: targetCue.end,
@@ -369,13 +376,13 @@ export function DictationPanel() {
         index: targetCue.index,
       });
     } else if (loopMode.type === 'infiniteLoop') {
-      useLoopStore.getState().enterMode({
+      useLoopStoreApi.getState().enterMode({
         type: 'infiniteLoop',
         start: targetCue.start,
         end: targetCue.end,
       });
     } else if (pending?.type === 'segmentLoop') {
-      useLoopStore.getState().enterMode({
+      useLoopStoreApi.getState().enterMode({
         type: 'segmentLoop',
         start: targetCue.start,
         end: targetCue.end,
@@ -384,7 +391,7 @@ export function DictationPanel() {
         index: targetCue.index,
       });
     } else if (pending?.type === 'infiniteLoop') {
-      useLoopStore.getState().enterMode({
+      useLoopStoreApi.getState().enterMode({
         type: 'infiniteLoop',
         start: targetCue.start,
         end: targetCue.end,
@@ -400,11 +407,11 @@ export function DictationPanel() {
     clearReplayMonitor();
     clearAdvanceTimer();
     wrongBoxLatchRef.current = new Set();
-    useDictationStore.getState().resetDictationDraft();
+    useDictationStoreApi.getState().resetDictationDraft();
   }, [clearReplayMonitor, clearAdvanceTimer]);
 
   const goToNextDictationCue = useCallback(() => {
-    const subState = useSubtitleStore.getState();
+    const subState = useSubtitleStoreApi.getState();
     const { subtitles: subList, activeIndex: currentActiveIndex } = subState;
     if (subList.length === 0) return;
     const currentCue = selectCurrentSubtitle(subState);
@@ -414,15 +421,15 @@ export function DictationPanel() {
         : currentCue
           ? subList.findIndex((s) => s.id === currentCue.id)
           : -1;
-    const { dictationRetryWrongOnly: retryWrongOnly } = useDictationStore.getState();
-    if (currentCue) useDictationStore.getState().clearFailCount(currentCue.id);
+    const { dictationRetryWrongOnly: retryWrongOnly } = useDictationStoreApi.getState();
+    if (currentCue) useDictationStoreApi.getState().clearFailCount(currentCue.id);
     resetForCueChange();
 
     if (retryWrongOnly) {
       const wrongSubs = subList.filter((s) => wrongCueIdSet.has(s.id));
       if (wrongSubs.length === 0) {
-        useDictationStore.getState().setRetryWrongOnly(false);
-        useDictationStore.getState().setPhase('done');
+        useDictationStoreApi.getState().setRetryWrongOnly(false);
+        useDictationStoreApi.getState().setPhase('done');
         return;
       }
       const pos = currentCue ? wrongSubs.findIndex((s) => s.id === currentCue.id) : -1;
@@ -431,7 +438,7 @@ export function DictationPanel() {
         const idx = subList.findIndex((s) => s.id === next.id);
         if (idx >= 0) {
           panelSetIndexRef.current = idx;
-          useSubtitleStore.getState().setActiveIndex(idx);
+          useSubtitleStoreApi.getState().setActiveIndex(idx);
           startDictationPlaybackForCue(next);
         }
       }
@@ -440,22 +447,24 @@ export function DictationPanel() {
 
     const nextIdx = Math.max(-1, currentIdx) + 1;
     if (nextIdx >= subList.length) {
-      useDictationStore.getState().setPhase('done');
+      useDictationStoreApi.getState().setPhase('done');
       return;
     }
     const next = subList[nextIdx];
     if (next) {
       panelSetIndexRef.current = nextIdx;
-      useSubtitleStore.getState().setActiveIndex(nextIdx);
+      useSubtitleStoreApi.getState().setActiveIndex(nextIdx);
       startDictationPlaybackForCue(next);
     }
   }, [resetForCueChange, startDictationPlaybackForCue, wrongCueIdSet]);
+
+
 
   // Mirror of goToNextDictationCue, going backward. Revisiting an earlier
   // sentence is navigation only: it does NOT mark the current cue wrong or
   // clear its fail count. Stays put at the first sentence (no wrap to 'done').
   const goToPrevDictationCue = useCallback(() => {
-    const subState = useSubtitleStore.getState();
+    const subState = useSubtitleStoreApi.getState();
     const { subtitles: subList, activeIndex: currentActiveIndex } = subState;
     if (subList.length === 0) return;
     const currentCue = selectCurrentSubtitle(subState);
@@ -465,7 +474,7 @@ export function DictationPanel() {
         : currentCue
           ? subList.findIndex((s) => s.id === currentCue.id)
           : -1;
-    const { dictationRetryWrongOnly: retryWrongOnly } = useDictationStore.getState();
+    const { dictationRetryWrongOnly: retryWrongOnly } = useDictationStoreApi.getState();
     resetForCueChange();
 
     if (retryWrongOnly) {
@@ -477,7 +486,7 @@ export function DictationPanel() {
         const idx = subList.findIndex((s) => s.id === prev.id);
         if (idx >= 0) {
           panelSetIndexRef.current = idx;
-          useSubtitleStore.getState().setActiveIndex(idx);
+          useSubtitleStoreApi.getState().setActiveIndex(idx);
           startDictationPlaybackForCue(prev);
         }
       }
@@ -489,42 +498,51 @@ export function DictationPanel() {
     const prev = subList[prevIdx];
     if (prev) {
       panelSetIndexRef.current = prevIdx;
-      useSubtitleStore.getState().setActiveIndex(prevIdx);
+      useSubtitleStoreApi.getState().setActiveIndex(prevIdx);
       startDictationPlaybackForCue(prev);
     }
   }, [resetForCueChange, startDictationPlaybackForCue, wrongCueIdSet]);
 
+  useEffect(() => listenLpEvent('lp-practice-navigate', ({direction}) => {
+    if (direction === 'next') goToNextDictationCue();
+    else if (direction === 'previous') goToPrevDictationCue();
+    else {
+      const current = selectCurrentSubtitle(useSubtitleStoreApi.getState());
+      if (current) startDictationPlaybackForCue(current);
+    }
+  }), [goToNextDictationCue, goToPrevDictationCue, startDictationPlaybackForCue, listenLpEvent]);
+
   // Jump straight to a specific cue (clicking a progress dot). Pure navigation —
   // resets the current draft and starts that cue, without marking anything wrong.
   const jumpToDictationCue = useCallback((targetCue: SubtitleCue) => {
-    const subList = useSubtitleStore.getState().subtitles;
+    const subList = useSubtitleStoreApi.getState().subtitles;
     const idx = subList.findIndex((s) => s.id === targetCue.id);
     if (idx < 0) return;
-    const currentCue = selectCurrentSubtitle(useSubtitleStore.getState());
+    const currentCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
     if (currentCue && currentCue.id !== targetCue.id) {
-      useDictationStore.getState().clearFailCount(currentCue.id);
+      useDictationStoreApi.getState().clearFailCount(currentCue.id);
     }
     resetForCueChange();
     panelSetIndexRef.current = idx;
-    useSubtitleStore.getState().setActiveIndex(idx);
+    useSubtitleStoreApi.getState().setActiveIndex(idx);
     startDictationPlaybackForCue(targetCue);
   }, [resetForCueChange, startDictationPlaybackForCue]);
 
   const handleRevealAnswer = useCallback(() => {
-    const curCue = selectCurrentSubtitle(useSubtitleStore.getState());
+    const curCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
     if (!curCue) return;
-    const { failCount: fc } = useDictationStore.getState();
+    const { failCount: fc } = useDictationStoreApi.getState();
     if ((fc[curCue.id] ?? 0) < unlockAfter) return;
     clearReplayMonitor();
     clearAdvanceTimer();
-    usePlaybackStore.getState().playerRef?.pauseVideo();
-    useDictationStore.getState().revealAnswer(curCue.id);
+    usePlaybackStoreApi.getState().playerRef?.pauseVideo();
+    useDictationStoreApi.getState().revealAnswer(curCue.id);
     bumpStat('revealCount');
     recordStudySentence();
   }, [unlockAfter, clearReplayMonitor, clearAdvanceTimer, bumpStat, recordStudySentence]);
 
   const replayCurrentCue = useCallback(() => {
-    const curCue = selectCurrentSubtitle(useSubtitleStore.getState());
+    const curCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
     if (!curCue) return;
     clearAdvanceTimer();
     startDictationPlaybackForCue(curCue);
@@ -532,29 +550,29 @@ export function DictationPanel() {
   }, [clearAdvanceTimer, startDictationPlaybackForCue, bumpStat]);
 
   const toggleRetryWrongOnly = useCallback(() => {
-    const { dictationRetryWrongOnly: prev, dictationWrongCueIds: wrongIds } = useDictationStore.getState();
-    const { subtitles: subList } = useSubtitleStore.getState();
+    const { dictationRetryWrongOnly: prev, dictationWrongCueIds: wrongIds } = useDictationStoreApi.getState();
+    const { subtitles: subList } = useSubtitleStoreApi.getState();
     const wrongSubs = subList.filter((s) => wrongIds.includes(s.id));
     if (prev) {
-      useDictationStore.getState().setRetryWrongOnly(false);
+      useDictationStoreApi.getState().setRetryWrongOnly(false);
       return;
     }
     if (wrongSubs.length === 0) return;
-    useDictationStore.getState().setRetryWrongOnly(true);
+    useDictationStoreApi.getState().setRetryWrongOnly(true);
     resetForCueChange();
     const first = wrongSubs[0]!;
     const idx = subList.findIndex((s) => s.id === first.id);
     if (idx >= 0) {
       panelSetIndexRef.current = idx;
-      useSubtitleStore.getState().setActiveIndex(idx);
+      useSubtitleStoreApi.getState().setActiveIndex(idx);
       startDictationPlaybackForCue(first);
     }
   }, [resetForCueChange, startDictationPlaybackForCue]);
 
   const handleRestartAll = useCallback(() => {
-    const { subtitles: subList } = useSubtitleStore.getState();
+    const { subtitles: subList } = useSubtitleStoreApi.getState();
     if (subList.length === 0) return;
-    useDictationStore.getState().hydrateProgress({
+    useDictationStoreApi.getState().hydrateProgress({
       checkedCueIds: [],
       wrongCueIds: [],
       failCount: {},
@@ -563,10 +581,10 @@ export function DictationPanel() {
     sessionStatsRef.current = EMPTY_STATS;
     setFailTotalByCue({});
     failTotalByCueRef.current = {};
-    useDictationStore.getState().setRetryWrongOnly(false);
+    useDictationStoreApi.getState().setRetryWrongOnly(false);
     resetForCueChange();
     panelSetIndexRef.current = 0;
-    useSubtitleStore.getState().setActiveIndex(0);
+    useSubtitleStoreApi.getState().setActiveIndex(0);
     const first = subList[0]!;
     startDictationPlaybackForCue(first);
   }, [resetForCueChange, startDictationPlaybackForCue]);
@@ -595,7 +613,7 @@ export function DictationPanel() {
     const snapshot = plugin.getDictationProgress(mediaKey);
     // No snapshot at all → clean slate (true first-time on this media).
     if (!snapshot) {
-      useDictationStore.getState().hydrateProgress({
+      useDictationStoreApi.getState().hydrateProgress({
         checkedCueIds: [],
         wrongCueIds: [],
         failCount: {},
@@ -621,7 +639,7 @@ export function DictationPanel() {
       if (typeof n === 'number' && n > 0) failTotals[cueId] = Math.floor(n);
     }
 
-    useDictationStore.getState().hydrateProgress({
+    useDictationStoreApi.getState().hydrateProgress({
       checkedCueIds: snapshot.checkedCueIds ?? [],
       wrongCueIds: snapshot.wrongCueIds ?? [],
       failCount: failTotals,
@@ -636,10 +654,10 @@ export function DictationPanel() {
     // this cue — and the mount effect (which reads getState live) picks it up
     // too when restore runs before mount. Skips the "jumps to the start" bug.
     if (snapshot.lastCueId) {
-      const subs = useSubtitleStore.getState().subtitles;
+      const subs = useSubtitleStoreApi.getState().subtitles;
       const savedIdx = subs.findIndex((s) => s.id === snapshot.lastCueId);
-      if (savedIdx >= 0 && savedIdx !== useSubtitleStore.getState().activeIndex) {
-        useSubtitleStore.getState().setActiveIndex(savedIdx);
+      if (savedIdx >= 0 && savedIdx !== useSubtitleStoreApi.getState().activeIndex) {
+        useSubtitleStoreApi.getState().setActiveIndex(savedIdx);
       }
     }
     restoringProgressRef.current = false;
@@ -657,7 +675,7 @@ export function DictationPanel() {
   ]);
 
   useEffect(() => {
-    useDictationStore.getState().initBoxes(targetChars.length);
+    useDictationStoreApi.getState().initBoxes(targetChars.length);
     wrongBoxLatchRef.current = new Set();
     correctMarkedCueRef.current = null; // new cue → allow the all-correct logic again
   }, [targetChars.length, cue?.id]);
@@ -678,15 +696,15 @@ export function DictationPanel() {
     if (correctMarkedCueRef.current === cue.id) return;
     correctMarkedCueRef.current = cue.id;
     clearReplayMonitor();
-    const lm = useLoopStore.getState().mode;
+    const lm = useLoopStoreApi.getState().mode;
     if (lm.type === 'segmentLoop') {
       pendingLoopRetargetRef.current = { type: 'segmentLoop', total: lm.total };
     } else if (lm.type === 'infiniteLoop') {
       pendingLoopRetargetRef.current = { type: 'infiniteLoop' };
     }
-    useLoopStore.getState().exitMode();
-    usePlaybackStore.getState().playerRef?.pauseVideo();
-    useDictationStore.getState().markCorrect(cue.id);
+    useLoopStoreApi.getState().exitMode();
+    usePlaybackStoreApi.getState().playerRef?.pauseVideo();
+    useDictationStoreApi.getState().markCorrect(cue.id);
     recordStudySentence();
     // No auto-advance timer — user presses Enter to move on.
   }, [allBoxesCorrect, phase, cue, clearReplayMonitor, recordStudySentence]);
@@ -731,11 +749,11 @@ export function DictationPanel() {
     if (isHintHotkey) {
       e.preventDefault();
       if (!cue) return;
-      const { cursor: c } = useDictationStore.getState();
+      const { cursor: c } = useDictationStoreApi.getState();
       if (c < 0 || c >= targetChars.length) return;
       const expected = targetChars[c]!;
-      useDictationStore.getState().revealLetter(c, expected);
-      useDictationStore.getState().markWrongCue(cue.id);
+      useDictationStoreApi.getState().revealLetter(c, expected);
+      useDictationStoreApi.getState().markWrongCue(cue.id);
       bumpStat('hintCount');
       return;
     }
@@ -747,19 +765,19 @@ export function DictationPanel() {
     }
     if (e.key === 'Backspace') {
       e.preventDefault();
-      useDictationStore.getState().clearBoxChar();
+      useDictationStoreApi.getState().clearBoxChar();
       return;
     }
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      const { cursor: c } = useDictationStore.getState();
-      useDictationStore.getState().setCursor(c - 1);
+      const { cursor: c } = useDictationStoreApi.getState();
+      useDictationStoreApi.getState().setCursor(c - 1);
       return;
     }
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      const { cursor: c } = useDictationStore.getState();
-      useDictationStore.getState().setCursor(c + 1);
+      const { cursor: c } = useDictationStoreApi.getState();
+      useDictationStoreApi.getState().setCursor(c + 1);
       return;
     }
     if (isNextHotkey) {
@@ -767,7 +785,7 @@ export function DictationPanel() {
       // cue without requiring all boxes correct. Mark the cue as wrong so the
       // retry-wrong queue picks it up later — skipping shouldn't be free.
       e.preventDefault();
-      if (cue) useDictationStore.getState().markWrongCue(cue.id);
+      if (cue) useDictationStoreApi.getState().markWrongCue(cue.id);
       goToNextDictationCue();
       return;
     }
@@ -779,21 +797,21 @@ export function DictationPanel() {
       return;
     }
     e.preventDefault();
-    const state = useDictationStore.getState();
+    const state = useDictationStoreApi.getState();
     const { cursor: c, boxInputs: arr } = state;
     if (c >= arr.length) return;
     const expected = targetChars[c];
     const isWrong = raw !== expected;
     if (isWrong && !wrongBoxLatchRef.current.has(c) && cue) {
-      useDictationStore.getState().incFailCount(cue.id);
-      useDictationStore.getState().markWrongCue(cue.id);
+      useDictationStoreApi.getState().incFailCount(cue.id);
+      useDictationStoreApi.getState().markWrongCue(cue.id);
       wrongBoxLatchRef.current.add(c);
       bumpStat('wrongKeystrokes');
       bumpFailTotalForCue(cue.id);
     } else if (!isWrong) {
       wrongBoxLatchRef.current.delete(c);
     }
-    useDictationStore.getState().writeBoxChar(raw, c);
+    useDictationStoreApi.getState().writeBoxChar(raw, c);
   }, [
     bumpFailTotalForCue,
     bumpStat,
@@ -814,22 +832,22 @@ export function DictationPanel() {
   ]);
 
   useEffect(() => {
-    useDictationStore.getState().setDictationOpen(true);
-    useSubtitleStore.getState().setPracticeMode('dictation');
-    useLoopStore.getState().exitMode();
+    useDictationStoreApi.getState().setDictationOpen(true);
+    useSubtitleStoreApi.getState().setPracticeMode('dictation');
+    useLoopStoreApi.getState().exitMode();
 
-    const ui = useUIStore.getState();
+    const ui = useUIStoreApi.getState();
     const prevOverlay = ui.overlayMode;
     const hadOverlay = shouldHideOverlay(prevOverlay);
     if (hadOverlay) ui.setOverlayMode('off');
 
-    prevActiveIndexRef.current = useSubtitleStore.getState().activeIndex;
-    prevCueIdRef.current = selectCurrentSubtitle(useSubtitleStore.getState())?.id ?? null;
+    prevActiveIndexRef.current = useSubtitleStoreApi.getState().activeIndex;
+    prevCueIdRef.current = selectCurrentSubtitle(useSubtitleStoreApi.getState())?.id ?? null;
 
-    const curCue = selectCurrentSubtitle(useSubtitleStore.getState());
-    const recState = useRecordingStore.getState().recorderState;
+    const curCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
+    const recState = useRecordingStoreApi.getState().recorderState;
     const busy = recState === 'preparing' || recState === 'recording' || recState === 'stopping';
-    if (curCue && !busy && usePlaybackStore.getState().playerRef) {
+    if (curCue && !busy && usePlaybackStoreApi.getState().playerRef) {
       lifecycleCallbacksRef.current.startDictationPlaybackForCue(curCue);
     }
 
@@ -839,26 +857,26 @@ export function DictationPanel() {
       callbacks.clearAdvanceTimer();
       callbacks.clearProgressSaveTimer();
       void callbacks.flushProgressSnapshot();
-      if (hadOverlay) useUIStore.getState().setOverlayMode(prevOverlay);
-      useDictationStore.getState().setDictationOpen(false);
-      useSubtitleStore.getState().clearPracticeMode('dictation');
-      useDictationStore.getState().resetDictationDraft();
+      if (hadOverlay) useUIStoreApi.getState().setOverlayMode(prevOverlay);
+      useDictationStoreApi.getState().setDictationOpen(false);
+      useSubtitleStoreApi.getState().clearPracticeMode('dictation');
+      useDictationStoreApi.getState().resetDictationDraft();
     };
   }, []);
 
   useEffect(() => {
     const validIds = new Set(subtitles.map((s) => s.id));
-    useDictationStore.getState().filterCueIds(validIds);
+    useDictationStoreApi.getState().filterCueIds(validIds);
   }, [subtitles]);
 
   useEffect(() => {
     if (subtitles.length === 0 || isRecordingBusy) return;
-    const subState = useSubtitleStore.getState();
+    const subState = useSubtitleStoreApi.getState();
     const { activeIndex: idx } = subState;
     const hasValidActive = idx >= 0 && idx < subtitles.length;
     if (hasValidActive) return;
 
-    const { dictationRetryWrongOnly: retry, dictationWrongCueIds: wrongIds } = useDictationStore.getState();
+    const { dictationRetryWrongOnly: retry, dictationWrongCueIds: wrongIds } = useDictationStoreApi.getState();
     let target: SubtitleCue | null = null;
     if (retry) target = subtitles.find((s) => wrongIds.includes(s.id)) ?? null;
     if (!target) target = subtitles[0] ?? null;
@@ -867,22 +885,22 @@ export function DictationPanel() {
     if (targetIdx < 0) return;
     resetForCueChange();
     panelSetIndexRef.current = targetIdx;
-    useSubtitleStore.getState().setActiveIndex(targetIdx);
+    useSubtitleStoreApi.getState().setActiveIndex(targetIdx);
     startDictationPlaybackForCue(target);
   }, [subtitles, isRecordingBusy, resetForCueChange, startDictationPlaybackForCue]);
 
   useEffect(() => {
     if (dictationRetryWrongOnly && dictationWrongSubtitles.length === 0) {
-      useDictationStore.getState().setRetryWrongOnly(false);
+      useDictationStoreApi.getState().setRetryWrongOnly(false);
     }
   }, [dictationRetryWrongOnly, dictationWrongSubtitles.length]);
 
   useEffect(() => {
     if (!playerRefState || isRecordingBusy) return;
-    const dState = useDictationStore.getState();
+    const dState = useDictationStoreApi.getState();
     if (!dState.dictationOpen) return;
     if (dState.phase !== 'idle' && dState.phase !== 'playing') return;
-    const curCue = selectCurrentSubtitle(useSubtitleStore.getState());
+    const curCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
     if (!curCue) return;
     const planned = dState.dictationReplayPlan;
     const sameArmed = replayMonitorRef.current !== null && planned?.cueId === curCue.id;
@@ -894,8 +912,8 @@ export function DictationPanel() {
     if (!isRecordingBusy) return;
     clearReplayMonitor();
     clearAdvanceTimer();
-    useDictationStore.getState().setReplayPlan(null);
-    useLoopStore.getState().exitMode();
+    useDictationStoreApi.getState().setReplayPlan(null);
+    useLoopStoreApi.getState().exitMode();
   }, [isRecordingBusy, clearReplayMonitor, clearAdvanceTimer]);
 
   useEffect(() => {
@@ -924,8 +942,8 @@ export function DictationPanel() {
     }
     if (isRecordingBusy) return;
     const oldCueId = prevCueIdRef.current;
-    if (oldCueId) useDictationStore.getState().clearFailCount(oldCueId);
-    const newCue = selectCurrentSubtitle(useSubtitleStore.getState());
+    if (oldCueId) useDictationStoreApi.getState().clearFailCount(oldCueId);
+    const newCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
     prevCueIdRef.current = newCue?.id ?? null;
     if (!newCue) return;
     resetForCueChange();
@@ -940,10 +958,10 @@ export function DictationPanel() {
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       if (!isHotkeyMatch(e.key, dictationHotkeys.revealAnswer)) return;
-      if (!useDictationStore.getState().dictationOpen) return;
-      const curCue = selectCurrentSubtitle(useSubtitleStore.getState());
+      if (!useDictationStoreApi.getState().dictationOpen) return;
+      const curCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
       if (!curCue) return;
-      const { phase: ph, failCount: fc } = useDictationStore.getState();
+      const { phase: ph, failCount: fc } = useDictationStoreApi.getState();
       if (ph !== 'awaitInput') return;
       if ((fc[curCue.id] ?? 0) < unlockAfter) return;
       e.preventDefault();
@@ -962,8 +980,8 @@ export function DictationPanel() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const playKey = dictationHotkeys.playRecording ?? '`';
       if (!isHotkeyMatch(e.key, playKey)) return;
-      if (!useDictationStore.getState().dictationOpen) return;
-      if (!useRecordingStore.getState().lastRecording) return;
+      if (!useDictationStoreApi.getState().dictationOpen) return;
+      if (!useRecordingStoreApi.getState().lastRecording) return;
       // If focus is in the dictation hidden input, handleKey already deals with it
       // (and may have called preventDefault). The capture-phase check above (defaultPrevented)
       // makes this listener idempotent.
@@ -984,7 +1002,7 @@ export function DictationPanel() {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const recKey = dictationHotkeys.toggleRecording ?? ';';
       if (!isHotkeyMatch(e.key, recKey)) return;
-      if (!useDictationStore.getState().dictationOpen) return;
+      if (!useDictationStoreApi.getState().dictationOpen) return;
       e.preventDefault();
       dispatchLpEvent('langplayer-toggle-recording');
     };
@@ -999,7 +1017,7 @@ export function DictationPanel() {
   // media playback may grab focus a frame later).
   useEffect(() => {
     const refocus = () => {
-      if (!useDictationStore.getState().dictationOpen) return;
+      if (!useDictationStoreApi.getState().dictationOpen) return;
       const tryFocus = () => {
         const el = hiddenInputRef.current;
         if (!el || document.activeElement === el) return;
@@ -1009,7 +1027,7 @@ export function DictationPanel() {
       window.setTimeout(tryFocus, 150);
       window.setTimeout(tryFocus, 350);
     };
-    return onLpEvent('langplayer-toggle-recording-playback', refocus);
+    return listenLpEvent('langplayer-toggle-recording-playback', refocus);
   }, []);
 
   // Suspenders: a document-level capture fallback for replay (Space) / next
@@ -1020,7 +1038,7 @@ export function DictationPanel() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (!useDictationStore.getState().dictationOpen) return;
+      if (!useDictationStoreApi.getState().dictationOpen) return;
       const isReplay = isHotkeyMatch(e.key, dictationHotkeys.replay);
       const isNext = isHotkeyMatch(e.key, dictationHotkeys.next);
       if (!isReplay && !isNext) return;
@@ -1043,9 +1061,9 @@ export function DictationPanel() {
         return;
       }
       e.preventDefault();
-      const ph = useDictationStore.getState().phase;
-      const curCue = selectCurrentSubtitle(useSubtitleStore.getState());
-      if (ph === 'awaitInput' && curCue) useDictationStore.getState().markWrongCue(curCue.id);
+      const ph = useDictationStoreApi.getState().phase;
+      const curCue = selectCurrentSubtitle(useSubtitleStoreApi.getState());
+      if (ph === 'awaitInput' && curCue) useDictationStoreApi.getState().markWrongCue(curCue.id);
       goToNextDictationCue();
     };
     document.addEventListener('keydown', handler, true);

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './mediaSession';
 import type { SubtitleCue, SubtitleConfig } from '../types';
 import { DEFAULT_SUBTITLE_CONFIG } from '../types';
 
@@ -10,9 +10,8 @@ interface SubtitleState {
   playheadIndex: number;
   activeWordIndex: number;
   config: SubtitleConfig;
-  offset: number;
   /** The active practice view owns the active cue while it is open. */
-  practiceMode: 'none' | 'dictation' | 'soundPattern';
+  practiceMode: 'none' | 'dictation';
 
   // Actions
   setSubtitles: (subtitles: SubtitleCue[]) => void;
@@ -20,10 +19,8 @@ interface SubtitleState {
   setPlayheadIndex: (index: number) => void;
   setActiveWordIndex: (index: number) => void;
   updateConfig: (patch: Partial<SubtitleConfig>) => void;
-  setOffset: (offset: number) => void;
-  adjustOffset: (delta: number) => void;
-  setPracticeMode: (mode: 'none' | 'dictation' | 'soundPattern') => void;
-  clearPracticeMode: (mode: 'dictation' | 'soundPattern') => void;
+  setPracticeMode: (mode: 'none' | 'dictation') => void;
+  clearPracticeMode: (mode: 'dictation') => void;
   reset: () => void;
 }
 
@@ -33,7 +30,6 @@ const initialState = {
   playheadIndex: -1,
   activeWordIndex: -1,
   config: DEFAULT_SUBTITLE_CONFIG,
-  offset: 0,
   practiceMode: 'none' as const,
 };
 
@@ -46,8 +42,6 @@ export const useSubtitleStore = create<SubtitleState>((set) => ({
   setActiveWordIndex: (activeWordIndex) => set({ activeWordIndex }),
   updateConfig: (patch) =>
     set((s) => ({ config: { ...s.config, ...patch } })),
-  setOffset: (offset) => set({ offset }),
-  adjustOffset: (delta) => set((s) => ({ offset: s.offset + delta })),
   setPracticeMode: (practiceMode) => set({ practiceMode }),
   clearPracticeMode: (mode) => set((s) => s.practiceMode === mode ? { practiceMode: 'none' } : s),
   reset: () =>

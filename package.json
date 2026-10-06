@@ -1,7 +1,16 @@
 {
 	"name": "obsidian-langplayer",
-	"version": "1.9.1",
-	"description": "Language-learning media player for Obsidian with user-triggered AI sentence meanings.",
+	"version": "1.9.2",
+	"description": "Language-learning media player for Obsidian with subtitle browsing, sentence dictation, and vocabulary management.",
+	"author": "dashell",
+	"homepage": "https://github.com/dashell7/obsidian-langplayer",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/dashell7/obsidian-langplayer.git"
+	},
+	"bugs": {
+		"url": "https://github.com/dashell7/obsidian-langplayer/issues"
+	},
 	"main": "main.js",
 	"type": "module",
 	"scripts": {
@@ -23,7 +32,8 @@
 		"esbuild": "^0.28.1",
 		"obsidian": "^1.13.1",
 		"typescript": "^5.9.3",
-		"vitest": "^4.1.11"
+		"vitest": "^4.1.11",
+		"yaml": "^2.9.1"
 	},
 	"dependencies": {
 		"react": "^18.3.1",

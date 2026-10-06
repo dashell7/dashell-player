@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './mediaSession';
 
 /** Lifecycle phase for the currently focused cue. */
 export type DictationPhase =

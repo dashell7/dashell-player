@@ -75,8 +75,8 @@ export const SubtitleItem = memo(function SubtitleItem({
 }: SubtitleItemProps) {
   const hasEn = showEn && cue.textEn;
   const hasZh = showZh && cue.textZh;
-  // Show raw text when both toggles are ON but no split en/zh data exists
-  const showRaw = showEn && showZh && !hasEn && !hasZh;
+  // Unsplit subtitles are the original language and remain visible when either language is enabled.
+  const showRaw = (showEn || showZh) && !cue.textEn && !cue.textZh;
   // Nothing to display text-wise — show empty placeholder to keep card clickable
   const showEmpty = !showRaw && !hasEn && !hasZh && !showTime;
 

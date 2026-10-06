@@ -135,10 +135,9 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
     try {
       await plugin.vocabDb.updateWord(entry.id, { status: next });
       useVocabularyStore.getState().updateEntry(entry.id, { status: next });
-      plugin.flashcardService.scheduleRefresh(useVocabularyStore.getState().entries);
     } catch (error) {
       logger.error('Vocabulary status update failed:', error);
-      new Notice(`LangPlayer: ${t('notice.vocabUpdateFailed')}`);
+      new Notice(`Dashell Player: ${t('notice.vocabUpdateFailed')}`);
     }
   }, [plugin]);
 

@@ -3,6 +3,9 @@
 // values from 'obsidian' (normalizePath, TFolder, …) needs this alias to load
 // under vitest. Configured via resolve.alias in vitest.config.ts.
 import { vi } from 'vitest';
+import { parse, stringify } from 'yaml';
+export const parseYaml = (value: string): unknown => parse(value);
+export const stringifyYaml = (value: unknown): string => stringify(value);
 
 export const requestUrl = vi.fn();
 

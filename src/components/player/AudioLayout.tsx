@@ -1,8 +1,9 @@
+import { useMediaSessionId, useStoreApi } from '../../store/mediaSession';
 import React, { useRef, useEffect } from 'react';
 import { Platform } from 'obsidian';
 import type { PlayerRef, MediaSource } from '../../types';
-import { MediaPlayer } from './MediaPlayer';
-import { SubtitleControls } from '../subtitle/SubtitleControls';
+import { MediaPlaybackStatus, MediaPlayer } from './MediaPlayer';
+import { notifyPlaybackBarActivity, PlaybackBar } from '../subtitle/PlaybackBar';
 import { ClickableText } from '../subtitle/ClickableText';
 import { useMediaSync } from '../../hooks/useMediaSync';
 import { usePlaybackModeEvents } from '../../hooks/usePlaybackModeEvents';
@@ -17,6 +18,8 @@ interface AudioLayoutProps {
 }
 
 export function AudioLayout({ source }: AudioLayoutProps) {
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const mediaSessionId = useMediaSessionId();
   const playerRef = useRef<PlayerRef>(null);
 
   useMediaSync(playerRef);
@@ -42,13 +45,13 @@ export function AudioLayout({ source }: AudioLayoutProps) {
 
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
-        usePlaybackStore.getState().playing ? p.pauseVideo() : p.playVideo();
+        usePlaybackStoreApi.getState().playing ? p.pauseVideo() : p.playVideo();
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault();
         p.seekTo(Math.max(0, p.getCurrentTime() - 5), 'seconds');
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        p.seekTo(Math.min(usePlaybackStore.getState().duration, p.getCurrentTime() + 5), 'seconds');
+        p.seekTo(Math.min(usePlaybackStoreApi.getState().duration, p.getCurrentTime() + 5), 'seconds');
       }
     };
     document.addEventListener('keydown', handler);
@@ -60,6 +63,7 @@ export function AudioLayout({ source }: AudioLayoutProps) {
       className="lp-audio-layout"
       onMouseEnter={() => { isMouseOver.current = true; }}
       onMouseLeave={() => { isMouseOver.current = false; }}
+      onMouseMove={() => notifyPlaybackBarActivity(mediaSessionId)}
     >
       {/* Audio element — no controls, so it renders at 0px height and is invisible.
           Must NOT be inside display:none — Chromium/Electron suspends the audio
@@ -73,9 +77,10 @@ export function AudioLayout({ source }: AudioLayoutProps) {
 
       {/* Visual area */}
       <AudioVisualArea source={source} />
+      <MediaPlaybackStatus onRetry={() => playerRef.current?.reload()} />
 
-      {/* Controls */}
-      <SubtitleControls playerRef={playerRef} />
+      {/* The same Aloud-style toolbar shell is used for audio and video. */}
+      <PlaybackBar playerRef={playerRef} />
     </div>
   );
 }
@@ -114,13 +119,13 @@ function AudioVisualArea({ source }: { source: MediaSource }) {
   return (
     <div className="lp-audio-visual">
       {/* File name — pinned to top */}
-      <div className="lp-audio-title">{source.displayName ?? 'Audio'}</div>
+      <h2 className="lp-audio-title">{source.displayName?.trim() || 'Audio'}</h2>
 
       {/* Center area: bars + subtitle */}
       <div className="lp-audio-center">
         {/* Animated bars */}
         <div className={`lp-audio-bars${playing ? ' lp-audio-bars--playing' : ''}${isRecording ? ' lp-audio-bars--recording' : ''}`}>
-          {[1, 2, 3, 4, 5].map((i) => (
+          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
             <div key={i} className="lp-audio-bar" />
           ))}
         </div>

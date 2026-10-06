@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './mediaSession';
 
 export type OverlayMode = 'auto' | 'original' | 'bilingual' | 'translation' | 'off';
 

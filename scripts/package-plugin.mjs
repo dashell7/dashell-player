@@ -11,7 +11,7 @@ import { join } from 'node:path';
 const releaseFiles = ['manifest.json', 'main.js', 'styles.css'];
 const manifest = JSON.parse(readFileSync('manifest.json', 'utf8'));
 const releaseDir = join('release', manifest.version);
-const zipName = `langplayer-${manifest.version}.zip`;
+const zipName = `dashell-player-${manifest.version}.zip`;
 const zipPath = join(releaseDir, zipName);
 
 for (const file of releaseFiles) {

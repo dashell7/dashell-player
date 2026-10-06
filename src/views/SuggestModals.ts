@@ -2,6 +2,7 @@ import { App, FuzzySuggestModal, Notice, TFile } from 'obsidian';
 import type { SubtitleLineOrder } from '../types';
 import { isSubtitleFile, loadSubtitleCues, logger } from '../utils';
 import { useSubtitleStore } from '../store/subtitleStore';
+import { getActiveMediaSession } from '../store/mediaSession';
 import { t } from '../i18n';
 
 /** Generic vault-file fuzzy picker. */
@@ -43,7 +44,11 @@ export function pickMediaFile(app: App, files: TFile[], onChoose: (file: TFile) 
 export function pickAndLoadSubtitle(
   app: App,
   lineOrder: SubtitleLineOrder,
-  onLoaded?: () => void,
+  options?: {
+    sessionId?: string;
+    isCurrent?: () => boolean;
+    onLoaded?: (file: TFile) => void;
+  },
 ): void {
   const files = app.vault.getFiles().filter((f) => isSubtitleFile(f.path));
   if (files.length === 0) {
@@ -58,9 +63,11 @@ export function pickAndLoadSubtitle(
           new Notice(t('notice.subtitleParseEmpty'));
           return;
         }
-        useSubtitleStore.getState().setSubtitles(cues);
+        if (options?.isCurrent && !options.isCurrent()) return;
+        const sessionId = options?.sessionId ?? getActiveMediaSession();
+        useSubtitleStore.forSession(sessionId).getState().setSubtitles(cues);
         new Notice(t('notice.subtitleLoaded', { n: cues.length, name: file.basename }));
-        onLoaded?.();
+        options?.onLoaded?.(file);
       } catch (e) {
         logger.error('Manual subtitle load failed:', e);
         new Notice(t('notice.subtitleParseEmpty'));

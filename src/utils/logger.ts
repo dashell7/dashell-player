@@ -1,4 +1,4 @@
-const PREFIX = '[LangPlayer]';
+const PREFIX = '[Dashell Player]';
 const DEBUG_ENABLED = false;
 
 export const logger = {

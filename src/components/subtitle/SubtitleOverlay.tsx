@@ -62,7 +62,7 @@ function SubtitleLine({ text, color, suppressHover, sentenceEn, sentenceZh, cueS
       className="lp-subtitle-overlay-line"
       style={{ color }}
     >
-      <ClickableText text={text} suppressLangrSubtitlePopup={suppressHover} sentenceEn={sentenceEn} sentenceZh={sentenceZh} cueStart={cueStart} />
+      <ClickableText text={text} suppressHoverLookup={suppressHover} sentenceEn={sentenceEn} sentenceZh={sentenceZh} cueStart={cueStart} />
     </div>
   );
 }

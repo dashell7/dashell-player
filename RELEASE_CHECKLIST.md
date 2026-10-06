@@ -1,4 +1,4 @@
-# LangPlayer release checklist
+# Dashell Player release checklist
 
 Legend: `[x]` complete in the repository, `[ ]` requires manual or account action.
 
@@ -20,8 +20,6 @@ Legend: `[x]` complete in the repository, `[ ]` requires manual or account actio
 - [x] No default hotkeys.
 - [x] No telemetry, analytics, remote code loading, `eval`, or `innerHTML` sinks.
 - [x] Settings use Obsidian `loadData` / `saveData`.
-- [x] AI API keys use Obsidian SecretStorage and legacy keys migrate before plugin settings are saved.
-- [x] AI sentence transmission is disclosed in README and privacy documentation.
 - [x] Vault background edits use atomic `Vault.process()`.
 - [x] Vault deletion uses `FileManager.trashFile()`.
 - [x] Playback progress is stored in plugin data instead of global `localStorage`.

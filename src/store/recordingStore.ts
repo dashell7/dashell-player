@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './mediaSession';
 import type { RecorderState } from '../types';
 
 /** Most recent finished recording — kept in-memory for instant "listen back".

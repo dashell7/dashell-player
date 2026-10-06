@@ -1,4 +1,6 @@
 import type { SubtitleCue } from '../types';
+import { useCallback } from 'react';
+import { getActiveMediaSession, useMediaSessionId } from '../store/mediaSession';
 
 // ─── LangPlayer window events ─────────────────────────────────────────────────
 // Centralized, typed registry for the window-level CustomEvents used to bridge
@@ -13,7 +15,7 @@ import type { SubtitleCue } from '../types';
 export interface LpEventMap {
   /** Start an N-times segment loop of the given cue. */
   'lp-start-segment-loop': { cue: SubtitleCue; count: number };
-  /** Start an A/B repeat between two timestamps (subtitle-offset adjusted). */
+  /** Start an A/B repeat between two media timestamps. */
   'lp-start-ab-repeat': { a: number; b: number };
   /** Toggle the microphone recorder on the active player. */
   'langplayer-toggle-recording': undefined;
@@ -21,6 +23,7 @@ export interface LpEventMap {
   'langplayer-toggle-recording-playback': undefined;
   /** Stop playback of the most recent self-recording. */
   'langplayer-stop-recording-playback': undefined;
+  'lp-practice-navigate': { direction: 'next' | 'previous' | 'replay' };
 }
 
 export type LpEventName = keyof LpEventMap;
@@ -44,8 +47,16 @@ export function dispatchLpEvent<K extends LpEventName>(
 export function onLpEvent<K extends LpEventName>(
   name: K,
   handler: (detail: LpEventMap[K]) => void,
+  sessionId?: string,
 ): () => void {
-  const listener = (e: Event) => handler((e as CustomEvent<LpEventMap[K]>).detail);
+  const listener = (e: Event) => {
+    if (sessionId && sessionId !== getActiveMediaSession()) return;
+    handler((e as CustomEvent<LpEventMap[K]>).detail);
+  };
   window.addEventListener(name, listener);
   return () => window.removeEventListener(name, listener);
+}
+export function useLpEventListener(): typeof onLpEvent {
+  const session = useMediaSessionId();
+  return useCallback((name, handler) => onLpEvent(name, handler, session), [session]);
 }

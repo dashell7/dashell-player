@@ -8,7 +8,7 @@
 
 - [ ] **设置 → 通用 → 听写 → 显示答案的失败次数阈值** 调到 15 或更高（>10），失败时确实在阈值到达后才解锁（之前 P0 bug 截断到 10）
 - [ ] **设置 → 通用 → 录音格式** 改成 mp3/wav 后录一段，生成的文件后缀正确（之前硬编码 .webm）
-- [ ] **设置文件检查**：禁用插件，编辑器打开 `.obsidian/plugins/langplayer/data.json`，应**看不到** `deepgramApiKey` / `translationApiKey` / `freeSpeechPrompts` / `ytdlpPath` 等旧字段（v3 迁移已删）
+- [ ] **设置文件检查**：禁用插件，编辑器打开 `.obsidian/plugins/dashell-player/data.json`，应**看不到** `deepgramApiKey` / `translationApiKey` / `freeSpeechPrompts` / `ytdlpPath` 等旧字段（v3 迁移已删）
 - [ ] **闪卡 vault 路径**：装了 Language Learner 时，闪卡写到 LL 配置的复习库路径（之前直接绕过 LL 配置）
 - [ ] **录音麦克风按钮发光**：录音时按钮外圈随声音强度有红色光晕（音量表 UI）
 - [ ] **生词列表加载**：打开词汇视图时短暂显示"加载中..."而不是空表

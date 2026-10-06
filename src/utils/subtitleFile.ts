@@ -2,6 +2,24 @@ import type { App, TFile } from 'obsidian';
 import type { SubtitleCue, SubtitleLineOrder } from '../types';
 import { SubtitleParser } from '../services/SubtitleParser';
 
+/** Media exports sometimes leave whitespace before the extension while the
+ * matching subtitle does not. Treat surrounding whitespace as insignificant. */
+export function getSubtitleBaseNameCandidates(mediaBaseName: string): string[] {
+  const baseName = mediaBaseName.trim();
+  if (!baseName) return [];
+  return baseName.endsWith('_aac')
+    ? [baseName, baseName.slice(0, -4)]
+    : [baseName];
+}
+
+export function isSubtitleBaseNameVariant(
+  mediaBaseNames: readonly string[],
+  subtitleBaseName: string,
+): boolean {
+  const subtitleName = subtitleBaseName.trim();
+  return mediaBaseNames.some((name) => subtitleName.startsWith(`${name.trim()}.`));
+}
+
 /**
  * Decode a subtitle file's bytes with BOM-based encoding detection, using the
  * platform-agnostic TextDecoder (works on mobile, unlike Node's Buffer).

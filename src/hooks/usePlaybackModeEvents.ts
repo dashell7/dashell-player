@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { usePlaybackMode } from './usePlaybackMode';
-import { onLpEvent } from '../constants/events';
+import { useLpEventListener } from '../constants/events';
 
 /**
  * Wire the window-level loop / AB-repeat commands (dispatched by the plugin's
@@ -11,13 +11,14 @@ import { onLpEvent } from '../constants/events';
  * VideoLayout listened, so the commands silently did nothing for audio.)
  */
 export function usePlaybackModeEvents(): void {
+  const listenLpEvent = useLpEventListener();
   const { startSegmentLoop, startABRepeat } = usePlaybackMode();
 
   useEffect(() => {
-    const offLoop = onLpEvent('lp-start-segment-loop', ({ cue, count }) => {
+    const offLoop = listenLpEvent('lp-start-segment-loop', ({ cue, count }) => {
       startSegmentLoop(cue, count);
     });
-    const offAB = onLpEvent('lp-start-ab-repeat', ({ a, b }) => {
+    const offAB = listenLpEvent('lp-start-ab-repeat', ({ a, b }) => {
       startABRepeat(a, b);
     });
     return () => {

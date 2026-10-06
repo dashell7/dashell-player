@@ -4,6 +4,7 @@ import { createRoot, Root } from 'react-dom/client';
 import type { LangPlayerPluginRef } from '../context';
 import { MediaViewProvider } from '../context';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
+import { ActiveMediaSessionProvider } from '../store/mediaSession';
 
 /**
  * Base for the simple React-backed leaf views (subtitle panel, dictation,
@@ -32,9 +33,9 @@ export abstract class ReactItemView extends ItemView {
     this.root = createRoot(container);
     this.root.render(
       <ErrorBoundary>
-        <MediaViewProvider plugin={this.plugin} source={null}>
+        <ActiveMediaSessionProvider><MediaViewProvider plugin={this.plugin} source={null}>
           {this.renderContent()}
-        </MediaViewProvider>
+        </MediaViewProvider></ActiveMediaSessionProvider>
       </ErrorBoundary>,
     );
   }

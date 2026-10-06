@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import type { DictationProgressSnapshot, LangPlayerSettings, MediaSource, SoundPatternProgressSnapshot, StudyHabitProgress, SubtitleCue } from '../types';
+import type { WorkspaceLeaf } from 'obsidian';
+import type { DictationProgressSnapshot, LangPlayerSettings, MediaSource, StudyHabitProgress, SubtitleCue } from '../types';
 import type { VocabularyDbService } from '../services/VocabularyDbService';
 import type { FlashcardService } from '../services/FlashcardService';
 
@@ -7,8 +8,6 @@ import type { FlashcardService } from '../services/FlashcardService';
 export interface LangPlayerPluginRef {
   settings: LangPlayerSettings;
   saveSettings: () => Promise<void>;
-  getAiMeaningApiKey: () => string;
-  setAiMeaningApiKey: (apiKey: string) => void;
   noteService: {
     saveToNote: (cue: SubtitleCue, source: MediaSource | null, showEn?: boolean, showZh?: boolean) => Promise<void>;
     openStudyNote: (source: MediaSource | null) => Promise<void>;
@@ -19,8 +18,8 @@ export interface LangPlayerPluginRef {
   app: import('obsidian').App;
   openMediaPicker: () => void;
   openSubtitlePanel: () => Promise<void>;
+  ensureSubtitlePanelVisible: (playerLeaf?: WorkspaceLeaf) => Promise<void>;
   openDictationView: () => Promise<void>;
-  openSoundPatternView: () => Promise<void>;
   openVocabulary: () => Promise<void>;
   startReview: () => void;
   /** Open a media source (vault path or remote URL) at an optional timestamp —
@@ -28,12 +27,13 @@ export interface LangPlayerPluginRef {
   openMediaAt: (url: string, timestamp?: number) => Promise<void>;
   /** Fuzzy-pick a subtitle file from the vault and load it into the store. */
   loadSubtitleFromVault: () => void;
+  getSubtitleAssociationPath: (source: MediaSource) => string | undefined;
+  getAssociatedSubtitleFile: (source: MediaSource) => import('obsidian').TFile | null;
+  rememberSubtitleAssociation: (source: MediaSource, subtitleFile: import('obsidian').TFile) => Promise<void>;
+  clearSubtitleAssociation: (source: MediaSource) => Promise<void>;
   getDictationProgress: (mediaKey: string) => DictationProgressSnapshot | undefined;
   setDictationProgress: (mediaKey: string, snapshot: DictationProgressSnapshot) => Promise<void>;
   clearDictationProgress: (mediaKey: string) => Promise<void>;
-  getSoundPatternProgress: (mediaKey: string) => SoundPatternProgressSnapshot | undefined;
-  setSoundPatternProgress: (mediaKey: string, snapshot: SoundPatternProgressSnapshot) => Promise<void>;
-  clearSoundPatternProgress: (mediaKey: string) => Promise<void>;
   recordStudyActivity: (sentenceDelta?: number) => Promise<StudyHabitProgress>;
   dismissStudyRecoveryPrompt: () => Promise<StudyHabitProgress>;
   getPlaybackProgress: (mediaKey: string) => number | undefined;

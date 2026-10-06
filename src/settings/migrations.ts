@@ -1,7 +1,7 @@
 import type { LangPlayerSettings } from '../types';
 import { DEFAULT_DICTATION_HOTKEYS, DEFAULT_SETTINGS } from '../types';
 import { logger } from '../utils';
-import { clampSoundPatternTarget } from '../utils/soundPattern';
+import { normalizeSubtitleAssociations } from '../utils/subtitleAssociation';
 
 // ─── Settings schema migrations ───────────────────────────────────────────────
 //
@@ -254,33 +254,33 @@ const migrations: Migration[] = [
     },
   },
   {
-    to: 9,
+    to: 11,
     apply: (s) => {
-      const soundPattern = s.soundPattern as Partial<LangPlayerSettings['soundPattern']> | undefined;
-      s.soundPattern = { repetitionTarget: clampSoundPatternTarget(soundPattern?.repetitionTarget) };
-      if (!s.soundPatternProgressByMedia || typeof s.soundPatternProgressByMedia !== 'object') {
-        s.soundPatternProgressByMedia = {};
-      }
-      const aiMeaning = s.aiMeaning as Partial<LangPlayerSettings['aiMeaning']> | undefined;
-      s.aiMeaning = {
-        enabled: typeof aiMeaning?.enabled === 'boolean' ? aiMeaning.enabled : false,
-        endpoint: typeof aiMeaning?.endpoint === 'string' ? aiMeaning.endpoint.trim() : '',
-        model: typeof aiMeaning?.model === 'string' ? aiMeaning.model.trim() : '',
-      };
+      const raw = s as unknown as Record<string, unknown>;
+      const visibility = raw.playbackBarVisibility;
+      raw.playbackBarVisibility =
+        visibility === 'always-mobile' || visibility === 'playing' || visibility === 'never'
+          ? visibility
+          : DEFAULT_SETTINGS.playbackBarVisibility;
+      raw.playbackBarDisplay = raw.playbackBarDisplay === 'floating' ? 'floating' : DEFAULT_SETTINGS.playbackBarDisplay;
+      raw.playbackBarPosition = raw.playbackBarPosition === 'top' ? 'top' : DEFAULT_SETTINGS.playbackBarPosition;
+      const autoHideMs = raw.playbackBarAutoHideMs;
+      raw.playbackBarAutoHideMs =
+        typeof autoHideMs === 'number' && Number.isFinite(autoHideMs)
+          ? Math.max(1000, Math.min(10000, Math.round(autoHideMs / 250) * 250))
+          : DEFAULT_SETTINGS.playbackBarAutoHideMs;
     },
   },
   {
-    to: 10,
+    to: 12,
+    apply: () => {
+      // Sound-pattern settings are intentionally left untouched in old data.
+    },
+  },
+  {
+    to: 13,
     apply: (s) => {
-      const aiMeaning = s.aiMeaning as Partial<LangPlayerSettings['aiMeaning']> | undefined;
-      s.aiMeaning = {
-        enabled: typeof aiMeaning?.enabled === 'boolean' ? aiMeaning.enabled : false,
-        endpoint:
-          typeof aiMeaning?.endpoint === 'string'
-            ? aiMeaning.endpoint.trim()
-            : DEFAULT_SETTINGS.aiMeaning.endpoint,
-        model: typeof aiMeaning?.model === 'string' ? aiMeaning.model.trim() : '',
-      };
+      s.subtitleFileByMedia = normalizeSubtitleAssociations(s.subtitleFileByMedia);
     },
   },
 ];

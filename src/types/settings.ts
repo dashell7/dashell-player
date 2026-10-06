@@ -1,6 +1,5 @@
 import type { SubtitlePanelLocation, SubtitleLineOrder } from './subtitle';
 import type { UILanguage } from './media';
-import type { AiMeaningSettings, SoundPatternProgressSnapshot, SoundPatternSettings } from './soundPattern';
 
 // ─── Plugin Settings ────────────────────────────────────────────────────────
 
@@ -20,8 +19,16 @@ import type { AiMeaningSettings, SoundPatternProgressSnapshot, SoundPatternSetti
  *   8          — stores playback resume positions in plugin data
  *   9          — adds sound-pattern training and on-demand AI meanings
  *   10         — moves the AI meaning key to Obsidian SecretStorage
+ *   11         — adds Aloud-style playback toolbar display settings
+ *   12         — removes sound-pattern training; legacy settings are retained
+ *   13         — stores explicit media-to-subtitle file associations
  */
-export const CURRENT_SETTINGS_VERSION = 10;
+export const CURRENT_SETTINGS_VERSION = 13;
+
+/** Aloud-compatible conditions for showing the playback toolbar. */
+export type PlaybackBarVisibility = 'always' | 'always-mobile' | 'playing' | 'never';
+export type PlaybackBarPosition = 'top' | 'bottom';
+export type PlaybackBarDisplay = 'fixed' | 'floating';
 
 // ─── Dictation Settings ──────────────────────────────────────────────────────
 
@@ -114,9 +121,18 @@ export interface LangPlayerSettings {
   loopCount: number;
   autoPlayNext: boolean;
   playerHeight: number;
+  /** When the playback toolbar is mounted, following Aloud's showPlayerView modes. */
+  playbackBarVisibility: PlaybackBarVisibility;
+  /** Fixed bars occupy layout space; floating bars overlay the media area and auto-hide. */
+  playbackBarDisplay: PlaybackBarDisplay;
+  playbackBarPosition: PlaybackBarPosition;
+  /** Floating toolbar inactivity delay in milliseconds. */
+  playbackBarAutoHideMs: number;
   subtitleWidth: number;
   showInlineSubtitles: boolean;
   playbackProgressByMedia: Record<string, number>;
+  /** Stable media identity -> vault-relative subtitle path. */
+  subtitleFileByMedia: Record<string, string>;
 
   // ── Subtitle Style ──
   subtitleFontSize: number;
@@ -189,11 +205,6 @@ export interface LangPlayerSettings {
   dictation: DictationSettings;
   dictationProgressByMedia: Record<string, DictationProgressSnapshot>;
 
-  // ── Sound-pattern practice ──
-  soundPattern: SoundPatternSettings;
-  soundPatternProgressByMedia: Record<string, SoundPatternProgressSnapshot>;
-  aiMeaning: AiMeaningSettings;
-
   // ── Study Habit ──
   studyHabit: StudyHabitSettings;
   studyHabitProgress: StudyHabitProgress;
@@ -250,9 +261,14 @@ export const DEFAULT_SETTINGS: LangPlayerSettings = {
   loopCount: 3,
   autoPlayNext: false,
   playerHeight: 400,
+  playbackBarVisibility: 'always',
+  playbackBarDisplay: 'fixed',
+  playbackBarPosition: 'bottom',
+  playbackBarAutoHideMs: 2500,
   subtitleWidth: 400,
   showInlineSubtitles: true,
   playbackProgressByMedia: {},
+  subtitleFileByMedia: {},
 
   // Subtitle Style
   subtitleFontSize: 15,
@@ -324,15 +340,6 @@ export const DEFAULT_SETTINGS: LangPlayerSettings = {
     hotkeys: { ...DEFAULT_DICTATION_HOTKEYS },
   },
   dictationProgressByMedia: {},
-
-  // Sound-pattern practice
-  soundPattern: { repetitionTarget: 30 },
-  soundPatternProgressByMedia: {},
-  aiMeaning: {
-    enabled: false,
-    endpoint: 'https://api.openai.com/v1/chat/completions',
-    model: '',
-  },
 
   // Study Habit
   studyHabit: {

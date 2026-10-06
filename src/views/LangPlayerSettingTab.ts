@@ -1,9 +1,10 @@
-import { App, Notice, PluginSettingTab, Setting, TFolder } from 'obsidian';
+import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import type LangPlayerPlugin from '../main';
 import { normalizeHotkey } from '../utils';
-import { DEFAULT_DICTATION_HOTKEYS, type SubtitlePanelLocation, type SubtitleLineOrder } from '../types';
+import { DEFAULT_DICTATION_HOTKEYS, type PlaybackBarDisplay, type PlaybackBarPosition, type PlaybackBarVisibility, type SubtitlePanelLocation, type SubtitleLineOrder } from '../types';
 
 import { t } from '../i18n';
+import { getQiaomuReaderLookup } from '../services/QiaomuReaderLookup';
 
 export class LangPlayerSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: LangPlayerPlugin) {
@@ -154,6 +155,46 @@ export class LangPlayerSettingTab extends PluginSettingTab {
       async (v) => { this.plugin.settings.playerHeight = v; await this.plugin.saveSettings(); },
     );
     new Setting(el)
+      .setName(t('settings.playbackBarVisibility'))
+      .setDesc(t('settings.playbackBarVisibilityDesc'))
+      .addDropdown((d) => d
+        .addOption('always', t('settings.playbackBarVisibilityAlways'))
+        .addOption('always-mobile', t('settings.playbackBarVisibilityAlwaysMobile'))
+        .addOption('playing', t('settings.playbackBarVisibilityPlaying'))
+        .addOption('never', t('settings.playbackBarVisibilityNever'))
+        .setValue(this.plugin.settings.playbackBarVisibility)
+        .onChange(async (v) => {
+          this.plugin.settings.playbackBarVisibility = v as PlaybackBarVisibility;
+          await this.plugin.saveSettings();
+        })),
+    new Setting(el)
+      .setName(t('settings.playbackBarDisplay'))
+      .setDesc(t('settings.playbackBarDisplayDesc'))
+      .addDropdown((d) => d
+        .addOption('fixed', t('settings.playbackBarDisplayFixed'))
+        .addOption('floating', t('settings.playbackBarDisplayFloating'))
+        .setValue(this.plugin.settings.playbackBarDisplay)
+        .onChange(async (v) => {
+          this.plugin.settings.playbackBarDisplay = v as PlaybackBarDisplay;
+          await this.plugin.saveSettings();
+        })),
+    new Setting(el)
+      .setName(t('settings.playbackBarPosition'))
+      .setDesc(t('settings.playbackBarPositionDesc'))
+      .addDropdown((d) => d
+        .addOption('top', t('settings.playbackBarPositionTop'))
+        .addOption('bottom', t('settings.playbackBarPositionBottom'))
+        .setValue(this.plugin.settings.playbackBarPosition)
+        .onChange(async (v) => {
+          this.plugin.settings.playbackBarPosition = v as PlaybackBarPosition;
+          await this.plugin.saveSettings();
+        })),
+    this.addSliderValue(
+      new Setting(el).setName(t('settings.playbackBarAutoHide')).setDesc(t('settings.playbackBarAutoHideDesc')),
+      1000, 10000, 500, this.plugin.settings.playbackBarAutoHideMs, (v) => `${(v / 1000).toFixed(1)}s`,
+      async (v) => { this.plugin.settings.playbackBarAutoHideMs = v; await this.plugin.saveSettings(); },
+    );
+    new Setting(el)
       .setName(t('settings.showInlineSubtitles'))
       .setDesc(t('settings.showInlineSubtitlesDesc'))
       .addToggle((t) =>
@@ -283,57 +324,6 @@ export class LangPlayerSettingTab extends PluginSettingTab {
           }),
       );
 
-    new Setting(el).setName(t('settings.soundPattern')).setHeading();
-    this.addSliderValue(
-      new Setting(el).setName(t('settings.soundPatternTarget')).setDesc(t('settings.soundPatternTargetDesc')),
-      1, 100, 1, this.plugin.settings.soundPattern.repetitionTarget, (v) => String(v),
-      async (v) => {
-        this.plugin.settings.soundPattern.repetitionTarget = v;
-        await this.plugin.saveSettings();
-      },
-    );
-
-    new Setting(el).setName(t('settings.aiMeaning')).setHeading();
-    new Setting(el)
-      .setName(t('settings.aiMeaningEnabled'))
-      .setDesc(t('settings.aiMeaningEnabledDesc'))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.aiMeaning.enabled).onChange(async (v) => {
-          this.plugin.settings.aiMeaning.enabled = v;
-          await this.plugin.saveSettings();
-        }),
-      );
-    new Setting(el)
-      .setName(t('settings.aiMeaningEndpoint'))
-      .setDesc(t('settings.aiMeaningEndpointDesc'))
-      .addText((text) =>
-        text.setValue(this.plugin.settings.aiMeaning.endpoint).onChange(async (v) => {
-          this.plugin.settings.aiMeaning.endpoint = v.trim();
-          await this.plugin.saveSettings();
-        }),
-      );
-    new Setting(el)
-      .setName(t('settings.aiMeaningModel'))
-      .setDesc(t('settings.aiMeaningModelDesc'))
-      .addText((text) =>
-        text.setValue(this.plugin.settings.aiMeaning.model).onChange(async (v) => {
-          this.plugin.settings.aiMeaning.model = v.trim();
-          await this.plugin.saveSettings();
-        }),
-      );
-    new Setting(el)
-      .setName(t('settings.aiMeaningKey'))
-      .setDesc(t('settings.aiMeaningKeyDesc'))
-      .addText((text) => {
-        text.inputEl.type = 'password';
-        return text.setValue(this.plugin.getAiMeaningApiKey()).onChange((v) => {
-          try {
-            this.plugin.setAiMeaningApiKey(v);
-          } catch {
-            new Notice(t('settings.aiMeaningKeySaveFailed'));
-          }
-        });
-      });
   }
 
   private renderSubtitleTab(el: HTMLElement): void {
@@ -396,6 +386,10 @@ export class LangPlayerSettingTab extends PluginSettingTab {
   }
 
   private renderVocabTab(el: HTMLElement): void {
+    if (!getQiaomuReaderLookup(this.app)) {
+      el.createDiv({ cls: 'lp-ll-missing-banner', text: t('settings.readerLookupUnavailable') });
+    }
+
     new Setting(el)
       .setName(t('settings.vocabHighlight')).setDesc(t('settings.vocabHighlightDesc'))
       .addToggle((t) =>
@@ -422,9 +416,9 @@ export class LangPlayerSettingTab extends PluginSettingTab {
     if (this.plugin.llVocabPaths) {
       // Language Learner is installed — paths managed there, no UI needed here
     } else {
-      // Language Learner not installed — show manual configuration
+      // LangPlayer owns these paths when Language Learner is absent.
       const warn = el.createDiv({ cls: 'lp-ll-missing-banner' });
-      warn.createSpan({ text: t('settings.llNotDetected') });
+      warn.createSpan({ text: t('settings.localVocabStorage') });
 
       new Setting(el)
         .setName(t('settings.vocabFolder')).setDesc(t('settings.vocabFolderDesc'))

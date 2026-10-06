@@ -1,3 +1,4 @@
+import { useStoreApi } from '../../store/mediaSession';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { List, useDynamicRowHeight } from 'react-window';
 import type { ListImperativeAPI, RowComponentProps } from 'react-window';
@@ -81,10 +82,11 @@ function RowComponent({
 }
 
 export function SubtitleList({ showTime, showEn, showZh, search }: SubtitleListProps) {
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
   const subtitles = useSubtitleStore((s) => s.subtitles);
   const activeIndex = useSubtitleStore((s) => s.activeIndex);
   const playheadIndex = useSubtitleStore((s) => s.playheadIndex);
-  const offset = useSubtitleStore((s) => s.offset);
   const dictationOpen = useDictationStore((s) => s.dictationOpen);
   const mediaCtx = useMediaViewOptional();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -163,24 +165,24 @@ export function SubtitleList({ showTime, showEn, showZh, search }: SubtitleListP
     (cue: SubtitleCue) => {
       const idx = subtitles.findIndex((s) => s.id === cue.id);
       if (idx >= 0) {
-        useSubtitleStore.getState().setActiveIndex(idx);
-        useSubtitleStore.getState().setPlayheadIndex(idx);
+        useSubtitleStoreApi.getState().setActiveIndex(idx);
+        useSubtitleStoreApi.getState().setPlayheadIndex(idx);
       }
       if (dictationOpen) return;
-      const player = usePlaybackStore.getState().playerRef;
+      const player = usePlaybackStoreApi.getState().playerRef;
       if (player) {
-        player.seekTo(cue.start + offset, 'seconds');
+        player.seekTo(cue.start, 'seconds');
         player.playVideo();
       }
     },
-    [dictationOpen, offset, subtitles],
+    [dictationOpen, subtitles],
   );
 
   const handleSave = useCallback(
     (cue: SubtitleCue) => {
       if (!mediaCtx) return;
       // Get live source from playbackStore — SubtitlePanelView passes source=null in context
-      const source = usePlaybackStore.getState().source;
+      const source = usePlaybackStoreApi.getState().source;
       void mediaCtx.plugin.noteService.saveToNote(cue, source, showEn, showZh).catch((error: unknown) => {
         logger.error('Failed to save subtitle to note:', error);
         new Notice(t('notice.noteSaveFailed'));

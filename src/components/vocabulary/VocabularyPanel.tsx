@@ -7,6 +7,7 @@ import { useVocabularyStore, type VocabEntry } from '../../store/vocabularyStore
 import { usePlugin } from '../../context';
 import { logger } from '../../utils';
 import { t } from '../../i18n';
+import type { DeletedWord } from '../../services/VocabularyDbService';
 
 export function VocabularyPanel() {
   const plugin = usePlugin();
@@ -15,23 +16,33 @@ export function VocabularyPanel() {
   const [showStats, setShowStats] = useState(false);
   const [editingEntry, setEditingEntry] = useState<VocabEntry | null>(null);
   const [busy, setBusy] = useState<'generate' | 'export' | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const loadGeneration = useRef(0);
   const isLoading = useVocabularyStore((s) => s.isLoading);
 
-  // Load vocabulary on mount
-  useEffect(() => {
+  const loadVocabulary = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    setLoadError(false);
     useVocabularyStore.getState().setLoading(true);
-    vocabDb.getAll()
-      .then((entries) => {
-        useVocabularyStore.getState().setEntries(entries);
-      })
-      .catch((e) => {
-        // Without this, a failed load would leave the spinner up forever.
-        logger.error('Failed to load vocabulary:', e);
-      })
-      .finally(() => {
+    try {
+      const entries = await vocabDb.getAll();
+      if (generation !== loadGeneration.current) return;
+      useVocabularyStore.getState().setEntries(entries);
+    } catch (e) {
+      if (generation !== loadGeneration.current) return;
+      logger.error('Failed to load vocabulary:', e);
+      setLoadError(true);
+    } finally {
+      if (generation === loadGeneration.current) {
         useVocabularyStore.getState().setLoading(false);
-      });
-  }, []);
+      }
+    }
+  }, [vocabDb]);
+
+  useEffect(() => {
+    void loadVocabulary();
+    return () => { loadGeneration.current++; };
+  }, [loadVocabulary]);
 
   const handleEdit = useCallback((entry: VocabEntry) => {
     setEditingEntry(entry);
@@ -46,7 +57,7 @@ export function VocabularyPanel() {
         useVocabularyStore.getState().updateEntry(entry.id, entry);
       } catch (e) {
         logger.error('updateWord failed:', e);
-        new Notice(`LangPlayer: ${t('notice.vocabUpdateFailed')}`);
+        new Notice(`Dashell Player: ${t('notice.vocabUpdateFailed')}`);
         return;
       }
     }
@@ -56,12 +67,13 @@ export function VocabularyPanel() {
   const handleDelete = useCallback(async (id: number) => {
     const entry = useVocabularyStore.getState().entries.find((e) => e.id === id);
     if (!entry) return;
+    let deleted: DeletedWord;
     try {
-      await vocabDb.deleteWord(id);
+      deleted = await vocabDb.deleteWord(id);
       useVocabularyStore.getState().removeEntry(id);
     } catch (e) {
       logger.error('deleteWord failed:', e);
-      new Notice(`LangPlayer: ${t('notice.vocabDeleteFailed')}`);
+      new Notice(`Dashell Player: ${t('notice.vocabDeleteFailed')}`);
       return;
     }
     // Deletion is permanent on disk, so offer a quick undo (re-creates the word).
@@ -76,12 +88,11 @@ export function VocabularyPanel() {
       notice?.hide();
       void (async () => {
         try {
-          const { id: _omit, ...rest } = entry;
-          const newId = await vocabDb.addWord(rest);
-          useVocabularyStore.getState().addEntry({ ...entry, id: newId });
+          await vocabDb.restoreWord(deleted);
+          useVocabularyStore.getState().setEntries(await vocabDb.getAll());
         } catch (e) {
           logger.error('undo delete failed:', e);
-          new Notice(`LangPlayer: ${t('notice.vocabDeleteFailed')}`);
+          new Notice(`Dashell Player: ${t('notice.vocabDeleteFailed')}`);
         }
       })();
     });
@@ -97,12 +108,12 @@ export function VocabularyPanel() {
       const url = URL.createObjectURL(blob);
       const a = createEl('a');
       a.href = url;
-      a.download = `langplayer-vocab-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `dashell-player-vocab-${new Date().toISOString().split('T')[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
       logger.error('exportCSV failed:', e);
-      new Notice(`LangPlayer: ${t('notice.vocabExportFailed')}`);
+      new Notice(`Dashell Player: ${t('notice.vocabExportFailed')}`);
     } finally {
       setBusy(null);
     }
@@ -120,7 +131,7 @@ export function VocabularyPanel() {
       new Notice(t('notice.flashcardsGenerated'));
     } catch (e) {
       logger.error('generateFlashcards failed:', e);
-      new Notice(`LangPlayer: ${t('notice.flashcardsGenerateFailed')}`);
+      new Notice(`Dashell Player: ${t('notice.flashcardsGenerateFailed')}`);
     } finally {
       setBusy(null);
     }
@@ -166,6 +177,14 @@ export function VocabularyPanel() {
       {isLoading ? (
         <div className="lp-panel-message">
           {t('app.loading')}
+        </div>
+      ) : loadError ? (
+        <div className="lp-vocab-empty lp-vocab-empty--guided" role="alert">
+          <Icon name="alert-circle" size={24} />
+          <strong>{t('vocab.loadFailed')}</strong>
+          <button className="lp-btn lp-btn-primary" onClick={() => { void loadVocabulary(); }}>
+            <Icon name="refresh-cw" size={14} /> {t('error.retry')}
+          </button>
         </div>
       ) : (
         <VocabularyTable

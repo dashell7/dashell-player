@@ -1,3 +1,4 @@
+import { useStoreApi } from '../store/mediaSession';
 import { ItemView, WorkspaceLeaf, TFile, TFolder, normalizePath, Notice, type ViewStateResult } from 'obsidian';
 import React, { useCallback, useEffect, useRef } from 'react';
 import { createRoot, Root } from 'react-dom/client';
@@ -13,42 +14,52 @@ import { useSubtitleStore } from '../store/subtitleStore';
 import { usePlaybackStore } from '../store/playbackStore';
 import { useLoopStore } from '../store/loopStore';
 import { resetMediaStores } from '../store';
-import { dispatchLpEvent, onLpEvent } from '../constants/events';
+import { dispatchLpEvent, useLpEventListener } from '../constants/events';
 import { useRecordingStore } from '../store/recordingStore';
 import { useDictationStore } from '../store/dictationStore';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useUIStore } from '../store/uiStore';
-import { ensureVaultFolder, isSubtitleFile, loadSubtitleCues } from '../utils';
+import { ensureVaultFolder, getSubtitleBaseNameCandidates, isSubtitleBaseNameVariant, isSubtitleFile, loadSubtitleCues } from '../utils';
 import { Icon } from '../components/shared/Icon';
 import { t } from '../i18n';
 import { logger } from '../utils/logger';
+import { MediaSessionContext, activateMediaSession, releaseMediaSession } from '../store/mediaSession';
 
 interface PlayerAppProps {
   source: MediaSource | null;
   plugin: LangPlayerPluginRef;
+  isCurrentSource: () => boolean;
 }
 
-function PlayerApp({ source, plugin }: PlayerAppProps) {
+function PlayerApp({ source, plugin, isCurrentSource }: PlayerAppProps) {
+  const listenLpEvent = useLpEventListener();
+  const useUIStoreApi = useStoreApi(useUIStore);
+  const useRecordingStoreApi = useStoreApi(useRecordingStore);
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const useLoopStoreApi = useStoreApi(useLoopStore);
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
+  const useDictationStoreApi = useStoreApi(useDictationStore);
   const recorder = useAudioRecorder();
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
-  const subtitleCount = useSubtitleStore((s) => s.subtitles.length);
   const samplePath = '01-Input/Videos/示例听力练习.wav';
   const hasSample = !!plugin.app.vault.getAbstractFileByPath(samplePath);
 
   // Initialize overlay mode from settings on mount
   useEffect(() => {
     if (!plugin.settings.showInlineSubtitles) {
-      useUIStore.getState().setOverlayMode('off');
+      useUIStoreApi.getState().setOverlayMode('off');
     }
   }, [plugin]);
 
   // Auto-load subtitles when source changes
   useEffect(() => {
-    if (!source?.file) return;
-    void loadSubtitlesForFile(source.file, plugin).catch((error: unknown) => {
+    if (!source) return;
+    let cancelled = false;
+    void loadSubtitlesForSource(source, plugin, () => !cancelled && isCurrentSource(), cues => useSubtitleStoreApi.getState().setSubtitles(cues)).catch((error: unknown) => {
       logger.warn('Failed to auto-load subtitles:', error);
     });
+    return () => { cancelled = true; };
   }, [source, plugin]);
 
   // Cleanup recorder on unmount
@@ -59,7 +70,7 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
           logger.warn('Failed to stop recording during view cleanup:', error);
         });
       }
-      useRecordingStore.getState().reset();
+      useRecordingStoreApi.getState().reset();
     };
   }, []);
 
@@ -70,16 +81,16 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
   const captureSubtitleAtStartRef = useRef<string>('');
 
   const startRecording = useCallback(async () => {
-    const playerRef = usePlaybackStore.getState().playerRef;
+    const playerRef = usePlaybackStoreApi.getState().playerRef;
     if (playerRef) playerRef.pauseVideo();
     // Stop any in-progress listen-back so the old recording doesn't play over
     // the mic while we capture a new take.
     dispatchLpEvent('langplayer-stop-recording-playback');
     // Recording must be exclusive with loop/AB modes.
-    useLoopStore.getState().exitMode();
+    useLoopStoreApi.getState().exitMode();
     // Snapshot the active cue's text RIGHT NOW so we can show it next to
     // the listen-back button. Use textEn if present, fall back to raw text.
-    const subState = useSubtitleStore.getState();
+    const subState = useSubtitleStoreApi.getState();
     const cue = subState.activeIndex >= 0 ? subState.subtitles[subState.activeIndex] : null;
     captureSubtitleAtStartRef.current = (cue?.textEn?.trim() || cue?.text?.trim() || '');
     const ok = await recorderRef.current.start();
@@ -119,7 +130,7 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
     // phase were still 'playing' that effect would re-play the original instead
     // of letting RecordingPlayback auto-play the user's take. Doing it here (while
     // still 'recording', so the effect is gated off) wins the race deterministically.
-    const dict = useDictationStore.getState();
+    const dict = useDictationStoreApi.getState();
     if (dict.dictationOpen && dict.phase === 'playing') dict.setPhase('awaitInput');
 
     const blob = await recorderRef.current.stop();
@@ -145,7 +156,7 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
       // Store action revokes any previous URL automatically.
       const url = URL.createObjectURL(blob);
       const durationSec = await measureBlobDuration(url);
-      useRecordingStore.getState().setLastRecording({
+      useRecordingStoreApi.getState().setLastRecording({
         url,
         durationSec,
         filePath: recFilePath,
@@ -159,7 +170,7 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
 
   const handleMicClick = useCallback(async () => {
     try {
-      const state = useRecordingStore.getState().recorderState;
+      const state = useRecordingStoreApi.getState().recorderState;
       if (state === 'recording') {
         await stopAndSave();
       } else if (state === 'idle') {
@@ -176,7 +187,7 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
   // moving the mouse to the mic button. Always reflects the latest handler
   // (which depends on `source` so we close over it via the ref-less callback).
   useEffect(() => {
-    return onLpEvent('langplayer-toggle-recording', () => { void handleMicClick(); });
+    return listenLpEvent('langplayer-toggle-recording', () => { void handleMicClick(); });
   }, [handleMicClick]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -184,7 +195,6 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
   if (!source) {
     return (
       <div className="lp-view-root lp-empty-state-wrap">
-        <StudyFlowBar plugin={plugin} source={source} subtitleCount={subtitleCount} />
         <div className="lp-empty-state">
           <div className="lp-empty-state-icon"><Icon name="film" size={48} /></div>
           <h2 className="lp-empty-state-title">{t('empty.title')}</h2>
@@ -218,7 +228,6 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
       onMicClick={() => { void handleMicClick(); }}
     >
         <div className="lp-view-root">
-          <StudyFlowBar plugin={plugin} source={source} subtitleCount={subtitleCount} />
           <div className="lp-view-media-shell">
             {mediaType === 'video' ? (
               <VideoLayout source={source} />
@@ -231,58 +240,25 @@ function PlayerApp({ source, plugin }: PlayerAppProps) {
   );
 }
 
-function StudyFlowBar({ plugin, source, subtitleCount }: {
-  plugin: LangPlayerPluginRef;
-  source: MediaSource | null;
-  subtitleCount: number;
-}) {
-  const hasSubtitles = subtitleCount > 0;
-  return (
-    <nav className="lp-study-flow" aria-label={t('flow.title')}>
-      <span className="lp-study-flow-label">{t('flow.title')}</span>
-      <button className="lp-study-flow-step lp-study-flow-step--active" onClick={plugin.openMediaPicker}>
-        <span className="lp-study-flow-number">1</span>{t('flow.listen')}
-      </button>
-      <span className="lp-study-flow-arrow" aria-hidden="true">→</span>
-      <button className="lp-study-flow-step" onClick={() => { void plugin.openDictationView(); }} disabled={!hasSubtitles}>
-        <span className="lp-study-flow-number">2</span>{t('flow.dictation')}
-      </button>
-      <span className="lp-study-flow-arrow" aria-hidden="true">→</span>
-      <button className="lp-study-flow-step" onClick={() => { void plugin.openVocabulary(); }}>
-        <span className="lp-study-flow-number">3</span>{t('flow.vocabulary')}
-      </button>
-      <span className="lp-study-flow-arrow" aria-hidden="true">→</span>
-      <button className="lp-study-flow-step" onClick={plugin.startReview}>
-        <span className="lp-study-flow-number">4</span>{t('flow.review')}
-      </button>
-      <span className="lp-study-flow-arrow" aria-hidden="true">→</span>
-      <button className="lp-study-flow-step" onClick={() => { void plugin.noteService.openStudyNote(source); }}>
-        <span className="lp-study-flow-number">5</span>{t('flow.output')}
-      </button>
-    </nav>
-  );
-}
-
 async function ensureFolderRecursive(app: LangPlayerPluginRef['app'], folderPath: string): Promise<void> {
   await ensureVaultFolder(app, folderPath);
 }
 
-async function loadSubtitlesForFile(file: TFile, plugin: LangPlayerPluginRef): Promise<void> {
+async function loadSubtitlesForSource(
+  source: MediaSource,
+  plugin: LangPlayerPluginRef,
+  isCurrent: () => boolean,
+  commit: (cues: import('../types').SubtitleCue[]) => void,
+): Promise<void> {
+  const file = source.file;
   const app = plugin.app;
-  const baseName = file.basename;
-  const parent = file.parent?.path ?? '';
-
-  // Also try without _aac suffix (from auto-transcode)
-  const baseNames = [baseName];
-  if (baseName.endsWith('_aac')) {
-    baseNames.push(baseName.slice(0, -4));
-  }
 
   const tryLoadVaultFile = async (subtitleFile: TFile): Promise<boolean> => {
     try {
       const cues = await loadSubtitleCues(app, subtitleFile, plugin.settings.subtitleLineOrder);
-      if (cues.length > 0) {
-        useSubtitleStore.getState().setSubtitles(cues);
+      if (cues.length > 0 && isCurrent()) {
+        commit(cues);
+        await plugin.rememberSubtitleAssociation(source, subtitleFile);
         return true;
       }
     } catch {
@@ -291,9 +267,26 @@ async function loadSubtitlesForFile(file: TFile, plugin: LangPlayerPluginRef): P
     return false;
   };
 
+  // An explicit choice has priority over folder-name heuristics. A missing or
+  // invalid stored file is removed, then normal sibling discovery can recover.
+  const rememberedPath = plugin.getSubtitleAssociationPath(source);
+  const rememberedFile = plugin.getAssociatedSubtitleFile(source);
+  if (rememberedFile && await tryLoadVaultFile(rememberedFile)) return;
+  if (rememberedPath && isCurrent()) {
+    await plugin.clearSubtitleAssociation(source);
+    if (!isCurrent()) return;
+  }
+
+  // URL media can only use an explicit association. Local files additionally
+  // support sibling discovery for a first-time open.
+  if (!file) return;
+  const parent = file.parent?.path ?? '';
+  const baseNames = getSubtitleBaseNameCandidates(file.basename);
+
   // Prefer an exact media-name match before language-suffixed variants.
   for (const name of baseNames) {
     for (const ext of SUBTITLE_EXTENSIONS) {
+      if (!isCurrent()) return;
       const subPath = normalizePath(parent ? `${parent}/${name}.${ext}` : `${name}.${ext}`);
       const subFile = app.vault.getAbstractFileByPath(subPath);
       if (subFile instanceof TFile && await tryLoadVaultFile(subFile)) return;
@@ -306,9 +299,10 @@ async function loadSubtitlesForFile(file: TFile, plugin: LangPlayerPluginRef): P
     (candidate): candidate is TFile =>
       candidate instanceof TFile
       && isSubtitleFile(candidate.path)
-      && baseNames.some((name) => candidate.basename.startsWith(`${name}.`)),
+      && isSubtitleBaseNameVariant(baseNames, candidate.basename),
   );
   for (const candidate of candidates) {
+    if (!isCurrent()) return;
     if (await tryLoadVaultFile(candidate)) return;
   }
 }
@@ -325,6 +319,8 @@ function audioExtFromMime(mime: string): string | null {
 }
 
 export class LangPlayerView extends ItemView {
+  readonly sessionId = crypto.randomUUID();
+  private sourceGeneration = 0;
   private root: Root | null = null;
   private source: MediaSource | null = null;
   private pendingSource: MediaSource | null = null; // Deferred source if setState runs before onOpen
@@ -342,11 +338,19 @@ export class LangPlayerView extends ItemView {
   }
 
   getDisplayText(): string {
-    return this.source?.displayName ?? 'LangPlayer';
+    return this.source?.displayName ?? t('app.name');
   }
 
   getIcon(): string {
     return 'play-circle';
+  }
+
+  getCurrentSource(): MediaSource | null {
+    return this.root ? this.source : null;
+  }
+
+  isCurrentSource(source: MediaSource): boolean {
+    return this.root !== null && this.source === source;
   }
 
   // ─── State persistence (handles registerExtensions + workspace restore) ───
@@ -417,6 +421,12 @@ export class LangPlayerView extends ItemView {
   // ─── Lifecycle ───────────────────────────────────────────────────────────
 
   async onOpen(): Promise<void> {
+    this.registerEvent(this.app.workspace.on('active-leaf-change', leaf => {
+      if (leaf === this.leaf) activateMediaSession(this.sessionId);
+    }));
+    this.registerDomEvent(this.containerEl, 'pointerdown', () => activateMediaSession(this.sessionId), true);
+    this.registerDomEvent(this.containerEl, 'focusin', () => activateMediaSession(this.sessionId));
+    activateMediaSession(this.sessionId);
     const container = this.containerEl.children[1] as HTMLElement;
     if (!container) return;
     container.empty();
@@ -445,7 +455,7 @@ export class LangPlayerView extends ItemView {
     if (currentSource && currentSource.url === source.url) {
       this.source = source;
       if (source.timestamp != null) {
-        const playerRef = usePlaybackStore.getState().playerRef;
+        const playerRef = usePlaybackStore.forSession(this.sessionId).getState().playerRef;
         if (playerRef) {
           playerRef.seekTo(source.timestamp);
           playerRef.playVideo();
@@ -456,9 +466,11 @@ export class LangPlayerView extends ItemView {
     }
 
     // Different source: full reset
+    this.sourceGeneration++;
     this.source = source;
-    resetMediaStores();
-    usePlaybackStore.getState().setSource(source);
+    activateMediaSession(this.sessionId);
+    resetMediaStores(this.sessionId);
+    usePlaybackStore.forSession(this.sessionId).getState().setSource(source);
 
     this.render();
 
@@ -470,31 +482,33 @@ export class LangPlayerView extends ItemView {
     if (this.autoOpenTimer !== null) window.clearTimeout(this.autoOpenTimer);
     this.autoOpenTimer = window.setTimeout(() => {
       this.autoOpenTimer = null;
-      const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL);
-      if (existing.length === 0) {
-        void this.plugin.openSubtitlePanel().catch((error: unknown) => {
-          logger.warn('Failed to auto-open subtitle panel:', error);
-        });
-      }
+      void this.plugin.ensureSubtitlePanelVisible(this.leaf).catch((error: unknown) => {
+        logger.warn('Failed to auto-open subtitle panel:', error);
+      });
     }, 300);
   }
 
   private render(): void {
     if (!this.root) return;
+    const generation = this.sourceGeneration;
     this.root.render(
       <ErrorBoundary>
-        <PlayerApp source={this.source} plugin={this.plugin} />
+        <MediaSessionContext.Provider value={this.sessionId}>
+          <PlayerApp key={this.source?.url ?? 'empty'} source={this.source} plugin={this.plugin} isCurrentSource={() => generation === this.sourceGeneration} />
+        </MediaSessionContext.Provider>
       </ErrorBoundary>,
     );
   }
 
   async onClose(): Promise<void> {
+    this.sourceGeneration++;
     if (this.autoOpenTimer !== null) {
       window.clearTimeout(this.autoOpenTimer);
       this.autoOpenTimer = null;
     }
-    resetMediaStores();
     this.root?.unmount();
     this.root = null;
+    resetMediaStores(this.sessionId);
+    releaseMediaSession(this.sessionId);
   }
 }

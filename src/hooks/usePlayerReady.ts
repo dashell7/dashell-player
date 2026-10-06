@@ -1,3 +1,4 @@
+import { useStoreApi } from '../store/mediaSession';
 import { useCallback, useEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 import type { PlayerRef, MediaSource } from '../types';
@@ -20,6 +21,7 @@ export function usePlayerReady(
   playerRef: RefObject<PlayerRef | null>,
   source: MediaSource,
 ): () => void {
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
   const plugin = usePlugin();
   const playTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
@@ -30,7 +32,7 @@ export function usePlayerReady(
   }, []);
   return useCallback(() => {
     const player = playerRef.current;
-    usePlaybackStore.getState().setPlayerRef(player);
+    usePlaybackStoreApi.getState().setPlayerRef(player);
     if (!player) return;
 
     if (source.timestamp != null) {

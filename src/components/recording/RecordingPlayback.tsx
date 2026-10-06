@@ -1,3 +1,4 @@
+import { useStoreApi } from '../../store/mediaSession';
 /**
  * RecordingPlayback — inline "listen back" control that shows up after a
  * recording finishes. Renders a play/pause button with elapsed time, a
@@ -24,7 +25,7 @@ import { usePlaybackStore } from '../../store/playbackStore';
 import { useDictationStore } from '../../store/dictationStore';
 import { Icon } from '../shared/Icon';
 import { t } from '../../i18n';
-import { onLpEvent } from '../../constants/events';
+import { useLpEventListener } from '../../constants/events';
 
 const DICTATION_HIDDEN_INPUT_SELECTOR = '.lp-dictation-hidden-input';
 
@@ -36,9 +37,7 @@ function formatTime(sec: number): string {
 }
 
 /** Pause the video/original so it never overlaps recording playback. */
-function pauseOriginal(): void {
-  usePlaybackStore.getState().playerRef?.pauseVideo();
-}
+
 
 /** Move focus back to the dictation hidden input so the dictation panel's
  *  Space/Tab/etc. hotkeys keep being captured (instead of falling through
@@ -52,6 +51,11 @@ function refocusDictationInput(): void {
 }
 
 export function RecordingPlayback() {
+  const listenLpEvent = useLpEventListener();
+  const useDictationStoreApi = useStoreApi(useDictationStore);
+  const useRecordingStoreApi = useStoreApi(useRecordingStore);
+  const playbackApi = useStoreApi(usePlaybackStore);
+  const pauseOriginal = () => playbackApi.getState().playerRef?.pauseVideo();
   const lastRecording = useRecordingStore((s) => s.lastRecording);
   const originalPlaying = usePlaybackStore((s) => s.playing);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -77,7 +81,7 @@ export function RecordingPlayback() {
     // incorrectLocked / done) is exactly when we can safely auto-play mine
     // without the two audio sources fighting. Otherwise we yield and let the
     // user press the playRecording key.
-    const ds = useDictationStore.getState();
+    const ds = useDictationStoreApi.getState();
     autoPlayPendingRef.current =
       !!lastRecording && ds.dictationOpen && ds.phase !== 'idle' && ds.phase !== 'playing';
   }, [lastRecording?.url]);
@@ -115,13 +119,13 @@ export function RecordingPlayback() {
   }, [togglePlayback]);
 
   const handleDismiss = useCallback(() => {
-    useRecordingStore.getState().clearLastRecording();
+    useRecordingStoreApi.getState().clearLastRecording();
     refocusDictationInput();
   }, []);
 
   // External hotkey dispatcher (DictationPanel `playRecording` key): toggle audio.
   useEffect(() => {
-    return onLpEvent('langplayer-toggle-recording-playback', () => {
+    return listenLpEvent('langplayer-toggle-recording-playback', () => {
       togglePlayback();
       refocusDictationInput();
     });
@@ -130,7 +134,7 @@ export function RecordingPlayback() {
   // Mutual exclusion: when the original starts (DictationPanel replay) or a new
   // recording starts capturing, force-pause my recording playback.
   useEffect(() => {
-    return onLpEvent('langplayer-stop-recording-playback', () => { audioRef.current?.pause(); });
+    return listenLpEvent('langplayer-stop-recording-playback', () => { audioRef.current?.pause(); });
   }, []);
 
   if (!lastRecording) return null;

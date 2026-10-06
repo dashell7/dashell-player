@@ -1,17 +1,20 @@
+import { useStoreApi } from '../../store/mediaSession';
 /**
  * ClickableText — Renders subtitle text with per-word spans.
  *
- * Clicking a word triggers Language Learner's queryWord() to open the
- * dictionary panel, and optionally copies the word to clipboard.
+ * Clicking a word opens Qiaomu Reader English's dictionary panel and
+ * optionally copies the word to clipboard.
  */
-import React, { useCallback, useMemo } from 'react';
-import { Notice, type App } from 'obsidian';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Menu, Notice, Platform } from 'obsidian';
 import { useMediaViewOptional } from '../../context';
 import { usePlaybackStore } from '../../store/playbackStore';
+import { useSubtitleStore } from '../../store/subtitleStore';
 import { useVocabularyStore } from '../../store/vocabularyStore';
 import { segmentWords } from '../../utils';
 import { logger } from '../../utils/logger';
 import { t } from '../../i18n';
+import { getQiaomuReaderLookup, type QiaomuReaderLookup } from '../../services/QiaomuReaderLookup';
 
 interface ClickableTextProps {
   text: string;
@@ -23,8 +26,8 @@ interface ClickableTextProps {
   sentenceZh?: string;
   /** Source/origin name */
   sourceName?: string;
-  /** When true, stop hover bubbling to avoid Language Learner subtitle popup */
-  suppressLangrSubtitlePopup?: boolean;
+  /** When true, suppress hover lookup on the video overlay. */
+  suppressHoverLookup?: boolean;
   /** Lower-cased search term; words containing it get a highlight class. */
   highlight?: string;
   /** Start time (seconds) of the cue this text belongs to — stored with
@@ -38,33 +41,13 @@ function cleanWord(raw: string): string {
   return raw.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
 }
 
-interface LanguageLearnerPluginApi {
-  queryWord(word: string, element: HTMLElement, position: { x: number; y: number }): void;
-}
-
-function isLanguageLearnerPlugin(value: unknown): value is LanguageLearnerPluginApi {
-  return typeof value === 'object'
-    && value !== null
-    && 'queryWord' in value
-    && typeof value.queryWord === 'function';
-}
-
-function getLanguageLearnerPlugin(app: App | undefined): LanguageLearnerPluginApi | null {
-  if (!app) return null;
-  const pluginManager: unknown = Reflect.get(app, 'plugins');
-  if (typeof pluginManager !== 'object' || pluginManager === null) return null;
-  const plugins: unknown = Reflect.get(pluginManager, 'plugins');
-  if (typeof plugins !== 'object' || plugins === null) return null;
-  const candidate: unknown = Reflect.get(plugins, 'obsidian-language-learner');
-  return isLanguageLearnerPlugin(candidate) ? candidate : null;
-}
-
-/** Call Language Learner plugin's queryWord if available. */
-function lookupWord(plugin: LanguageLearnerPluginApi, word: string, el: HTMLElement, x: number, y: number): void {
+async function lookupWord(plugin: QiaomuReaderLookup, word: string, el: HTMLElement,
+  x: number, y: number, sentence: string, bookTitle: string): Promise<void> {
   try {
-    plugin.queryWord(word, el, { x, y });
+    await plugin.openEnglishDictionary(word, { target: el, position: { x, y }, sentence, bookTitle });
   } catch (error) {
-    logger.warn('Language Learner word lookup failed:', error);
+    logger.warn('Qiaomu Reader English word lookup failed:', error);
+    new Notice(t('notice.readerLookupFailed'));
   }
 }
 
@@ -75,14 +58,23 @@ export function ClickableText({
   sentenceEn,
   sentenceZh,
   sourceName,
-  suppressLangrSubtitlePopup = false,
+  suppressHoverLookup = false,
   highlight,
   cueStart,
 }: ClickableTextProps) {
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
   const query = highlight?.trim().toLowerCase() ?? '';
   const ctx = useMediaViewOptional();
   const settings = ctx?.settings;
   const app = ctx?.plugin?.app;
+  const hoverTimer = useRef<number | null>(null);
+  const hoverOwner = useRef({});
+
+  useEffect(() => () => {
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    getQiaomuReaderLookup(app)?.closeEnglishDictionaryHover?.(hoverOwner.current);
+  }, [app]);
 
   // Built-in word capture: write the word + sentence context + media back-link
   // into LangPlayer's own vocab DB. Dedupes via the cached findWord.
@@ -95,7 +87,7 @@ export function ClickableText({
         new Notice(t('notice.wordExists', { word }));
         return;
       }
-      const playback = usePlaybackStore.getState();
+      const playback = usePlaybackStoreApi.getState();
       const src = playback.source;
       const mediaUrl = src ? (src.file ? src.file.path : src.url) : undefined;
       const mediaTime = cueStart ?? (src ? playback.currentTime : undefined);
@@ -122,46 +114,134 @@ export function ClickableText({
     }
   }, [ctx, cueStart, sentenceEn, sentenceZh, sourceName, text]);
 
+  const openLookup = useCallback((word: string, target: HTMLElement, x: number, y: number) => {
+    if (settings?.autoCopyWordOnLookup) {
+      try {
+        void navigator.clipboard?.writeText(word).catch(() => {});
+      } catch (error) {
+        logger.warn('Could not copy looked-up word:', error);
+      }
+    }
+
+    const reader = getQiaomuReaderLookup(app);
+    if (!reader) {
+      new Notice(t('notice.readerLookupUnavailable'));
+      return;
+    }
+    const source = usePlaybackStoreApi.getState().source;
+    void lookupWord(reader, word, target, x, y, sentenceEn || text,
+      sourceName || source?.displayName || '');
+  }, [app, sentenceEn, settings?.autoCopyWordOnLookup, sourceName, text, usePlaybackStoreApi]);
+
+  const replaySentence = useCallback(() => {
+    const playback = usePlaybackStoreApi.getState();
+    if (cueStart === undefined || !playback.playerRef) return;
+    const subtitles = useSubtitleStoreApi.getState();
+    const index = subtitles.subtitles.findIndex(cue => Math.abs(cue.start - cueStart) < 0.01);
+    if (index >= 0) {
+      subtitles.setActiveIndex(index);
+      subtitles.setPlayheadIndex(index);
+    }
+    playback.playerRef.seekTo(Math.max(0, cueStart), 'seconds');
+    playback.playerRef.playVideo();
+  }, [cueStart, usePlaybackStoreApi, useSubtitleStoreApi]);
+
   const handleWordClick = useCallback((e: React.MouseEvent<HTMLSpanElement>, raw: string) => {
     e.stopPropagation();
     const word = cleanWord(raw);
     if (!word) return;
 
-    // Copy to clipboard if enabled
-    if (settings?.autoCopyWordOnLookup) {
-      navigator.clipboard.writeText(word).catch(() => {});
-    }
-
-    // Alt+click always captures into the built-in vocab DB. A plain click
-    // captures too when Language Learner isn't installed — without LL a click
-    // previously did (almost) nothing, so capture is the useful default.
-    const llPlugin = getLanguageLearnerPlugin(app);
-    if (e.altKey || !llPlugin) {
+    if (e.altKey) {
       void captureWord(word);
       return;
     }
+    openLookup(word, e.currentTarget, e.clientX, e.clientY);
+  }, [captureWord, openLookup]);
 
-    // Open Language Learner dictionary panel
-    lookupWord(llPlugin, word, e.currentTarget, e.clientX, e.clientY);
-  }, [app, settings, captureWord]);
+  const handleWordContextMenu = useCallback((e: React.MouseEvent<HTMLSpanElement>, raw: string) => {
+    const word = cleanWord(raw);
+    if (!word) return;
+    e.preventDefault();
+    e.stopPropagation();
+    getQiaomuReaderLookup(app)?.closeEnglishDictionaryHover?.(hoverOwner.current);
+
+    const target = e.currentTarget;
+    const x = e.clientX;
+    const y = e.clientY;
+    const menu = new Menu();
+    menu
+      .addItem(item => item
+        .setTitle(t('vocab.lookupWord', {word}))
+        .setIcon('search')
+        .onClick(() => openLookup(word, target, x, y)))
+      .addItem(item => item
+        .setTitle(t('vocab.addWord'))
+        .setIcon('plus')
+        .onClick(() => { void captureWord(word); }));
+    if (cueStart !== undefined && usePlaybackStoreApi.getState().playerRef) {
+      menu.addItem(item => item
+        .setTitle(t('subtitle.playSentence'))
+        .setIcon('play')
+        .onClick(replaySentence));
+    }
+    menu.showAtMouseEvent(e.nativeEvent);
+  }, [app, captureWord, cueStart, openLookup, replaySentence, usePlaybackStoreApi]);
+
+  const handleWordMouseEnter = useCallback((e: React.MouseEvent<HTMLSpanElement>, raw: string) => {
+    if (Platform.isMobile || suppressHoverLookup || !settings?.enableHoverDefinition) return;
+    const reader = getQiaomuReaderLookup(app);
+    if (!reader?.hoverEnglishDictionary) return;
+    const word = cleanWord(raw);
+    if (!/[A-Za-z]/.test(word)) return;
+    const target = e.currentTarget;
+    if (hoverTimer.current !== null) window.clearTimeout(hoverTimer.current);
+    hoverTimer.current = window.setTimeout(() => {
+      hoverTimer.current = null;
+      if (!target.isConnected) return;
+      const rect = target.getBoundingClientRect();
+      const source = usePlaybackStoreApi.getState().source;
+      try {
+        reader.hoverEnglishDictionary?.(word, {
+          target,
+          position: { x: rect.left + rect.width / 2, y: rect.top },
+          sentence: sentenceEn || text,
+          sentenceZh: sentenceZh || '',
+          bookTitle: sourceName || source?.displayName || '',
+          hoverOwner: hoverOwner.current,
+        });
+      } catch (error) {
+        logger.warn('Qiaomu Reader English hover lookup failed:', error);
+      }
+    }, 200);
+  }, [app, sentenceEn, sentenceZh, settings?.enableHoverDefinition,
+    sourceName, suppressHoverLookup, text]);
+
+  const handleWordMouseLeave = useCallback(() => {
+    if (hoverTimer.current !== null) {
+      window.clearTimeout(hoverTimer.current);
+      hoverTimer.current = null;
+    }
+  }, []);
 
   // Segment by the study/target language so no-space languages (Chinese,
   // Japanese, Thai…) become individually clickable words, not one big blob.
   const locale = settings?.targetLanguage ?? 'en';
   const words = useMemo(() => segmentWords(text, locale), [text, locale]);
-  const stopHoverBubble = useCallback((e: React.MouseEvent<HTMLSpanElement>) => {
-    if (!suppressLangrSubtitlePopup) return;
+  const handleWordMouseOver = useCallback((e: React.MouseEvent<HTMLSpanElement>, raw: string) => {
     e.stopPropagation();
-  }, [suppressLangrSubtitlePopup]);
+    if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+    handleWordMouseEnter(e, raw);
+  }, [handleWordMouseEnter]);
+
+  const handleWordMouseOut = useCallback((e: React.MouseEvent<HTMLSpanElement>) => {
+    e.stopPropagation();
+    if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+    handleWordMouseLeave();
+  }, [handleWordMouseLeave]);
 
   return (
-    // Keep the `lf-clickable-text` class alongside our own `lp-` one: the
-    // Language Learner plugin reads `data-sentence-en/-zh` from the closest
-    // `.lf-clickable-text` ancestor when building its hover/lookup popup.
-    // Renaming it away (during the lp- prefix migration) silently broke that
-    // integration. `lp-` drives our styling; `lf-` is the LL contract.
     <span
-      className="lp-clickable-text lf-clickable-text"
+      className="lp-clickable-text"
       data-sentence-en={sentenceEn || text}
       data-sentence-zh={sentenceZh || ''}
       data-source={sourceName || ''}
@@ -176,17 +256,14 @@ export function ClickableText({
         const isMatch = query !== '' && cleanWord(seg.text).toLowerCase().includes(query);
 
         return (
-          // `lf-word` is the class Language Learner's document-level mouseover
-          // listener matches to trigger the hover dictionary popup. Keep it next
-          // to our `lp-word` styling class — without it, hover lookup is dead.
           <span
             key={i}
-            className={`lp-word lf-word${isMatch ? ' lp-word--match' : ''}`}
+            className={`lp-word${isMatch ? ' lp-word--match' : ''}`}
             style={style}
-            data-lf-lookup-only={suppressLangrSubtitlePopup ? '1' : undefined}
-            onMouseOver={stopHoverBubble}
-            onMouseOut={stopHoverBubble}
+            onMouseOver={(e) => handleWordMouseOver(e, seg.text)}
+            onMouseOut={handleWordMouseOut}
             onClick={(e) => handleWordClick(e, seg.text)}
+            onContextMenu={(e) => handleWordContextMenu(e, seg.text)}
           >
             {seg.text}
           </span>

@@ -1,3 +1,4 @@
+import { useStoreApi } from '../store/mediaSession';
 import { useCallback, useEffect, useRef } from 'react';
 import { Notice } from 'obsidian';
 import type { RecorderState } from '../types';
@@ -11,6 +12,7 @@ import { t } from '../i18n';
  * Any state → error → idle
  */
 export function useAudioRecorder() {
+  const useRecordingStoreApi = useStoreApi(useRecordingStore);
   const stateRef = useRef<RecorderState>('idle');
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -18,6 +20,8 @@ export function useAudioRecorder() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const levelFrameRef = useRef<number>(0);
+  const mountedRef = useRef(true);
+  const generationRef = useRef(0);
 
   /**
    * Release recorder/analyser/audioCtx resources after each recording.
@@ -42,7 +46,7 @@ export function useAudioRecorder() {
     }
     recorderRef.current = null;
     chunksRef.current = [];
-    useRecordingStore.getState().setAudioLevel(0);
+    useRecordingStoreApi.getState().setAudioLevel(0);
   }, []);
 
   const startLevelMonitoring = useCallback((stream: MediaStream) => {
@@ -66,7 +70,7 @@ export function useAudioRecorder() {
           sum += dataArray[i]! * dataArray[i]!;
         }
         const rms = Math.sqrt(sum / dataArray.length) / 255;
-        useRecordingStore.getState().setAudioLevel(rms);
+        useRecordingStoreApi.getState().setAudioLevel(rms);
         levelFrameRef.current = window.requestAnimationFrame(tick);
       };
       levelFrameRef.current = window.requestAnimationFrame(tick);
@@ -76,16 +80,22 @@ export function useAudioRecorder() {
   }, []);
 
   const start = useCallback(async (): Promise<boolean> => {
-    if (stateRef.current !== 'idle') return false;
+    if (!mountedRef.current || stateRef.current !== 'idle') return false;
+    const generation = ++generationRef.current;
     stateRef.current = 'preparing';
-    useRecordingStore.getState().setRecorderState('preparing');
+    useRecordingStoreApi.getState().setRecorderState('preparing');
 
     try {
       // Reuse existing stream if all tracks are still live — avoids repeated permission prompts
       const existingOk = streamRef.current?.getTracks().every((t) => t.readyState === 'live');
       if (!existingOk) {
         streamRef.current?.getTracks().forEach((t) => t.stop()); // release stale stream
-        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const acquired = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (!mountedRef.current || generation !== generationRef.current) {
+          acquired.getTracks().forEach(track => track.stop());
+          return false;
+        }
+        streamRef.current = acquired;
       }
       const stream = streamRef.current!;
 
@@ -117,13 +127,14 @@ export function useAudioRecorder() {
 
       recorder.start(100);
       stateRef.current = 'recording';
-      useRecordingStore.getState().setRecorderState('recording');
+      useRecordingStoreApi.getState().setRecorderState('recording');
       return true;
     } catch (err) {
+      if (!mountedRef.current || generation !== generationRef.current) return false;
       logger.error('Failed to start recording:', err);
-      cleanup();
+      cleanup(true);
       stateRef.current = 'idle';
-      useRecordingStore.getState().setRecorderState('idle');
+      useRecordingStoreApi.getState().setRecorderState('idle');
       return false;
     }
   }, [cleanup, startLevelMonitoring]);
@@ -131,14 +142,14 @@ export function useAudioRecorder() {
   const stop = useCallback(async (): Promise<Blob | null> => {
     if (stateRef.current !== 'recording') return null;
     stateRef.current = 'stopping';
-    useRecordingStore.getState().setRecorderState('stopping');
+    useRecordingStoreApi.getState().setRecorderState('stopping');
 
     return new Promise((resolve) => {
       const recorder = recorderRef.current;
       if (!recorder) {
         cleanup();
         stateRef.current = 'idle';
-        useRecordingStore.getState().setRecorderState('idle');
+        useRecordingStoreApi.getState().setRecorderState('idle');
         resolve(null);
         return;
       }
@@ -151,7 +162,7 @@ export function useAudioRecorder() {
         const blob = new Blob(chunksRef.current, { type: mime });
         cleanup();
         stateRef.current = 'idle';
-        useRecordingStore.getState().setRecorderState('idle');
+        useRecordingStoreApi.getState().setRecorderState('idle');
         resolve(blob);
       };
 
@@ -162,10 +173,10 @@ export function useAudioRecorder() {
       safetyTimer = window.setTimeout(() => {
         if (stateRef.current === 'stopping') {
           logger.warn('[useAudioRecorder] onstop did not fire within 3s — recording lost');
-          new Notice(`LangPlayer: ${t('notice.recordingLost')}`);
+          new Notice(`Dashell Player: ${t('notice.recordingLost')}`);
           cleanup();
           stateRef.current = 'idle';
-          useRecordingStore.getState().setRecorderState('idle');
+          useRecordingStoreApi.getState().setRecorderState('idle');
           resolve(null);
         }
       }, 3000);
@@ -174,7 +185,10 @@ export function useAudioRecorder() {
 
   // Cleanup resources on unmount to prevent leaks — stop mic tracks so OS indicator goes away
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      generationRef.current++;
       if (recorderRef.current && recorderRef.current.state === 'recording') {
         recorderRef.current.stop();
       }

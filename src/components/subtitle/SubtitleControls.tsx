@@ -1,7 +1,7 @@
+import { useStoreApi } from '../../store/mediaSession';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { PlayerRef, SubtitleCue } from '../../types';
-import { SPEED_STEPS } from '../../types';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useSubtitleStore, selectCurrentSubtitle } from '../../store/subtitleStore';
 import { useLoopStore } from '../../store/loopStore';
@@ -25,6 +25,11 @@ interface SubtitleControlsProps {
 }
 
 export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
+  const useLoopStoreApi = useStoreApi(useLoopStore);
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
+  const useDictationStoreApi = useStoreApi(useDictationStore);
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const useUIStoreApi = useStoreApi(useUIStore);
   // NOTE: currentTime / duration are intentionally NOT subscribed here — they
   // change ~10×/sec during playback and would re-render this whole control bar.
   // They live in the small <ProgressBar> / <TimeDisplay> leaf components below.
@@ -33,15 +38,13 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
   const volume       = usePlaybackStore((s) => s.volume);
   const cue          = useSubtitleStore(selectCurrentSubtitle);
   const activeIndex  = useSubtitleStore((s) => s.activeIndex);
-  const offset       = useSubtitleStore((s) => s.offset);
   const mode         = useLoopStore((s) => s.mode);
   const pointA       = useLoopStore((s) => s.pointA);
   const settings     = useSettings();
-  const { plugin }   = useMediaView();
+  const { plugin, source, onOpenNote, onMicClick } = useMediaView();
   const overlayMode  = useUIStore((s) => s.overlayMode);
   const recorderState  = useRecordingStore((s) => s.recorderState);
   const audioLevel     = useRecordingStore((s) => s.audioLevel);
-  const { onOpenNote, onMicClick } = useMediaView();
   const { exitMode, startSegmentLoop, startABRepeat } = usePlaybackMode();
 
   const dictationOpen = useDictationStore((s) => s.dictationOpen);
@@ -65,7 +68,7 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
 
   /** Re-enter the current playback mode for a different subtitle cue. */
   const retargetMode = useCallback((sub: SubtitleCue) => {
-    const { mode, enterMode } = useLoopStore.getState();
+    const { mode, enterMode } = useLoopStoreApi.getState();
     switch (mode.type) {
       case 'segmentLoop':
         enterMode({ type: 'segmentLoop', start: sub.start, end: sub.end, total: mode.total, current: 0, index: sub.index });
@@ -77,32 +80,30 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
   }, []);
 
   const prevSub = useCallback(() => {
-    const { subtitles, activeIndex } = useSubtitleStore.getState();
+    const { subtitles, activeIndex } = useSubtitleStoreApi.getState();
     const idx = Math.max(0, activeIndex - 1);
     const sub = subtitles[idx];
     if (!sub) return;
     retargetMode(sub);
-    if (useDictationStore.getState().dictationOpen) {
+    if (useDictationStoreApi.getState().dictationOpen) {
       // Dictation panel observes activeIndex changes and handles playback
-      useSubtitleStore.getState().setActiveIndex(idx);
+      useSubtitleStoreApi.getState().setActiveIndex(idx);
     } else if (playerRef.current) {
-      const off = useSubtitleStore.getState().offset;
-      playerRef.current.seekTo(sub.start + off, 'seconds');
+      playerRef.current.seekTo(sub.start, 'seconds');
       playerRef.current.playVideo();
     }
   }, [playerRef, retargetMode]);
 
   const nextSub = useCallback(() => {
-    const { subtitles, activeIndex } = useSubtitleStore.getState();
+    const { subtitles, activeIndex } = useSubtitleStoreApi.getState();
     const idx = Math.min(subtitles.length - 1, activeIndex + 1);
     const sub = subtitles[idx];
     if (!sub) return;
     retargetMode(sub);
-    if (useDictationStore.getState().dictationOpen) {
-      useSubtitleStore.getState().setActiveIndex(idx);
+    if (useDictationStoreApi.getState().dictationOpen) {
+      useSubtitleStoreApi.getState().setActiveIndex(idx);
     } else if (playerRef.current) {
-      const off = useSubtitleStore.getState().offset;
-      playerRef.current.seekTo(sub.start + off, 'seconds');
+      playerRef.current.seekTo(sub.start, 'seconds');
       playerRef.current.playVideo();
     }
   }, [playerRef, retargetMode]);
@@ -118,39 +119,28 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
 
   const handleSetA = useCallback(() => {
     if (isPlaybackModeLocked) return;
-    const now = usePlaybackStore.getState().currentTime;
-    useLoopStore.getState().setPointA(now - offset);
-  }, [isPlaybackModeLocked, offset]);
+    const now = usePlaybackStoreApi.getState().currentTime;
+    useLoopStoreApi.getState().setPointA(now);
+  }, [isPlaybackModeLocked]);
 
   const handleSetB = useCallback(() => {
     if (isPlaybackModeLocked) return;
-    const a = useLoopStore.getState().pointA;
-    if (a !== null) startABRepeat(a, usePlaybackStore.getState().currentTime - offset);
-  }, [isPlaybackModeLocked, offset, startABRepeat]);
+    const a = useLoopStoreApi.getState().pointA;
+    if (a !== null) startABRepeat(a, usePlaybackStoreApi.getState().currentTime);
+  }, [isPlaybackModeLocked, startABRepeat]);
 
   const handleClearAB = useCallback(() => {
-    useLoopStore.getState().clearPoints();
+    useLoopStoreApi.getState().clearPoints();
     exitMode();
   }, [exitMode]);
 
-  const changeSpeed = useCallback(() => {
-    const next = SPEED_STEPS[(SPEED_STEPS.indexOf(playbackRate) + 1) % SPEED_STEPS.length]!;
-    usePlaybackStore.getState().setPlaybackRate(next);
-    playerRef.current?.setPlaybackRate(next);
-  }, [playbackRate, playerRef]);
-
   const cycleOverlayMode = useCallback(() => {
-    useUIStore.getState().cycleOverlayMode();
+    useUIStoreApi.getState().cycleOverlayMode();
   }, []);
 
   const openSubtitlePanel = useCallback(() => {
     plugin.openSubtitlePanel().catch(() => {});
   }, [plugin]);
-
-  const openSoundPattern = useCallback(() => {
-    if (!cue || isRecordingBusy) return;
-    plugin.openSoundPatternView().catch(() => {});
-  }, [cue, isRecordingBusy, plugin]);
 
   // Avoid unused variable warning (activeIndex is observed for re-renders)
   void activeIndex;
@@ -194,16 +184,6 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
               startSegmentLoop(cue, count);
             }}
           />
-
-          <button
-            type="button"
-            className="lp-ctrl-btn lp-ctrl-btn--label"
-            onClick={openSoundPattern}
-            disabled={!cue || isRecordingBusy}
-          >
-            <Icon name="headphones" size={ICON_SM} />
-            {t('soundPattern.toolbar')}
-          </button>
 
           {mode.type === 'abRepeat' ? (
             <button className="lp-ctrl-btn lp-ctrl-btn--active lp-ctrl-btn--label" onClick={handleClearAB} aria-label={t('mode.clearAB')} title={t('mode.clearAB')} aria-pressed={true} disabled={isPlaybackModeLocked}>
@@ -249,9 +229,7 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
 
         {/* ── Group: View & Settings ── */}
         <div className="lp-ctrl-group">
-          <button className="lp-ctrl-btn lp-ctrl-btn--label" onClick={changeSpeed} aria-label={t('player.speed')} title={t('player.speed')}>
-            {playbackRate === 1 ? '1.0' : playbackRate}x
-          </button>
+          <PlaybackSpeedButton playbackRate={playbackRate} playerRef={playerRef} />
 
           <OverlayModeButton mode={overlayMode} onCycle={cycleOverlayMode} />
 
@@ -274,6 +252,88 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
     </div>
   );
 }
+
+/** Aloud-style speed button with a 0.5–2.5x range popover. */
+const PlaybackSpeedButton = React.memo(function PlaybackSpeedButton({
+  playbackRate,
+  playerRef,
+}: {
+  playbackRate: number;
+  playerRef: React.RefObject<PlayerRef | null>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<number | null>(null);
+
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimer.current !== null) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    clearCloseTimer();
+    closeTimer.current = window.setTimeout(() => {
+      setIsOpen(false);
+      closeTimer.current = null;
+    }, 8000);
+  }, [clearCloseTimer]);
+
+  useEffect(() => {
+    if (isOpen) scheduleClose();
+    return clearCloseTimer;
+  }, [isOpen, playbackRate, clearCloseTimer, scheduleClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [isOpen]);
+
+  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
+
+  const setRate = useCallback((value: number) => {
+    const rate = Math.max(0.5, Math.min(2.5, Math.round(value / 0.05) * 0.05));
+    usePlaybackStore.getState().setPlaybackRate(rate);
+    playerRef.current?.setPlaybackRate(rate);
+    scheduleClose();
+  }, [playerRef, scheduleClose]);
+
+  return (
+    <div className="lp-speed-control" ref={rootRef}>
+      <button
+        type="button"
+        className={`lp-ctrl-btn lp-ctrl-btn--label${isOpen ? ' lp-ctrl-btn--active' : ''}`}
+        onClick={() => { setIsOpen((open) => !open); clearCloseTimer(); }}
+        aria-label={t('player.speed')}
+        aria-expanded={isOpen}
+        title={t('player.speed')}
+      >
+        {playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x
+      </button>
+      {isOpen && (
+        <div className="lp-speed-popover" role="dialog" aria-label={t('player.speed')}>
+          <input
+            type="range"
+            min="0.5"
+            max="2.5"
+            step="0.05"
+            value={playbackRate}
+            onChange={(event) => setRate(Number(event.target.value))}
+            aria-label={t('player.speed')}
+          />
+          <output>{playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x</output>
+        </div>
+      )}
+    </div>
+  );
+});
 
 /** Fullscreen toggle button. Hidden where element fullscreen is unavailable
  *  (iOS WKWebView) instead of rendering a button that silently does nothing. */
@@ -387,6 +447,7 @@ function LoopButton({ isLooping, mode, loopCount, disabled, onToggle, onSelectCo
 
 /** Inline horizontal volume control: icon + expandable pill slider (Media Extended style) */
 const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: number }) {
+  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
   const [expanded, setExpanded] = useState(false);
   const prevVolume   = React.useRef(0.5);
   const collapseTimer = useRef<number | null>(null);
@@ -420,9 +481,9 @@ const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: nu
   const toggleMute = useCallback(() => {
     if (volume > 0) {
       prevVolume.current = volume;
-      usePlaybackStore.getState().setVolume(0);
+      usePlaybackStoreApi.getState().setVolume(0);
     } else {
-      usePlaybackStore.getState().setVolume(prevVolume.current || 0.5);
+      usePlaybackStoreApi.getState().setVolume(prevVolume.current || 0.5);
     }
   }, [volume]);
 
@@ -431,7 +492,7 @@ const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: nu
     if (!track) return;
     const rect  = track.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    usePlaybackStore.getState().setVolume(Math.round(ratio * 20) / 20);
+    usePlaybackStoreApi.getState().setVolume(Math.round(ratio * 20) / 20);
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -519,6 +580,8 @@ const OverlayModeButton = React.memo(function OverlayModeButton({
  *  leaf so the ~10Hz currentTime updates only re-render this small node, not the
  *  entire control bar (volume, loop, AB, speed, etc.). */
 const ProgressBar = React.memo(function ProgressBar({ playerRef }: SubtitleControlsProps) {
+  const useDictationStoreApi = useStoreApi(useDictationStore);
+  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
   const currentTime = usePlaybackStore((s) => s.currentTime);
   const duration    = usePlaybackStore((s) => s.duration);
 
@@ -568,14 +631,13 @@ const ProgressBar = React.memo(function ProgressBar({ playerRef }: SubtitleContr
       // manual scrub wouldn't re-target the dictation sentence — pressing Space
       // would replay the OLD locked cue (jumping back). Re-lock dictation onto the
       // cue at the scrubbed position so "drag here → dictate from here" works.
-      if (useDictationStore.getState().dictationOpen) {
-        const { subtitles, offset } = useSubtitleStore.getState();
-        const adjusted = seekTime - offset;
+      if (useDictationStoreApi.getState().dictationOpen) {
+        const { subtitles } = useSubtitleStoreApi.getState();
         // Prefer the cue whose span contains the time; else the next upcoming cue.
-        let idx = subtitles.findIndex((c) => adjusted >= c.start && adjusted <= c.end);
-        if (idx < 0) idx = subtitles.findIndex((c) => c.start >= adjusted);
+        let idx = subtitles.findIndex((c) => seekTime >= c.start && seekTime <= c.end);
+        if (idx < 0) idx = subtitles.findIndex((c) => c.start >= seekTime);
         if (idx < 0) idx = subtitles.length - 1; // past the last cue → last sentence
-        if (idx >= 0) useSubtitleStore.getState().setActiveIndex(idx);
+        if (idx >= 0) useSubtitleStoreApi.getState().setActiveIndex(idx);
       }
     }
     setDragProgress(null);

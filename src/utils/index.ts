@@ -5,5 +5,5 @@ export * from './speech';
 export * from './studyHabit';
 export * from './segment';
 export * from './subtitleFile';
+export * from './subtitleAssociation';
 export * from './playbackProgress';
-export * from './soundPattern';

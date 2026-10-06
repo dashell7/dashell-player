@@ -21,6 +21,7 @@ export interface PlayerRef {
   pauseVideo: () => void;
   setPlaybackRate: (rate: number) => void;
   setVolume: (volume: number) => void;
+  reload: () => void;
   getInternalPlayer?: () => HTMLMediaElement | null;
 }
 

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from './mediaSession';
 import type { PlaybackMode } from '../types';
 import { NORMAL_MODE } from '../types';
 

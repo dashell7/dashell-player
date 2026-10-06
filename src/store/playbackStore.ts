@@ -1,5 +1,7 @@
-import { create } from 'zustand';
+import { create } from './mediaSession';
 import type { MediaSource, PlayerRef } from '../types';
+
+export type PlaybackReadiness = 'idle' | 'loading' | 'ready' | 'buffering' | 'error';
 
 interface PlaybackState {
   // State
@@ -12,6 +14,8 @@ interface PlaybackState {
   volume: number;
   playbackRate: number;
   seeking: boolean;
+  readiness: PlaybackReadiness;
+  errorMessage: string | null;
 
   // Actions
   setSource: (source: MediaSource | null) => void;
@@ -23,6 +27,7 @@ interface PlaybackState {
   setVolume: (volume: number) => void;
   setPlaybackRate: (rate: number) => void;
   setSeeking: (seeking: boolean) => void;
+  setReadiness: (readiness: PlaybackReadiness, errorMessage?: string | null) => void;
   reset: () => void;
 }
 
@@ -36,6 +41,8 @@ const initialState = {
   volume: 1,
   playbackRate: 1,
   seeking: false,
+  readiness: 'idle' as PlaybackReadiness,
+  errorMessage: null as string | null,
 };
 
 export const usePlaybackStore = create<PlaybackState>((set) => ({
@@ -50,6 +57,7 @@ export const usePlaybackStore = create<PlaybackState>((set) => ({
   setVolume: (volume) => set({ volume }),
   setPlaybackRate: (playbackRate) => set({ playbackRate }),
   setSeeking: (seeking) => set({ seeking }),
+  setReadiness: (readiness, errorMessage = null) => set({ readiness, errorMessage }),
   reset: () => set((s) => ({
     ...initialState,
     // Preserve user preferences across file switches
