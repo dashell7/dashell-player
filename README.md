@@ -1,8 +1,12 @@
 # Dashell Player
 
-Maintained by [dashell](https://github.com/dashell7). [Source](https://github.com/dashell7/dashell-player) · [Issues](https://github.com/dashell7/dashell-player/issues).
+Maintained by [dashell](https://github.com/dashell7). [Source](https://github.com/dashell7/dashell-player) · [Issues](https://github.com/dashell7/dashell-player/issues) · [Latest release 1.9.2](https://github.com/dashell7/dashell-player/releases/latest).
 
 An Obsidian audio and video player for language study. Browse subtitles, practice dictation, record pronunciation, manage vocabulary, and send word lookups to Dashell Reader.
+
+## The Dashell English-learning suite
+
+[Dashell Reader](https://github.com/dashell7/dashell-reader) handles text reading, dictionary lookup, and vocabulary capture. Dashell Player handles local and remote audio/video, subtitles, and listening practice. [Dashell RSS](https://github.com/dashell7/dashell-rss) helps discover, preview, and save learning materials. The plugins can be installed separately; Player delegates word lookup to Reader.
 
 Previously named LangPlayer. The plugin now uses ID `dashell-player`; on first
 launch it copies settings from the old `langplayer` data file and keeps that
@@ -25,13 +29,20 @@ hotkeys remain compatible. Word lookup is provided by **Dashell Reader**
 
 ## Installation
 
-Manual install:
+Install **Dashell Player** from its [latest GitHub release](https://github.com/dashell7/dashell-player/releases/latest), either with BRAT or by copying the release assets into your vault.
 
-1. Run `npm run package`.
-2. Copy `release/<version>/manifest.json`, `main.js`, and `styles.css` to:
-   `.obsidian/plugins/dashell-player/`
+### BRAT
+
+1. Install and enable **BRAT** from Obsidian Community Plugins.
+2. In BRAT, choose **Add beta plugin** and enter `dashell7/dashell-player`.
+3. Install and enable **Dashell Player** in Community plugins.
+
+### Manual install
+
+1. Download `manifest.json`, `main.js`, and `styles.css` from the [latest release](https://github.com/dashell7/dashell-player/releases/latest).
+2. Copy them to `.obsidian/plugins/dashell-player/`.
 3. Disable the old `langplayer` plugin and keep its folder in place for settings migration.
-4. Enable **Dashell Player** in **Community plugins**.
+4. Reload Obsidian and enable **Dashell Player** in **Community plugins**.
 
 ## Compatibility
 
@@ -42,9 +53,9 @@ Manual install:
   desktop and mobile; element fullscreen may be unavailable on some mobile
   platforms.
 
-## Release package
+## Build a release package
 
-`npm run package` builds production assets and recreates `release/<version>/`
+For development or packaging from source, `npm run package` builds production assets and recreates `release/<version>/`
 with the three individual files required for an Obsidian GitHub release:
 `manifest.json`, `main.js`, and `styles.css`. It also creates a convenience
 zip containing the same three files. `versions.json` stays in the repository
