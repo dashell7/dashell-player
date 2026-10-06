@@ -1,6 +1,6 @@
 # Dashell Player
 
-Maintained by [dashell](https://github.com/dashell7). [Source](https://github.com/dashell7/obsidian-langplayer) · [Issues](https://github.com/dashell7/obsidian-langplayer/issues).
+Maintained by [dashell](https://github.com/dashell7). [Source](https://github.com/dashell7/dashell-player) · [Issues](https://github.com/dashell7/dashell-player/issues).
 
 An Obsidian audio and video player for language study. Browse subtitles, practice dictation, record pronunciation, manage vocabulary, and send word lookups to Dashell Reader.
 
