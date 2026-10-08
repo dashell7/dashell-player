@@ -4,12 +4,10 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { createRoot, Root } from 'react-dom/client';
 import { VIEW_TYPE_PLAYER, VIEW_TYPE_SUBTITLE_PANEL, SUBTITLE_EXTENSIONS } from '../types';
 import type { MediaSource } from '../types';
-import { detectMediaType } from '../types';
 import { MediaViewProvider } from '../context';
 import type { LangPlayerPluginRef } from '../context';
 import { ErrorBoundary } from '../components/shared/ErrorBoundary';
-import { VideoLayout } from '../components/player/VideoLayout';
-import { AudioLayout } from '../components/player/AudioLayout';
+import { StudyWorkbench } from '../components/player/StudyWorkbench';
 import { useSubtitleStore } from '../store/subtitleStore';
 import { usePlaybackStore } from '../store/playbackStore';
 import { useLoopStore } from '../store/loopStore';
@@ -219,23 +217,13 @@ function PlayerApp({ source, plugin, isCurrentSource }: PlayerAppProps) {
     );
   }
 
-  const mediaType = detectMediaType(source.url);
-
   return (
     <MediaViewProvider
       plugin={plugin}
       source={source}
       onMicClick={() => { void handleMicClick(); }}
     >
-        <div className="lp-view-root">
-          <div className="lp-view-media-shell">
-            {mediaType === 'video' ? (
-              <VideoLayout source={source} />
-            ) : (
-              <AudioLayout source={source} />
-            )}
-          </div>
-        </div>
+      <StudyWorkbench source={source} />
     </MediaViewProvider>
   );
 }
@@ -427,6 +415,7 @@ export class LangPlayerView extends ItemView {
     this.registerDomEvent(this.containerEl, 'pointerdown', () => activateMediaSession(this.sessionId), true);
     this.registerDomEvent(this.containerEl, 'focusin', () => activateMediaSession(this.sessionId));
     activateMediaSession(this.sessionId);
+    useUIStore.forSession(this.sessionId).getState().setTranscriptOpen(this.plugin.settings.subtitlePanelAutoOpen);
     const container = this.containerEl.children[1] as HTMLElement;
     if (!container) return;
     container.empty();

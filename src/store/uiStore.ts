@@ -1,10 +1,16 @@
 import { create } from './mediaSession';
 
+export type StudyMode = 'listen' | 'dictation' | 'shadow';
+
 export type OverlayMode = 'auto' | 'original' | 'bilingual' | 'translation' | 'off';
 
 const OVERLAY_CYCLE: OverlayMode[] = ['original', 'bilingual', 'off'];
 
 interface UIState {
+  studyMode: StudyMode;
+  transcriptOpen: boolean;
+  setStudyMode: (mode: StudyMode) => void;
+  setTranscriptOpen: (open: boolean) => void;
   overlayMode: OverlayMode;
 
   // Subtitle panel display toggles — persisted across panel close/reopen
@@ -21,6 +27,8 @@ interface UIState {
 }
 
 const initialUIState = {
+  studyMode: 'listen' as StudyMode,
+  transcriptOpen: true,
   overlayMode: 'original' as OverlayMode,
   subtitleShowTime: false,
   subtitleShowEn: true,
@@ -29,6 +37,8 @@ const initialUIState = {
 
 export const useUIStore = create<UIState>((set) => ({
   ...initialUIState,
+  setStudyMode: (studyMode) => set({ studyMode }),
+  setTranscriptOpen: (transcriptOpen) => set({ transcriptOpen }),
 
   setOverlayMode: (overlayMode) => set({ overlayMode }),
   cycleOverlayMode: () => set((s) => {

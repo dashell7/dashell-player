@@ -9,7 +9,7 @@ export interface LangPlayerPluginRef {
   settings: LangPlayerSettings;
   saveSettings: () => Promise<void>;
   noteService: {
-    saveToNote: (cue: SubtitleCue, source: MediaSource | null, showEn?: boolean, showZh?: boolean) => Promise<void>;
+    saveToNote: (cue: SubtitleCue, source: MediaSource | null, showEn?: boolean, showZh?: boolean) => Promise<boolean>;
     openStudyNote: (source: MediaSource | null) => Promise<void>;
     saveAllSubtitlesToNote: (cues: SubtitleCue[], source: MediaSource | null, showEn?: boolean, showZh?: boolean) => Promise<void>;
   };

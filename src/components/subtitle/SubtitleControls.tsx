@@ -1,712 +1,172 @@
+import React, { useEffect, useId, useRef, useState } from 'react';
+import type { PlayerRef } from '../../types';
 import { useStoreApi } from '../../store/mediaSession';
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
-import type { PlayerRef, SubtitleCue } from '../../types';
 import { usePlaybackStore } from '../../store/playbackStore';
-import { useSubtitleStore, selectCurrentSubtitle } from '../../store/subtitleStore';
+import { selectCurrentSubtitle, useSubtitleStore } from '../../store/subtitleStore';
 import { useLoopStore } from '../../store/loopStore';
 import { useRecordingStore } from '../../store/recordingStore';
 import { useDictationStore } from '../../store/dictationStore';
-import { usePlaybackMode } from '../../hooks/usePlaybackMode';
-import { useMediaView, useSettings } from '../../context';
 import { useUIStore, type OverlayMode } from '../../store/uiStore';
+import { useMediaView } from '../../context';
+import { usePlaybackMode } from '../../hooks/usePlaybackMode';
+import { dispatchLpEvent } from '../../constants/events';
+import { RecordingPlayback } from '../recording/RecordingPlayback';
+import { Icon } from '../shared/Icon';
 import { formatTime } from '../../utils';
 import { t } from '../../i18n';
-import { Icon } from '../shared/Icon';
-import { RecordingPlayback } from '../recording/RecordingPlayback';
 
-/* ── Shared constants ── */
-const ICON_SM   = 20;
-const ICON_MD   = 20;
-const ICON_PLAY = 24;
-
-interface SubtitleControlsProps {
-  playerRef: React.RefObject<PlayerRef | null>;
-}
+interface SubtitleControlsProps { playerRef: React.RefObject<PlayerRef | null> }
 
 export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
-  const controlLabelPrefix = useId();
-  const useLoopStoreApi = useStoreApi(useLoopStore);
-  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
-  const useDictationStoreApi = useStoreApi(useDictationStore);
-  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
-  const useUIStoreApi = useStoreApi(useUIStore);
-  // NOTE: currentTime / duration are intentionally NOT subscribed here — they
-  // change ~10×/sec during playback and would re-render this whole control bar.
-  // They live in the small <ProgressBar> / <TimeDisplay> leaf components below.
-  const playing      = usePlaybackStore((s) => s.playing);
-  const playbackRate = usePlaybackStore((s) => s.playbackRate);
-  const volume       = usePlaybackStore((s) => s.volume);
-  const cue          = useSubtitleStore(selectCurrentSubtitle);
-  const activeIndex  = useSubtitleStore((s) => s.activeIndex);
-  const mode         = useLoopStore((s) => s.mode);
-  const pointA       = useLoopStore((s) => s.pointA);
-  const settings     = useSettings();
-  const { plugin, source, onOpenNote, onMicClick } = useMediaView();
-  const overlayMode  = useUIStore((s) => s.overlayMode);
-  const recorderState  = useRecordingStore((s) => s.recorderState);
-  const audioLevel     = useRecordingStore((s) => s.audioLevel);
-  const { exitMode, startSegmentLoop, startABRepeat } = usePlaybackMode();
-
-  const dictationOpen = useDictationStore((s) => s.dictationOpen);
-  const practiceMode = useSubtitleStore((s) => s.practiceMode);
-
-  const isSegmentLooping = mode.type === 'segmentLoop' || mode.type === 'infiniteLoop';
-  const isRecordingBusy  =
-    recorderState === 'preparing' || recorderState === 'recording' || recorderState === 'stopping';
-  const isPlaybackModeLocked = practiceMode !== 'none' || isRecordingBusy;
-  // Loop button is the only playback mode allowed during dictation
-  // (audio cycles in background while user types).
-  const isLoopLocked = practiceMode !== 'none' || isRecordingBusy;
-
-  // ── Playback helpers ──────────────────────────────────────────────────────
-
-  const togglePlay = useCallback(() => {
-    const p = playerRef.current;
-    if (!p) return;
-    playing ? p.pauseVideo() : p.playVideo();
-  }, [playing, playerRef]);
-
-  /** Re-enter the current playback mode for a different subtitle cue. */
-  const retargetMode = useCallback((sub: SubtitleCue) => {
-    const { mode, enterMode } = useLoopStoreApi.getState();
-    switch (mode.type) {
-      case 'segmentLoop':
-        enterMode({ type: 'segmentLoop', start: sub.start, end: sub.end, total: mode.total, current: 0, index: sub.index });
-        break;
-      case 'infiniteLoop':
-        enterMode({ type: 'infiniteLoop', start: sub.start, end: sub.end });
-        break;
-    }
-  }, []);
-
-  const prevSub = useCallback(() => {
-    const { subtitles, activeIndex } = useSubtitleStoreApi.getState();
-    const idx = Math.max(0, activeIndex - 1);
-    const sub = subtitles[idx];
-    if (!sub) return;
-    retargetMode(sub);
-    if (useDictationStoreApi.getState().dictationOpen) {
-      // Dictation panel observes activeIndex changes and handles playback
-      useSubtitleStoreApi.getState().setActiveIndex(idx);
-    } else if (playerRef.current) {
-      playerRef.current.seekTo(sub.start, 'seconds');
-      playerRef.current.playVideo();
-    }
-  }, [playerRef, retargetMode]);
-
-  const nextSub = useCallback(() => {
-    const { subtitles, activeIndex } = useSubtitleStoreApi.getState();
-    const idx = Math.min(subtitles.length - 1, activeIndex + 1);
-    const sub = subtitles[idx];
-    if (!sub) return;
-    retargetMode(sub);
-    if (useDictationStoreApi.getState().dictationOpen) {
-      useSubtitleStoreApi.getState().setActiveIndex(idx);
-    } else if (playerRef.current) {
-      playerRef.current.seekTo(sub.start, 'seconds');
-      playerRef.current.playVideo();
-    }
-  }, [playerRef, retargetMode]);
-
-  const toggleLoop = useCallback(() => {
-    if (isLoopLocked || !cue) return;
-    if (mode.type === 'segmentLoop' || mode.type === 'infiniteLoop') {
-      exitMode();
-      return;
-    }
-    startSegmentLoop(cue, settings.loopCount);
-  }, [isLoopLocked, cue, mode.type, settings.loopCount, exitMode, startSegmentLoop]);
-
-  const handleSetA = useCallback(() => {
-    if (isPlaybackModeLocked) return;
-    const now = usePlaybackStoreApi.getState().currentTime;
-    useLoopStoreApi.getState().setPointA(now);
-  }, [isPlaybackModeLocked]);
-
-  const handleSetB = useCallback(() => {
-    if (isPlaybackModeLocked) return;
-    const a = useLoopStoreApi.getState().pointA;
-    if (a !== null) startABRepeat(a, usePlaybackStoreApi.getState().currentTime);
-  }, [isPlaybackModeLocked, startABRepeat]);
-
-  const handleClearAB = useCallback(() => {
-    useLoopStoreApi.getState().clearPoints();
-    exitMode();
-  }, [exitMode]);
-
-  const cycleOverlayMode = useCallback(() => {
-    useUIStoreApi.getState().cycleOverlayMode();
-  }, []);
-
-  const openSubtitlePanel = useCallback(() => {
-    plugin.openSubtitlePanel().catch(() => {});
-  }, [plugin]);
-
-  // Avoid unused variable warning (activeIndex is observed for re-renders)
-  void activeIndex;
-
-  return (
-    <div className="lp-controls">
-      {/* ── Progress Bar ── */}
-      <ProgressBar playerRef={playerRef} />
-
-      {/* ── Controls Row ── */}
-      <div className="lp-controls-row">
-        {/* ── Group: Playback ── */}
-        <div className="lp-ctrl-group lp-control-group--transport">
-          <button className="lp-ctrl-btn lp-icon-button" onClick={prevSub} aria-labelledby={`${controlLabelPrefix}-previous`}>
-            <Icon name="skip-back" size={ICON_MD} />
-            <span id={`${controlLabelPrefix}-previous`} className="lp-sr-only">{t('player.prevSub')}</span>
-          </button>
-          <button className="lp-ctrl-btn lp-icon-button lp-ctrl-btn--play" onClick={togglePlay} aria-labelledby={`${controlLabelPrefix}-play`}>
-            <Icon name={playing ? 'pause' : 'play'} size={ICON_PLAY} />
-            <span id={`${controlLabelPrefix}-play`} className="lp-sr-only">{playing ? t('player.pause') : t('player.play')}</span>
-          </button>
-          <button className="lp-ctrl-btn lp-icon-button" onClick={nextSub} aria-labelledby={`${controlLabelPrefix}-next`}>
-            <Icon name="skip-forward" size={ICON_MD} />
-            <span id={`${controlLabelPrefix}-next`} className="lp-sr-only">{t('player.nextSub')}</span>
-          </button>
-          <TimeDisplay />
-        </div>
-
-        <VolumeControl volume={volume} />
-
-        {/* ── Group: Learning Tools ── */}
-        <div className="lp-ctrl-group lp-control-group--practice">
-          <LoopButton
-            isLooping={isSegmentLooping}
-            mode={mode}
-            loopCount={settings.loopCount}
-            disabled={isLoopLocked}
-            onToggle={toggleLoop}
-            onSelectCount={(count) => {
-              if (isLoopLocked || !cue) return;
-              startSegmentLoop(cue, count);
-            }}
-          />
-
-          {mode.type === 'abRepeat' ? (
-            <button className="lp-ctrl-btn lp-icon-button lp-ctrl-btn--active" onClick={handleClearAB} aria-labelledby={`${controlLabelPrefix}-clear-ab`} aria-pressed={true} disabled={isPlaybackModeLocked}>
-              <Icon name="x" size={ICON_SM} />
-              <span id={`${controlLabelPrefix}-clear-ab`} className="lp-sr-only">{t('mode.clearAB')}</span>
-            </button>
-          ) : (
-            <>
-              <button
-                className={`lp-ctrl-btn lp-ctrl-btn--label lp-ctrl-btn--point${pointA !== null ? ' lp-ctrl-btn--accent' : ''}`}
-                onClick={handleSetA}
-                aria-labelledby={`${controlLabelPrefix}-set-a`}
-                disabled={isPlaybackModeLocked}
-              >
-                <span className="lp-ab-point-letter">A</span>
-                {pointA !== null && <span className="lp-ab-point-time">{formatTime(pointA)}</span>}
-                <span id={`${controlLabelPrefix}-set-a`} className="lp-sr-only">{t('mode.setA')}{pointA !== null ? ` ${formatTime(pointA)}` : ''}</span>
-              </button>
-              {pointA !== null && (
-                <button className="lp-ctrl-btn lp-ctrl-btn--label lp-ctrl-btn--point" onClick={handleSetB} aria-labelledby={`${controlLabelPrefix}-set-b`} disabled={isPlaybackModeLocked}>
-                  <span className="lp-ab-point-letter">B</span>
-                  <span id={`${controlLabelPrefix}-set-b`} className="lp-sr-only">{t('mode.setB')}</span>
-                </button>
-              )}
-            </>
-          )}
-
-          <button
-            className={`lp-ctrl-btn lp-icon-button${recorderState === 'recording' || recorderState === 'preparing' ? ' lp-ctrl-btn--recording' : ''}`}
-            onClick={onMicClick}
-            aria-labelledby={`${controlLabelPrefix}-record`}
-            aria-pressed={recorderState === 'recording' || recorderState === 'preparing'}
-            style={
-              recorderState === 'recording'
-                ? { boxShadow: `0 0 ${Math.max(0, Math.min(1, audioLevel)) * 16}px color-mix(in srgb, var(--color-red, #dc3545) 60%, transparent)` }
-                : undefined
-            }
-          >
-            <Icon name="mic" size={ICON_MD} />
-            <span id={`${controlLabelPrefix}-record`} className="lp-sr-only">{recorderState === 'recording' || recorderState === 'preparing' ? t('recording.stop') : t('recording.start')}</span>
-            {(recorderState === 'recording' || recorderState === 'preparing') && <span className="lp-rec-dot" />}
-          </button>
-        </div>
-
-        {/* ── Group: View & Settings ── */}
-        <div className="lp-ctrl-group lp-control-group--view">
-          <PlaybackSpeedButton playbackRate={playbackRate} playerRef={playerRef} />
-
-          <OverlayModeButton mode={overlayMode} onCycle={cycleOverlayMode} />
-
-          <button className="lp-ctrl-btn lp-icon-button" onClick={openSubtitlePanel} aria-labelledby={`${controlLabelPrefix}-subtitle-panel`}>
-            <Icon name="panel-right" size={ICON_MD} />
-            <span id={`${controlLabelPrefix}-subtitle-panel`} className="lp-sr-only">{t('subtitle.panel')}</span>
-          </button>
-
-          <button className="lp-ctrl-btn lp-icon-button" onClick={onOpenNote} aria-labelledby={`${controlLabelPrefix}-note`}>
-            <Icon name="file-text" size={ICON_MD} />
-            <span id={`${controlLabelPrefix}-note`} className="lp-sr-only">{t('player.openNote')}</span>
-          </button>
-
-          <FullscreenButton />
-        </div>
-      </div>
-
-      {/* Inline listen-back for the most recent recording. Shown here only when
-          the dictation panel is NOT open — while dictating, the panel renders its
-          own copy right under the input (so exactly one <audio> is ever mounted). */}
-      {!dictationOpen && <RecordingPlayback />}
-    </div>
-  );
-}
-
-/** Aloud-style speed button with a 0.5–2.5x range popover. */
-const PlaybackSpeedButton = React.memo(function PlaybackSpeedButton({
-  playbackRate,
-  playerRef,
-}: {
-  playbackRate: number;
-  playerRef: React.RefObject<PlayerRef | null>;
-}) {
-  const buttonLabelId = useId();
-  const [isOpen, setIsOpen] = useState(false);
-  const speedLabelId = React.useId();
+  const playback = useStoreApi(usePlaybackStore);
+  const subtitle = useStoreApi(useSubtitleStore);
+  const loop = useStoreApi(useLoopStore);
+  const ui = useStoreApi(useUIStore);
+  const playing = usePlaybackStore(s => s.playing);
+  const readiness = usePlaybackStore(s => s.readiness);
+  const rate = usePlaybackStore(s => s.playbackRate);
+  const volume = usePlaybackStore(s => s.volume);
+  const cue = useSubtitleStore(selectCurrentSubtitle);
+  const cueCount = useSubtitleStore(s => s.subtitles.length);
+  const mode = useLoopStore(s => s.mode);
+  const pointA = useLoopStore(s => s.pointA);
+  const recorder = useRecordingStore(s => s.recorderState);
+  const dictation = useDictationStore(s => s.dictationOpen);
+  const overlay = useUIStore(s => s.overlayMode);
+  const studyMode = useUIStore(s => s.studyMode);
+  const { plugin, settings, onMicClick } = useMediaView();
+  const { startSegmentLoop, startInfiniteLoop, startABRepeat, exitMode } = usePlaybackMode();
+  const menuRef = useRef<HTMLDetailsElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const closeTimer = useRef<number | null>(null);
-
-  const clearCloseTimer = useCallback(() => {
-    if (closeTimer.current !== null) {
-      window.clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-  }, []);
-
-  const scheduleClose = useCallback(() => {
-    clearCloseTimer();
-    closeTimer.current = window.setTimeout(() => {
-      setIsOpen(false);
-      closeTimer.current = null;
-    }, 8000);
-  }, [clearCloseTimer]);
-
-  useEffect(() => {
-    if (isOpen) scheduleClose();
-    return clearCloseTimer;
-  }, [isOpen, playbackRate, clearCloseTimer, scheduleClose]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [isOpen]);
-
-  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
-
-  const setRate = useCallback((value: number) => {
-    const rate = Math.max(0.5, Math.min(2.5, Math.round(value / 0.05) * 0.05));
-    usePlaybackStore.getState().setPlaybackRate(rate);
-    playerRef.current?.setPlaybackRate(rate);
-    scheduleClose();
-  }, [playerRef, scheduleClose]);
-
-  return (
-    <div className="lp-speed-control" ref={rootRef}>
-      <button
-        type="button"
-        className={`lp-ctrl-btn lp-icon-button lp-icon-button--value${isOpen ? ' lp-ctrl-btn--active' : ''}`}
-        onClick={() => { setIsOpen((open) => !open); clearCloseTimer(); }}
-        aria-labelledby={buttonLabelId}
-        aria-expanded={isOpen}
-      >
-        <Icon name="gauge" size={ICON_MD} />
-        <span className="lp-speed-value">{playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x</span>
-        <span id={buttonLabelId} className="lp-sr-only">{t('player.speed')}</span>
-      </button>
-      {isOpen && (
-        <div className="lp-speed-popover" role="dialog" aria-labelledby={speedLabelId}>
-          <span id={speedLabelId} className="lp-sr-only">{t('player.speed')}</span>
-          <input
-            type="range"
-            min="0.5"
-            max="2.5"
-            step="0.05"
-            value={playbackRate}
-            onChange={(event) => setRate(Number(event.target.value))}
-            aria-labelledby={speedLabelId}
-          />
-          <output>{playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x</output>
-        </div>
-      )}
-    </div>
-  );
-});
-
-/** Fullscreen toggle button. Hidden where element fullscreen is unavailable
- *  (iOS WKWebView) instead of rendering a button that silently does nothing. */
-function FullscreenButton() {
+  const [fullscreen, setFullscreen] = useState(false);
+  const lastVolume = useRef(1);
   const labelId = useId();
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const supported = typeof document !== 'undefined' && !!document.fullscreenEnabled;
+  const recordingBusy = recorder !== 'idle';
+  const ready = readiness === 'ready' || readiness === 'buffering';
+  const looping = mode.type === 'segmentLoop' || mode.type === 'infiniteLoop';
 
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener('fullscreenchange', onChange);
-    return () => document.removeEventListener('fullscreenchange', onChange);
+    const doc = rootRef.current?.ownerDocument ?? document;
+    const close = (event: PointerEvent) => { if (!menuRef.current?.contains(event.target as Node)) menuRef.current?.removeAttribute('open'); };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && menuRef.current?.open) {
+        event.stopPropagation();
+        menuRef.current.open = false;
+        menuRef.current.querySelector('summary')?.focus();
+      }
+    };
+    const changed = () => setFullscreen(!!doc.fullscreenElement);
+    doc.addEventListener('pointerdown', close);
+    doc.addEventListener('keydown', escape, true);
+    doc.addEventListener('fullscreenchange', changed);
+    return () => { doc.removeEventListener('pointerdown', close); doc.removeEventListener('keydown', escape, true); doc.removeEventListener('fullscreenchange', changed); };
   }, []);
 
-  const toggle = useCallback(() => {
-    const card = document.querySelector('.lp-player-card');
-    if (!card) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    } else {
-      card.requestFullscreen().catch(() => {});
+  const navigate = (direction: 'previous' | 'next') => {
+    dispatchLpEvent('langplayer-stop-recording-playback');
+    if (dictation) { dispatchLpEvent('lp-practice-navigate', { direction }); return; }
+    const state = subtitle.getState();
+    const now = playback.getState().currentTime;
+    const candidate = state.activeIndex >= 0
+      ? state.activeIndex + (direction === 'next' ? 1 : -1)
+      : direction === 'next'
+        ? state.subtitles.findIndex(item => item.start >= now)
+        : state.subtitles.reduce((previous, item, index) => item.end <= now ? index : previous, -1);
+    const index = Math.max(0, Math.min(state.subtitles.length - 1, candidate < 0 && direction === 'next' ? state.subtitles.length - 1 : candidate));
+    const target = state.subtitles[index];
+    if (!target) return;
+    if (mode.type === 'segmentLoop') startSegmentLoop(target, mode.total);
+    else if (mode.type === 'infiniteLoop') startInfiniteLoop(target);
+    else {
+      exitMode();
+      state.setActiveIndex(index);
+      playerRef.current?.seekTo(target.start);
+      playerRef.current?.playVideo();
     }
-  }, []);
-
-  // After all hooks (rules-of-hooks): hide entirely when unsupported.
-  if (!supported) return null;
-
-  return (
-    <button className="lp-ctrl-btn lp-icon-button" onClick={toggle} aria-labelledby={labelId}>
-      <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={ICON_MD} />
-      <span id={labelId} className="lp-sr-only">{isFullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}</span>
-    </button>
-  );
-}
-
-/** Loop button with right-click menu for quick loop count selection */
-function LoopButton({ isLooping, mode, loopCount, disabled, onToggle, onSelectCount }: {
-  isLooping: boolean;
-  mode: import('../../types/playback').PlaybackMode;
-  loopCount: number;
-  disabled?: boolean;
-  onToggle: () => void;
-  onSelectCount: (count: number) => void;
-}) {
-  const loopLabelId = useId();
-  const loopSettingsLabelId = useId();
-  const [showMenu, setShowMenu] = useState(false);
-  const btnRef    = useRef<HTMLButtonElement>(null);
-  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
-
-  const LOOP_OPTIONS = [1, 2, 3, 5, 10, 20, 50, 100];
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    if (disabled) return;
-    setShowMenu((v) => !v);
-  }, [disabled]);
-
-  useEffect(() => {
-    if (showMenu && btnRef.current) {
-      const rect = btnRef.current.getBoundingClientRect();
-      setMenuPos({ x: rect.left + rect.width / 2, y: rect.top });
+  };
+  const togglePlay = () => {
+    if (playing) { playerRef.current?.pauseVideo(); return; }
+    dispatchLpEvent('langplayer-stop-recording-playback');
+    if (dictation) dispatchLpEvent('lp-practice-navigate', { direction: 'replay' });
+    else playerRef.current?.playVideo();
+  };
+  const toggleAB = () => {
+    if (mode.type === 'abRepeat') { loop.getState().clearPoints(); exitMode(); }
+    else if (pointA === null) loop.getState().setPointA(playback.getState().currentTime);
+    else {
+      const now = playback.getState().currentTime;
+      if (now > pointA) startABRepeat(pointA, now);
     }
-  }, [showMenu]);
+  };
+  const toggleFullscreen = () => {
+    const root = rootRef.current?.closest('.lp-studio') ?? rootRef.current?.closest('.lp-player-card');
+    const doc = rootRef.current?.ownerDocument ?? document;
+    if (doc.fullscreenElement) void doc.exitFullscreen();
+    else if (root instanceof HTMLElement) void root.requestFullscreen();
+  };
 
-  const selectCount = useCallback((count: number) => {
-    setShowMenu(false);
-    onSelectCount(count);
-  }, [onSelectCount]);
-
-  const activeTotal = mode.type === 'segmentLoop' ? mode.total : loopCount;
-
-  return (
-    <div className="lp-loop-control">
-      <button
-        ref={btnRef}
-        className={`lp-ctrl-btn lp-icon-button lp-icon-button--value${isLooping ? ' lp-ctrl-btn--active' : ''}`}
-        onClick={() => { if (!disabled) onToggle(); }}
-        onContextMenu={handleContextMenu}
-        aria-labelledby={loopLabelId}
-        aria-pressed={isLooping}
-        disabled={disabled}
-      >
-        <Icon name="repeat" size={ICON_MD} />
-        <span className="lp-ctrl-badge">{mode.type === 'segmentLoop' ? `${mode.current + 1}/${mode.total}` : activeTotal}</span>
-        <span id={loopLabelId} className="lp-sr-only">{t('mode.loopBtn')}</span>
-      </button>
-      <button
-        type="button"
-        className="lp-ctrl-btn lp-icon-button lp-loop-menu-btn"
-        onClick={() => setShowMenu((value) => !value)}
-        aria-labelledby={loopSettingsLabelId}
-        aria-expanded={showMenu}
-        disabled={disabled}
-      >
-        <Icon name="chevron-down" size={ICON_SM} />
-        <span id={loopSettingsLabelId} className="lp-sr-only">{t('mode.loopSettings')}</span>
-      </button>
-
-      {showMenu && menuPos && createPortal(
-        <>
-          <div className="lp-popup-backdrop" onClick={() => setShowMenu(false)} />
-          <div className="lp-popup-menu" style={{ left: menuPos.x, top: menuPos.y }}>
-            {LOOP_OPTIONS.map((count) => (
-              <div
-                key={count}
-                role="button"
-                tabIndex={0}
-                className={`lp-popup-item${activeTotal === count ? ' lp-popup-item--active' : ''}`}
-                onClick={() => selectCount(count)}
-                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCount(count); } }}
-              >
-                <span>{count} {t('mode.loopTimes')}</span>
-                {activeTotal === count && <Icon name="check" size={12} />}
-              </div>
-            ))}
+  return <div className="lp-controls" ref={rootRef}>
+    <ProgressBar playerRef={playerRef} />
+    {recordingBusy && studyMode !== 'shadow' && <div className="lp-recording-strip" role="status"><Icon name="mic" size={15}/><span>{t(recorder === 'preparing' ? 'studio.preparingMic' : recorder === 'stopping' ? 'studio.savingRecording' : 'studio.recording')}</span><button className="lp-btn" disabled={recorder !== 'recording'} onClick={onMicClick}><Icon name="square" size={12}/>{t('recording.stop')}</button></div>}
+    <div className="lp-controls-row">
+      <div className="lp-transport-context"><Icon name="headphones" size={17} /><TimeDisplay /></div>
+      <div className="lp-transport-buttons">
+        <button className="lp-ctrl-btn" onClick={() => navigate('previous')} disabled={!cueCount || recordingBusy} aria-label={t('player.prevSub')} title={t('player.prevSub')}><Icon name="skip-back" size={19} /></button>
+        <button className="lp-ctrl-btn lp-ctrl-btn--play" onClick={togglePlay} disabled={!ready || recordingBusy} aria-label={t(playing ? 'player.pause' : 'player.play')} title={t(playing ? 'player.pause' : 'player.play')}><Icon name={playing ? 'pause' : 'play'} size={22} /></button>
+        <button className="lp-ctrl-btn" onClick={() => navigate('next')} disabled={!cueCount || recordingBusy} aria-label={t('player.nextSub')} title={t('player.nextSub')}><Icon name="skip-forward" size={19} /></button>
+      </div>
+      <div className="lp-transport-tools">
+        <button className={`lp-ctrl-btn lp-loop-quick${looping ? ' is-active' : ''}`} disabled={!cue || recordingBusy || dictation} aria-pressed={looping} aria-label={t('mode.loopBtn')} title={t('mode.loopBtn')} onClick={() => { if (looping) exitMode(); else if (cue) startSegmentLoop(cue, settings.loopCount); }}><Icon name="repeat" size={16} /><span>{mode.type === 'segmentLoop' ? `${mode.current + 1}/${mode.total}` : t('mode.loop')}</span></button>
+        <label className="lp-rate-control"><span className="lp-sr-only">{t('player.speed')}</span><select value={rate} disabled={recordingBusy} onChange={e => playback.getState().setPlaybackRate(Number(e.target.value))}>{Array.from(new Set([0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, rate])).sort((a,b)=>a-b).map(value => <option key={value} value={value}>{value}×</option>)}</select></label>
+        <details className="lp-transport-menu" ref={menuRef}>
+          <summary className="lp-ctrl-btn" aria-label={t('studio.more')} title={t('studio.more')}><Icon name="settings" size={18} /></summary>
+          <div className="lp-transport-popover" aria-labelledby={labelId}>
+            <div className="lp-popover-title" id={labelId}>{t('player.controls')}</div>
+            <label className="lp-control-field"><span>{t('player.speed')}</span><input type="range" min="0.5" max="2.5" step="0.05" value={rate} onChange={e => playback.getState().setPlaybackRate(Number(e.target.value))} /><output>{rate.toFixed(2)}×</output></label>
+            <div className="lp-control-field"><button className="lp-ctrl-btn" aria-label={t('player.volume')} aria-pressed={volume === 0} onClick={() => { if (volume > 0) lastVolume.current = volume; playback.getState().setVolume(volume ? 0 : lastVolume.current); }}><Icon name={volume ? 'volume-2' : 'volume-x'} size={16} /></button><input aria-label={t('player.volume')} type="range" min="0" max="1" step="0.05" value={volume} onChange={e => playback.getState().setVolume(Number(e.target.value))} /><output>{Math.round(volume * 100)}%</output></div>
+            <label className="lp-control-field"><span>{t('subtitle.inlineShort')}</span><select value={overlay} disabled={dictation} onChange={e => ui.getState().setOverlayMode(e.target.value as OverlayMode)}>{(['auto','original','bilingual','translation','off'] as const).map(value => <option key={value} value={value}>{t(value === 'auto' ? 'subtitle.overlayAuto' : value === 'original' ? 'subtitle.overlayOriginal' : value === 'bilingual' ? 'subtitle.overlayBilingual' : value === 'translation' ? 'subtitle.overlayTranslation' : 'subtitle.overlayOff')}</option>)}</select></label>
+            <label className="lp-control-field"><span>{t('mode.loopBtn')}</span><select disabled={!cue || dictation || recordingBusy} value={mode.type === 'segmentLoop' ? mode.total : 0} onChange={e => { const n = Number(e.target.value); if (n && cue) startSegmentLoop(cue, n); else exitMode(); }}><option value="0">{t('subtitle.overlayOff')}</option>{Array.from(new Set([1,2,3,5,10,20,50,100,settings.loopCount,mode.type === 'segmentLoop' ? mode.total : settings.loopCount])).sort((a,b)=>a-b).map(n => <option key={n} value={n}>{n} {t('mode.loopTimes')}</option>)}</select></label>
+            <button className="lp-menu-action" disabled={dictation || recordingBusy || !ready} onClick={toggleAB}><Icon name="repeat" size={16} />{mode.type === 'abRepeat' ? t('mode.clearAB') : pointA === null ? t('mode.setA') : `${t('mode.setB')} · A ${formatTime(pointA)}`}</button>
+            {pointA !== null && mode.type !== 'abRepeat' && <button className="lp-menu-action" onClick={() => loop.getState().clearPoints()}>{t('mode.clearAB')}</button>}
+            <button className="lp-menu-action" onClick={onMicClick} disabled={recorder === 'preparing' || recorder === 'stopping'}><Icon name="mic" size={16} />{t(recorder === 'recording' ? 'recording.stop' : 'recording.start')}</button>
+            <button className="lp-menu-action" onClick={() => void plugin.openSubtitlePanel()}><Icon name="external-link" size={16} />{t('studio.detachTranscript')}</button>
+            {document.fullscreenEnabled && <button className="lp-menu-action" onClick={toggleFullscreen}><Icon name={fullscreen ? 'minimize' : 'maximize'} size={16} />{t(fullscreen ? 'player.exitFullscreen' : 'player.fullscreen')}</button>}
           </div>
-        </>,
-        document.body,
-      )}
+        </details>
+      </div>
     </div>
-  );
+    {!dictation && studyMode !== 'shadow' && <RecordingPlayback />}
+  </div>;
 }
 
-/** Inline horizontal volume control: icon + expandable pill slider (Media Extended style) */
-const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: number }) {
-  const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
-  const volumeLabelId = React.useId();
-  const [expanded, setExpanded] = useState(false);
-  const prevVolume   = React.useRef(0.5);
-  const collapseTimer = useRef<number | null>(null);
-  const trackRef     = useRef<HTMLDivElement>(null);
-  const dragging     = useRef(false);
-
-  const scheduleCollapse = useCallback(() => {
-    if (collapseTimer.current) window.clearTimeout(collapseTimer.current);
-    collapseTimer.current = window.setTimeout(() => {
-      if (!dragging.current) setExpanded(false);
-    }, 800);
-  }, []);
-
-  const cancelCollapse = useCallback(() => {
-    if (collapseTimer.current) window.clearTimeout(collapseTimer.current);
-  }, []);
-
-  const handleEnter = useCallback(() => {
-    cancelCollapse();
-    setExpanded(true);
-  }, [cancelCollapse]);
-
-  const handleLeave = useCallback(() => {
-    scheduleCollapse();
-  }, [scheduleCollapse]);
-
-  useEffect(() => {
-    return () => { if (collapseTimer.current) window.clearTimeout(collapseTimer.current); };
-  }, []);
-
-  const toggleMute = useCallback(() => {
-    if (volume > 0) {
-      prevVolume.current = volume;
-      usePlaybackStoreApi.getState().setVolume(0);
-    } else {
-      usePlaybackStoreApi.getState().setVolume(prevVolume.current || 0.5);
-    }
-  }, [volume]);
-
-  const setVolumeFromEvent = useCallback((e: { clientX: number }) => {
-    const track = trackRef.current;
-    if (!track) return;
-    const rect  = track.getBoundingClientRect();
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    usePlaybackStoreApi.getState().setVolume(Math.round(ratio * 20) / 20);
-  }, []);
-
-  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    dragging.current = true;
-    cancelCollapse();
-    setVolumeFromEvent(e.nativeEvent);
-
-    const onMove = (ev: PointerEvent) => {
-      if (ev.pointerId === e.pointerId) setVolumeFromEvent(ev);
-    };
-    const onUp   = () => {
-      dragging.current = false;
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-      document.removeEventListener('pointercancel', onUp);
-      scheduleCollapse();
-    };
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-    document.addEventListener('pointercancel', onUp);
-  }, [cancelCollapse, scheduleCollapse, setVolumeFromEvent]);
-
-  const iconName = volume === 0 ? 'volume-x' : volume < 0.5 ? 'volume' : 'volume-2';
-  const pct      = Math.round(volume * 100);
-
-  return (
-    <div
-      className="lp-volume-wrap"
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-    >
-      <button className="lp-ctrl-btn lp-icon-button" onClick={toggleMute} aria-labelledby={volumeLabelId} aria-pressed={volume === 0}>
-        <Icon name={iconName} size={ICON_MD} />
-        <span id={volumeLabelId} className="lp-sr-only">{t('player.volume')}</span>
-      </button>
-      <div className={`lp-volume-inline${expanded ? ' lp-volume-inline--open' : ''}`}>
-        <div
-          ref={trackRef}
-          className="lp-vol-track"
-          onPointerDown={handlePointerDown}
-          role="slider"
-          aria-labelledby={volumeLabelId}
-          aria-valuenow={pct}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          tabIndex={0}
-        >
-          <div className="lp-vol-fill" style={{ width: `${pct}%` }} />
-          <div className="lp-vol-thumb" style={{ left: `${pct}%` }} />
-        </div>
-      </div>
-    </div>
-  );
-});
-
-/** Overlay mode cycle button — cycles: auto → original → bilingual → translation → off */
-const OverlayModeButton = React.memo(function OverlayModeButton({
-  mode, onCycle,
-}: { mode: OverlayMode; onCycle: () => void }) {
-  const modeLabelId = useId();
-  const isOff  = mode === 'off';
-  const label =
-    mode === 'auto'        ? t('subtitle.overlayAuto') :
-    mode === 'original'    ? t('subtitle.overlayOriginal') :
-    mode === 'bilingual'   ? t('subtitle.overlayBilingual') :
-    mode === 'translation' ? t('subtitle.overlayTranslation') :
-    t('subtitle.overlayOff');
-  const iconName =
-    mode === 'auto'        ? 'captions' :
-    mode === 'original'    ? 'captions-original' :
-    mode === 'bilingual'   ? 'captions-bilingual' :
-    mode === 'translation' ? 'languages' :
-    'eye-off';
-
-  return (
-    <button
-      className={`lp-ctrl-btn lp-icon-button lp-ctrl-btn--overlay${isOff ? ' lp-ctrl-btn--dim' : ''}`}
-      onClick={onCycle}
-      data-overlay-mode={mode}
-      aria-labelledby={modeLabelId}
-      aria-pressed={!isOff}
-    >
-      <Icon name={iconName} size={ICON_MD} />
-      <span id={modeLabelId} className="lp-sr-only">{t('subtitle.inlineShort')}: {label}</span>
-    </button>
-  );
-});
-
-/** Progress bar + scrub/seek + hover tooltip. Isolated into its own memoized
- *  leaf so the ~10Hz currentTime updates only re-render this small node, not the
- *  entire control bar (volume, loop, AB, speed, etc.). */
 const ProgressBar = React.memo(function ProgressBar({ playerRef }: SubtitleControlsProps) {
-  const useDictationStoreApi = useStoreApi(useDictationStore);
-  const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
-  const currentTime = usePlaybackStore((s) => s.currentTime);
-  const duration    = usePlaybackStore((s) => s.duration);
-
-  const progress       = duration > 0 ? (currentTime / duration) * 100 : 0;
-  const progressBarRef = useRef<HTMLDivElement>(null);
-  const isDragging     = useRef(false);
-  const [dragProgress, setDragProgress] = useState<number | null>(null);
-  const [hoverTime, setHoverTime]       = useState<{ time: number; x: number } | null>(null);
-
-  const getRatioFromClientX = useCallback((clientX: number) => {
-    const bar = progressBarRef.current;
-    if (!bar) return null;
-    const rect = bar.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  }, []);
-
-  const handleProgressPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    isDragging.current = true;
-    const ratio = getRatioFromClientX(e.clientX);
-    if (ratio !== null) setDragProgress(ratio * 100);
-  }, [getRatioFromClientX]);
-
-  const handleProgressPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) {
-      if (duration && e.pointerType === 'mouse') {
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-        setHoverTime({ time: ratio * duration, x: e.clientX - rect.left });
-      }
-      return;
+  const current = usePlaybackStore(s => s.currentTime);
+  const duration = usePlaybackStore(s => s.duration);
+  const mode = useLoopStore(s => s.mode);
+  const pointA = useLoopStore(s => s.pointA);
+  const subtitle = useStoreApi(useSubtitleStore);
+  const dictation = useDictationStore(s => s.dictationOpen);
+  const busy = useRecordingStore(s => s.recorderState !== 'idle');
+  const [draft, setDraft] = useState<number | null>(null);
+  const commit = (value: number) => {
+    playerRef.current?.seekTo(value);
+    if (dictation) {
+      const state = subtitle.getState();
+      let index = state.subtitles.findIndex(cue => cue.end >= value);
+      if (index < 0) index = state.subtitles.length - 1;
+      if (index >= 0) state.setActiveIndex(index);
     }
-    const r = getRatioFromClientX(e.clientX);
-    if (r !== null) setDragProgress(r * 100);
-  }, [getRatioFromClientX, duration]);
-
-  const handleProgressPointerUp = useCallback((e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    isDragging.current = false;
-    const r = getRatioFromClientX(e.clientX);
-    if (r !== null && playerRef.current && duration) {
-      const seekTime = r * duration;
-      playerRef.current.seekTo(seekTime, 'seconds');
-
-      // While a practice view is open, activeIndex is locked, so a
-      // manual scrub wouldn't re-target the dictation sentence — pressing Space
-      // would replay the OLD locked cue (jumping back). Re-lock dictation onto the
-      // cue at the scrubbed position so "drag here → dictate from here" works.
-      if (useDictationStoreApi.getState().dictationOpen) {
-        const { subtitles } = useSubtitleStoreApi.getState();
-        // Prefer the cue whose span contains the time; else the next upcoming cue.
-        let idx = subtitles.findIndex((c) => seekTime >= c.start && seekTime <= c.end);
-        if (idx < 0) idx = subtitles.findIndex((c) => c.start >= seekTime);
-        if (idx < 0) idx = subtitles.length - 1; // past the last cue → last sentence
-        if (idx >= 0) useSubtitleStoreApi.getState().setActiveIndex(idx);
-      }
-    }
-    setDragProgress(null);
-  }, [getRatioFromClientX, duration, playerRef]);
-
-  const displayProgress = dragProgress ?? progress;
-
-  return (
-    <div
-      className={`lp-progress-wrap${dragProgress !== null ? ' lp-progress-wrap--dragging' : ''}`}
-      onPointerDown={handleProgressPointerDown}
-      onPointerMove={handleProgressPointerMove}
-      onPointerUp={handleProgressPointerUp}
-      onPointerLeave={() => { if (!isDragging.current) setHoverTime(null); }}
-    >
-      {hoverTime && !isDragging.current && (
-        <div className="lp-progress-tooltip" style={{ left: hoverTime.x }}>
-          {formatTime(hoverTime.time)}
-        </div>
-      )}
-      <div
-        ref={progressBarRef}
-        className="lp-progress-bar"
-        role="progressbar"
-        aria-valuenow={Math.round(displayProgress)}
-        aria-valuemin={0}
-        aria-valuemax={100}
-      >
-        <div className="lp-progress-fill" style={{ width: `${displayProgress}%` }} />
-      </div>
-    </div>
-  );
+    setDraft(null);
+  };
+  const progress = duration > 0 ? (draft ?? current) / duration * 100 : 0;
+  return <div className="lp-progress-wrap">
+    {duration > 0 && mode.type === 'abRepeat' && <div className="lp-ab-range" style={{left:`${mode.pointA/duration*100}%`, width:`${(mode.pointB-mode.pointA)/duration*100}%`}}><span>A</span><span>B</span></div>}
+    {duration > 0 && pointA !== null && mode.type !== 'abRepeat' && <span className="lp-ab-marker" style={{ left: `${pointA/duration*100}%` }}>A</span>}
+    <input className="lp-progress-slider" type="range" aria-label={t('studio.seek')} aria-valuetext={`${formatTime(draft ?? current)} / ${formatTime(duration)}`} min="0" max={duration || 1} step="0.1" disabled={!duration || busy} value={draft ?? current} style={{ '--lp-progress': `${progress}%` } as React.CSSProperties} onChange={e => setDraft(Number(e.target.value))} onPointerUp={e => commit(Number(e.currentTarget.value))} onPointerCancel={() => setDraft(null)} onKeyUp={e => { if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key)) commit(Number(e.currentTarget.value)); }} onBlur={e => { if (draft !== null) commit(Number(e.currentTarget.value)); }} />
+  </div>;
 });
-
-/** Current / total time readout. Isolated for the same reason as ProgressBar. */
 const TimeDisplay = React.memo(function TimeDisplay() {
-  const currentTime = usePlaybackStore((s) => s.currentTime);
-  const duration    = usePlaybackStore((s) => s.duration);
-  return (
-    <time className="lp-time-display">
-      {formatTime(currentTime)}<span className="lp-time-sep" />{formatTime(duration)}
-    </time>
-  );
+  const current = usePlaybackStore(s => s.currentTime);
+  const duration = usePlaybackStore(s => s.duration);
+  return <time className="lp-time-display">{formatTime(current)}<span> / {formatTime(duration)}</span></time>;
 });

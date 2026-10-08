@@ -80,6 +80,8 @@ import { FlashcardService, playWordAudio } from './services/FlashcardService';
 import type { LangPlayerPluginRef } from './context';
 import { useVocabularyStore } from './store/vocabularyStore';
 import { getActiveMediaSession } from './store/mediaSession';
+import { useUIStore } from './store/uiStore';
+import { useRecordingStore } from './store/recordingStore';
 
 export default class LangPlayerPlugin extends Plugin {
   declare settings: LangPlayerSettings;
@@ -682,9 +684,8 @@ export default class LangPlayerPlugin extends Plugin {
   }
 
   private async ensureSubtitlePanelVisible(playerLeaf?: WorkspaceLeaf): Promise<void> {
-    const leaf = await this.getOrCreateSubtitlePanelLeaf();
-    await this.app.workspace.revealLeaf(leaf);
-    if (playerLeaf) await this.app.workspace.revealLeaf(playerLeaf);
+    const player = playerLeaf?.view instanceof LangPlayerView ? playerLeaf.view : this.getActivePlayerView();
+    if (player) useUIStore.forSession(player.sessionId).getState().setTranscriptOpen(true);
   }
 
   private async getOrCreateSubtitlePanelLeaf(): Promise<WorkspaceLeaf> {
@@ -790,11 +791,19 @@ export default class LangPlayerPlugin extends Plugin {
   }
 
   /**
-   * Open / toggle the dictation view as its own leaf.
-   * If open and focused → detach (close); if open elsewhere → reveal.
-   * If not open → split horizontally next to the player, or open as tab.
+   * Toggle practice inside the active studio. Retain a standalone fallback
+   * when there is no player to host it.
    */
   private async activateDictationView(): Promise<void> {
+    const player = this.getActivePlayerView();
+    if (player) {
+      if (useRecordingStore.forSession(player.sessionId).getState().recorderState !== 'idle') return;
+      for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE_DICTATION)) leaf.detach();
+      const ui = useUIStore.forSession(player.sessionId).getState();
+      ui.setStudyMode(ui.studyMode === 'dictation' ? 'listen' : 'dictation');
+      await this.app.workspace.revealLeaf(player.leaf);
+      return;
+    }
     const existing = this.app.workspace.getLeavesOfType(VIEW_TYPE_DICTATION);
 
     if (existing.length > 0) {
