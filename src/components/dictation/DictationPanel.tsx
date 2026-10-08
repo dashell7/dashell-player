@@ -747,6 +747,15 @@ export function DictationPanel() {
     // No auto-advance timer — user presses Enter to move on.
   }, [allBoxesCorrect, phase, cue, clearReplayMonitor, recordStudySentence]);
 
+  const revealCurrentLetter = useCallback(() => {
+    if (!cue || isLocked || phase === 'correct' || phase === 'done') return;
+    const { cursor: position } = useDictationStoreApi.getState();
+    if (position < 0 || position >= targetChars.length) return;
+    useDictationStoreApi.getState().revealLetter(position, targetChars[position]!);
+    useDictationStoreApi.getState().markWrongCue(cue.id);
+    bumpStat('hintCount');
+  }, [cue, isLocked, phase, targetChars, bumpStat]);
+
   const handleKey = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     // Capture-phase document listeners (revealAnswer, playRecording) run before this
     // bubble-phase handler. If one of them already handled the event, bailing here
@@ -786,13 +795,7 @@ export function DictationPanel() {
     }
     if (isHintHotkey) {
       e.preventDefault();
-      if (!cue) return;
-      const { cursor: c } = useDictationStoreApi.getState();
-      if (c < 0 || c >= targetChars.length) return;
-      const expected = targetChars[c]!;
-      useDictationStoreApi.getState().revealLetter(c, expected);
-      useDictationStoreApi.getState().markWrongCue(cue.id);
-      bumpStat('hintCount');
+      revealCurrentLetter();
       return;
     }
     if (isRevealHotkey) {
@@ -856,6 +859,7 @@ export function DictationPanel() {
     canUnlock,
     cue,
     dictationHotkeys.hint,
+    revealCurrentLetter,
     dictationHotkeys.next,
     dictationHotkeys.replay,
     dictationHotkeys.revealAnswer,
@@ -1271,7 +1275,7 @@ export function DictationPanel() {
         </div>
       )}
       <div className="lp-dictation-headline">
-        <div className="lp-dictation-progress-dots" ref={dotsContainerRef} role="group" aria-label={t('dictation.progress')}>
+        <details className="lp-dictation-map"><summary>{t('studio.progressMap')}<Icon name="chevron-down" size={14} /></summary><div className="lp-dictation-progress-dots" ref={dotsContainerRef} role="group" aria-label={t('dictation.progress')}>
           {dotSubs.map((sub, i) => {
             const isActive = cue?.id === sub.id;
             const isWrong = wrongCueIdSet.has(sub.id);
@@ -1300,7 +1304,7 @@ export function DictationPanel() {
                 // Roving tabindex: only the current dot is a Tab stop; arrows
                 // move focus among the rest (see onKeyDown).
                 tabIndex={i === dotRovingPos ? 0 : -1}
-                aria-label={`${stateLabel}: ${sub.textEn || sub.text}`}
+                aria-label={`${stateLabel}: ${i + 1}`}
                 // Don't let a mouse click move focus onto the dot: the panel
                 // yanks focus back to the hidden input on the cue/phase change,
                 // and that focus tug-of-war (plus the browser scrolling the
@@ -1331,6 +1335,7 @@ export function DictationPanel() {
             );
           })}
         </div>
+        </details>
         <div className="lp-dictation-headline-right">
           <span className="lp-dictation-chip">{dictationCurrent}/{dictationTotal}</span>
           <button
@@ -1472,10 +1477,10 @@ export function DictationPanel() {
       )}
 
       {!isLocked && phase !== 'correct' && targetChars.length > 0 && (
-        <div className="lp-dictation-shortcuts">
+        <button className="lp-dictation-shortcuts lp-text-button" onClick={() => { revealCurrentLetter(); focusHidden(); }}>
           <span className="lp-dictation-kbd">{hotkeyHintLabel}</span>
           <span className="lp-dictation-shortcut-label">{t('dictation.hintWord')}</span>
-        </div>
+        </button>
       )}
     </div>
   );

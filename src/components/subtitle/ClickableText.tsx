@@ -148,6 +148,7 @@ export function ClickableText({
 
   const handleWordClick = useCallback((e: React.MouseEvent<HTMLSpanElement>, raw: string) => {
     e.stopPropagation();
+    if (window.getSelection()?.toString()) return;
     const word = cleanWord(raw);
     if (!word) return;
 
@@ -260,6 +261,15 @@ export function ClickableText({
             key={i}
             className={`lp-word${isMatch ? ' lp-word--match' : ''}`}
             style={style}
+            role="button"
+            tabIndex={0}
+            aria-label={t('vocab.lookupWord', { word: seg.text })}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault(); e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              openLookup(cleanWord(seg.text), e.currentTarget, rect.left, rect.bottom);
+            }}
             onMouseOver={(e) => handleWordMouseOver(e, seg.text)}
             onMouseOut={handleWordMouseOut}
             onClick={(e) => handleWordClick(e, seg.text)}

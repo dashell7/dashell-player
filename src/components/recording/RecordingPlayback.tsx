@@ -137,9 +137,11 @@ export function RecordingPlayback() {
     return listenLpEvent('langplayer-stop-recording-playback', () => { audioRef.current?.pause(); });
   }, []);
 
+  useEffect(() => { if (originalPlaying) audioRef.current?.pause(); }, [originalPlaying]);
+
   if (!lastRecording) return null;
 
-  const displayTime = playing || currentTime > 0 ? currentTime : lastRecording.durationSec;
+  const displayTime = currentTime;
   const nowPlaying: 'mine' | 'original' | null = playing ? 'mine' : originalPlaying ? 'original' : null;
 
   return (
@@ -155,7 +157,7 @@ export function RecordingPlayback() {
         className={`lp-rec-playback-now${nowPlaying ? ` lp-rec-playback-now--${nowPlaying}` : ''}`}
         aria-live="polite"
       >
-        {nowPlaying === 'mine' ? t('rec.srcMine') : nowPlaying === 'original' ? t('rec.srcOriginal') : ''}
+        {nowPlaying === 'mine' ? t('rec.srcMine') : nowPlaying === 'original' ? t('rec.srcOriginal') : t('studio.yourVoice')}
       </span>
       <span className="lp-rec-playback-time">
         {formatTime(displayTime)}

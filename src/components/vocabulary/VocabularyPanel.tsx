@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useRef, useId } from 'react';
 import { Notice } from 'obsidian';
 import { VocabularyTable } from './VocabularyTable';
 import { VocabularyStats } from './VocabularyStats';
@@ -287,14 +287,15 @@ function Field({ label, value, onChange, multiline }: {
   label: string; value: string; onChange: (v: string) => void; multiline?: boolean;
 }) {
   const inputClass = 'lp-input';
+  const id = useId();
 
   return (
     <div>
-      <label className="lp-field-label">{label}</label>
+      <label htmlFor={id} className="lp-field-label">{label}</label>
       {multiline ? (
-        <textarea className={`${inputClass} lp-input-multiline`} value={value} onChange={(e) => onChange(e.target.value)} />
+        <textarea id={id} className={`${inputClass} lp-input-multiline`} value={value} onChange={(e) => onChange(e.target.value)} />
       ) : (
-        <input type="text" className={inputClass} value={value} onChange={(e) => onChange(e.target.value)} />
+        <input id={id} type="text" className={inputClass} value={value} onChange={(e) => onChange(e.target.value)} />
       )}
     </div>
   );

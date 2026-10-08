@@ -22,9 +22,11 @@ const STATUS_ICONS: Record<VocabStatus, string> = {
 
 // Mobile action buttons are 44px touch targets. Keep the virtualized row tall
 // enough that those targets are never clipped by react-window.
-const ROW_HEIGHT = 48;
+const ROW_HEIGHT = 64;
 
 interface VocabRowProps {
+  onSelect: (entry: VocabEntry) => void;
+  selectedId: number | null;
   entries: VocabEntry[];
   onEdit: (entry: VocabEntry) => void;
   onDelete: (id: number) => Promise<void>;
@@ -34,13 +36,13 @@ interface VocabRowProps {
 }
 
 // Stable row renderer for react-window v2 — data arrives via rowProps spread.
-function VocabRow({ index, style, entries, onEdit, onDelete, onStatusChange, onSpeakWord, onJumpToSource }: RowComponentProps<VocabRowProps>) {
+function VocabRow({ index, style, entries, onEdit, onDelete, onStatusChange, onSpeakWord, onJumpToSource, onSelect, selectedId }: RowComponentProps<VocabRowProps>) {
   const entry: VocabEntry | undefined = entries[index];
   if (!entry) return null;
   return (
     <div
       role="row"
-      className="lp-vocab-row"
+      className={`lp-vocab-row${selectedId === entry.id ? ' is-selected' : ''}`}
       style={style}
     >
       <span role="cell" className="lp-vocab-status-cell">
@@ -54,17 +56,7 @@ function VocabRow({ index, style, entries, onEdit, onDelete, onStatusChange, onS
         </button>
       </span>
       <span role="cell" className="lp-vocab-word-cell">
-        {onSpeakWord ? (
-          <button
-            type="button"
-            className="lp-word-speak"
-            onClick={() => onSpeakWord(entry.word)}
-            title={t('vocab.pronounce')}
-            aria-label={`${t('vocab.pronounce')}: ${entry.word}`}
-          >
-            {entry.word}
-          </button>
-        ) : entry.word}
+        <button className="lp-word-speak" onClick={() => onSelect(entry)} aria-pressed={entry.id === selectedId}>{entry.word}</button>
       </span>
       <span role="cell" className="lp-vocab-definition-cell">
         {entry.definition || entry.translation || '—'}
@@ -102,6 +94,9 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
   const sortBy = useVocabularyStore((s) => s.sortBy);
   const sortOrder = useVocabularyStore((s) => s.sortOrder);
   const plugin = usePlugin();
+  const [selectedId, setSelectedId] = React.useState<number | null>(null);
+  const selected = allEntries.find(entry => entry.id === selectedId);
+  const handleSelect = useCallback((entry: VocabEntry) => setSelectedId(entry.id ?? null), []);
 
   const entries = useMemo(
     () => filterSortVocab(allEntries, filter, search, sortBy, sortOrder),
@@ -159,13 +154,15 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
   const rowProps = useMemo(
     () => ({
       entries,
+      onSelect: handleSelect,
+      selectedId,
       onEdit,
       onDelete,
       onStatusChange: handleStatusChange,
       onSpeakWord: enableWordAudio ? handleSpeakWord : undefined,
       onJumpToSource: handleJumpToSource,
     }),
-    [entries, onEdit, onDelete, handleStatusChange, enableWordAudio, handleSpeakWord, handleJumpToSource],
+    [entries, selectedId, handleSelect, onEdit, onDelete, handleStatusChange, enableWordAudio, handleSpeakWord, handleJumpToSource],
   );
 
   return (
@@ -183,6 +180,7 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
         {(['all', 'unknown', 'learning', 'mastered'] as const).map((f) => (
           <button
             key={f}
+            aria-pressed={filter === f}
             className={`lp-btn lp-vocab-filter-btn ${filter === f ? 'lp-btn-primary' : ''}`}
             onClick={() => useVocabularyStore.getState().setFilter(f)}
           >
@@ -196,9 +194,11 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
         </span>
       </div>
 
+      <div className="lp-vocab-browser">
+      <div className="lp-vocab-list-column">
       {/* Table (header + virtualized body). display:contents keeps the ARIA
           table/row nesting without disturbing the flex layout. */}
-      <div role="table" aria-label={t('vocab.words')} aria-rowcount={entries.length} className="lp-display-contents">
+      <div role="table" aria-label={t('vocab.words')} aria-rowcount={entries.length + 1} className="lp-display-contents">
         {/* Table header */}
         <div role="row" className="lp-vocab-header">
           <span role="columnheader">{t('vocab.status')}</span>
@@ -214,14 +214,16 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
           {entries.length === 0 ? (
             <div className="lp-vocab-empty lp-vocab-empty--guided">
               <Icon name="book-open" size={28} />
-              <strong>{t('vocab.empty')}</strong>
-              <span>{t('vocab.emptyHint')}</span>
+              <strong>{t(allEntries.length ? 'studio.noResults' : 'vocab.empty')}</strong>
+              {!allEntries.length && <span>{t('vocab.emptyHint')}</span>}
+              {allEntries.length > 0 && <button className="lp-btn" onClick={() => { useVocabularyStore.getState().setSearch(''); useVocabularyStore.getState().setFilter('all'); }}>{t('studio.clearFilters')}</button>}
               <button className="lp-btn lp-btn-primary" onClick={onOpenMedia}>
                 <Icon name="folder-open" size={14} /> {t('empty.openMedia')}
               </button>
             </div>
           ) : (
             <List
+              role="rowgroup"
               defaultHeight={height}
               rowCount={entries.length}
               rowHeight={ROW_HEIGHT}
@@ -231,6 +233,20 @@ export function VocabularyTable({ onEdit, onDelete, onOpenMedia }: VocabularyTab
             />
           )}
         </div>
+      </div>
+      </div>
+      <aside className="lp-vocab-detail">
+        <span className="lp-eyebrow">{t('studio.context')}</span>
+        {selected ? <>
+          <div className="lp-vocab-detail-title"><h2>{selected.word}</h2>{enableWordAudio && <button className="lp-btn lp-btn-icon" aria-label={t('vocab.pronounce')} onClick={() => handleSpeakWord(selected.word)}><Icon name="volume-2" size={18} /></button>}</div>
+          <button className={`lp-vocab-state lp-vocab-status-${selected.status}`} onClick={() => void handleStatusChange(selected)}><Icon name={STATUS_ICONS[selected.status]} size={14} />{t(`vocab.${selected.status}`)}</button>
+          {selected.definition && <p className="lp-vocab-meaning">{selected.definition}</p>}
+          {selected.translation && <p className="lp-vocab-translation">{selected.translation}</p>}
+          {selected.context && <blockquote>{selected.context}{selected.sentenceZh && <footer>{selected.sentenceZh}</footer>}</blockquote>}
+          {selected.mediaUrl && <button className="lp-vocab-source" onClick={() => handleJumpToSource(selected)}><Icon name="play" size={16} /><span>{selected.source || t('studio.listen')}<small>{t('vocab.jumpToSource', {time: formatTime(selected.mediaTime ?? 0)})}</small></span></button>}
+          <div className="lp-sentence-actions"><button className="lp-btn" onClick={() => onEdit(selected)}><Icon name="edit-2" size={14} />{t('vocab.edit')}</button><button className="lp-btn lp-btn-danger" onClick={() => { if (selected.id !== undefined) void onDelete(selected.id); }}><Icon name="trash-2" size={14} />{t('vocab.deleteAction')}</button></div>
+        </> : <div className="lp-vocab-detail-empty"><Icon name="book-open" size={32}/><h3>{t('studio.selectWord')}</h3><p>{t('studio.selectWordHint')}</p></div>}
+      </aside>
       </div>
     </div>
   );

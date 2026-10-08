@@ -48,15 +48,22 @@ export class LangPlayerSettingTab extends PluginSettingTab {
   private renderLegacySettings(): void {
     const { containerEl } = this;
     containerEl.empty();
+    containerEl.addClass('lp-settings');
+    const heading = containerEl.createDiv({ cls: 'lp-settings-heading' });
+    heading.createEl('span', { cls: 'lp-eyebrow', text: 'DASHELL / STUDIO' });
+    heading.createEl('h2', { text: t('app.name') });
+    heading.createEl('p', { text: t('studio.settingsHint') });
 
     const tabs = [
       { id: 'general',   label: t('settings.general') },
+      { id: 'practice', label: t('studio.practiceSettings') },
       { id: 'subtitle',  label: t('settings.subtitle') },
       { id: 'vocab',     label: t('settings.vocabulary') },
       { id: 'about',     label: t('settings.about') },
     ];
 
     const nav = containerEl.createDiv({ cls: 'lp-settings-tabs' });
+    nav.setAttribute('role', 'tablist');
     const content = containerEl.createDiv({ cls: 'lp-settings-content' });
 
     const panes: Record<string, HTMLElement> = {};
@@ -69,17 +76,33 @@ export class LangPlayerSettingTab extends PluginSettingTab {
       }
       for (const [tid, btn] of Object.entries(buttons)) {
         btn.classList.toggle('is-active', tid === id);
+        btn.setAttribute('aria-selected', String(tid === id));
+        btn.tabIndex = tid === id ? 0 : -1;
       }
     };
 
     for (const tab of tabs) {
       const btn = nav.createEl('button', { text: tab.label, cls: 'lp-settings-tab-btn' });
+      btn.setAttribute('role', 'tab');
+      btn.id = `lp-settings-tab-${tab.id}`;
+      btn.setAttribute('aria-controls', `lp-settings-pane-${tab.id}`);
       btn.onclick = () => activateTab(tab.id);
+      btn.onkeydown = (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const index = tabs.findIndex(item => item.id === tab.id);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        const id = tabs[next]!.id; activateTab(id); buttons[id]?.focus();
+      };
       buttons[tab.id] = btn;
       panes[tab.id] = content.createDiv({ cls: 'lp-settings-pane' });
+      panes[tab.id]!.id = `lp-settings-pane-${tab.id}`;
+      panes[tab.id]!.setAttribute('role', 'tabpanel');
+      panes[tab.id]!.setAttribute('aria-labelledby', btn.id);
     }
 
     this.renderGeneralTab(panes['general']!);
+    this.renderPracticeTab(panes['practice']!);
     this.renderSubtitleTab(panes['subtitle']!);
     this.renderVocabTab(panes['vocab']!);
     this.renderAboutTab(panes['about']!);
@@ -209,6 +232,9 @@ export class LangPlayerSettingTab extends PluginSettingTab {
           .onChange(async (v) => { this.plugin.settings.showInlineSubtitles = v; await this.plugin.saveSettings(); }),
       );
 
+  }
+
+  private renderPracticeTab(el: HTMLElement): void {
     // ── Dictation ──
     new Setting(el).setName(t('settings.dictation')).setHeading();
     this.addSliderValue(
@@ -334,6 +360,10 @@ export class LangPlayerSettingTab extends PluginSettingTab {
   }
 
   private renderSubtitleTab(el: HTMLElement): void {
+    const preview = el.createDiv({ cls: 'lp-settings-preview' });
+    preview.createSpan({ cls: 'lp-eyebrow', text: t('studio.currentSentence') });
+    preview.createDiv({ cls: 'lp-subtitle-line-en', text: 'The best way to learn is to stay curious.' });
+    preview.createDiv({ cls: 'lp-subtitle-line-zh', text: '最好的学习方式，是保持好奇心。' });
     this.addSliderValue(
       new Setting(el).setName(t('settings.fontSize')).setDesc(t('settings.fontSizeDesc')),
       8, 80, 1, this.plugin.settings.subtitleFontSize, (v) => `${v}px`,

@@ -85,7 +85,7 @@ export function PlaybackBar({ playerRef }: PlaybackBarProps) {
     clearHideTimer();
     if (display === 'floating') {
       hideTimer.current = window.setTimeout(() => {
-        setFloatingVisible(false);
+        if (!barRef.current?.contains(document.activeElement) && !barRef.current?.querySelector('details[open]')) setFloatingVisible(false);
         hideTimer.current = null;
       }, autoHideMs);
     }
@@ -100,7 +100,7 @@ export function PlaybackBar({ playerRef }: PlaybackBarProps) {
     } else {
       setFloatingVisible(true);
       hideTimer.current = window.setTimeout(() => {
-        setFloatingVisible(false);
+        if (!barRef.current?.contains(document.activeElement) && !barRef.current?.querySelector('details[open]')) setFloatingVisible(false);
         hideTimer.current = null;
       }, autoHideMs);
     }

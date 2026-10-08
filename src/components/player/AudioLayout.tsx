@@ -3,14 +3,11 @@ import React, { useRef, useEffect } from 'react';
 import { Platform } from 'obsidian';
 import type { PlayerRef, MediaSource } from '../../types';
 import { MediaPlaybackStatus, MediaPlayer } from './MediaPlayer';
-import { notifyPlaybackBarActivity, PlaybackBar } from '../subtitle/PlaybackBar';
-import { ClickableText } from '../subtitle/ClickableText';
+import { notifyPlaybackBarActivity } from '../subtitle/PlaybackBar';
 import { useMediaSync } from '../../hooks/useMediaSync';
 import { usePlaybackModeEvents } from '../../hooks/usePlaybackModeEvents';
 import { usePlayerReady } from '../../hooks/usePlayerReady';
 import { usePlaybackStore } from '../../store/playbackStore';
-import { useSubtitleStore, selectCurrentSubtitle } from '../../store/subtitleStore';
-import { useUIStore } from '../../store/uiStore';
 
 interface AudioLayoutProps {
   source: MediaSource;
@@ -34,7 +31,8 @@ export function AudioLayout({ source }: AudioLayoutProps) {
   useEffect(() => {
     if (Platform.isMobile) return;
     const handler = (e: KeyboardEvent) => {
-      if (!isMouseOver.current) return;
+      if (!isMouseOver.current || e.defaultPrevented) return;
+      if ((document.activeElement as HTMLElement | null)?.closest('button, summary, [role=button], [contenteditable=true]')) return;
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       if (document.querySelector('.modal-container, .modal-bg')) return;
@@ -78,62 +76,13 @@ export function AudioLayout({ source }: AudioLayoutProps) {
       <AudioVisualArea source={source} />
       <MediaPlaybackStatus onRetry={() => playerRef.current?.reload()} />
 
-      {/* The same Aloud-style toolbar shell is used for audio and video. */}
-      <PlaybackBar playerRef={playerRef} />
     </div>
   );
 }
 
 function AudioVisualArea({ source }: { source: MediaSource }) {
-  const cue = useSubtitleStore(selectCurrentSubtitle);
-  const config = useSubtitleStore((s) => s.config);
-  const overlayMode = useUIStore((s) => s.overlayMode);
-
-  // Use same display logic as SubtitleOverlay
-  let showEn = false;
-  let showZh = false;
-  let showText = false;
-
-  if (cue) {
-    if (overlayMode === 'off') {
-      // Show nothing
-    } else if (overlayMode === 'original') {
-      if (cue.textEn) { showEn = true; } else { showText = true; }
-    } else if (overlayMode === 'bilingual') {
-      if (cue.textEn) { showEn = true; } else { showText = true; }
-      showZh = !!cue.textZh;
-    } else if (overlayMode === 'translation') {
-      showZh = !!cue.textZh;
-      if (!showZh) { showText = true; }
-    } else {
-      // 'auto': follow config
-      showEn = !!(config.showEnglish && cue.textEn);
-      showZh = !!(config.showChinese && cue.textZh);
-      showText = !showEn && !showZh;
-    }
-  }
-
-  return (
-    <div className="lp-audio-visual">
-      {/* File name — pinned to top */}
-      <h2 className="lp-audio-title">{source.displayName?.trim() || 'Audio'}</h2>
-
-      {/* Center area: current subtitle */}
-      <div className="lp-audio-center">
-        {/* Current subtitle — same logic as SubtitleOverlay */}
-        <div className="lp-audio-subtitle-area">
-          {showText && (
-            <div className="lp-audio-sub-en"><ClickableText text={cue!.text} sentenceEn={cue!.text} sentenceZh={cue!.textZh} cueStart={cue!.start} /></div>
-          )}
-          {showEn && (
-            <div className="lp-audio-sub-en"><ClickableText text={cue!.textEn!} sentenceEn={cue!.textEn} sentenceZh={cue!.textZh} cueStart={cue!.start} /></div>
-          )}
-          {showZh && (
-            <div className="lp-audio-sub-zh"><ClickableText text={cue!.textZh!} sentenceEn={cue!.textEn ?? cue!.text} sentenceZh={cue!.textZh} cueStart={cue!.start} /></div>
-          )}
-          {!cue && <div className="lp-audio-sub-placeholder">—</div>}
-        </div>
-      </div>
-    </div>
-  );
+  return <div className="lp-audio-visual">
+    <div className="lp-audio-emblem" aria-hidden="true"><span /><span /><span /><span /><span /></div>
+    <div><span className="lp-eyebrow">AUDIO</span><h2 className="lp-audio-title">{source.displayName?.trim() || 'Audio'}</h2></div>
+  </div>;
 }

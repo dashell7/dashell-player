@@ -20,7 +20,8 @@
 		"typecheck": "tsc -noEmit -skipLibCheck",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"version": "node version-bump.mjs && git add manifest.json versions.json"
+		"version": "node version-bump.mjs && git add manifest.json versions.json",
+		"preview:ui": "node scripts/preview-ui.mjs"
 	},
 	"keywords": [],
 	"license": "MIT",

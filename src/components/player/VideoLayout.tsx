@@ -4,7 +4,7 @@ import { Platform } from 'obsidian';
 import type { PlayerRef, MediaSource } from '../../types';
 import { MediaPlaybackStatus, MediaPlayer } from './MediaPlayer';
 import { SubtitleOverlay } from '../subtitle/SubtitleOverlay';
-import { notifyPlaybackBarActivity, PlaybackBar } from '../subtitle/PlaybackBar';
+import { notifyPlaybackBarActivity } from '../subtitle/PlaybackBar';
 import { useMediaSync } from '../../hooks/useMediaSync';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useUIStore } from '../../store/uiStore';
@@ -43,7 +43,8 @@ export function VideoLayout({ source }: VideoLayoutProps) {
   useEffect(() => {
     if (Platform.isMobile) return;
     const handler = (e: KeyboardEvent) => {
-      if (!isMouseOver.current) return;
+      if (!isMouseOver.current || e.defaultPrevented) return;
+      if ((document.activeElement as HTMLElement | null)?.closest('button, summary, [role=button], [contenteditable=true]')) return;
       // Skip if an input/textarea has focus (user is typing)
       const tag = (document.activeElement as HTMLElement | null)?.tagName ?? '';
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -91,8 +92,6 @@ export function VideoLayout({ source }: VideoLayoutProps) {
           )}
         </div>
 
-        {/* The shell handles fixed/floating placement and Aloud visibility rules. */}
-        <PlaybackBar playerRef={playerRef} />
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import { useSubtitleStore } from '../../store/subtitleStore';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useDictationStore } from '../../store/dictationStore';
 import { useMediaViewOptional } from '../../context';
+import { Icon } from '../shared/Icon';
 import { t } from '../../i18n';
 import { logger } from '../../utils/logger';
 import { Notice } from 'obsidian';
@@ -109,8 +110,8 @@ export function SubtitleList({ showTime, showEn, showZh, search }: SubtitleListP
   const activeCueId = subtitles[displayActiveIndex]?.id;
 
   const listRef = useRef<ListImperativeAPI>(null);
-  // Timestamp until which auto-follow is paused (set when the user scrolls by hand).
-  const suppressFollowUntilRef = useRef(0);
+  // Manual browsing pauses follow until the user explicitly resumes it.
+  const [following, setFollowing] = React.useState(true);
 
   // Dynamic row heights — react-window v2 measures actual DOM content
   const dynamicRowHeight = useDynamicRowHeight({
@@ -120,31 +121,34 @@ export function SubtitleList({ showTime, showEn, showZh, search }: SubtitleListP
   });
 
   // Auto-scroll: jump to top while searching; otherwise follow the active cue —
-  // unless the user scrolled by hand recently (don't yank the list back).
+  // unless the user has paused following.
   useEffect(() => {
     if (!listRef.current?.scrollToRow) return;
     try {
       if (query) {
         listRef.current.scrollToRow({ index: 0, align: 'start' });
-      } else if (displayActiveIndex >= 0 && Date.now() >= suppressFollowUntilRef.current) {
+      } else if (displayActiveIndex >= 0 && following) {
         listRef.current.scrollToRow({ index: displayActiveIndex, align: 'smart' });
       }
     } catch {
       // Ignore scroll errors during initialization
     }
-  }, [displayActiveIndex, query]);
+  }, [displayActiveIndex, query, following]);
 
-  // Pause auto-follow briefly whenever the user scrolls by hand (wheel/touch),
+  // Pause auto-follow whenever the user scrolls by hand (wheel/touch),
   // so browsing earlier subtitles during playback isn't interrupted.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const onUserScroll = () => { suppressFollowUntilRef.current = Date.now() + 2500; };
+    const onUserScroll = () => setFollowing(false);
     el.addEventListener('wheel', onUserScroll, { passive: true });
     el.addEventListener('touchmove', onUserScroll, { passive: true });
+    const onKey = (event: KeyboardEvent) => { if (['PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) onUserScroll(); };
+    el.addEventListener('keydown', onKey);
     return () => {
       el.removeEventListener('wheel', onUserScroll);
       el.removeEventListener('touchmove', onUserScroll);
+      el.removeEventListener('keydown', onKey);
     };
   }, []);
 
@@ -200,7 +204,8 @@ export function SubtitleList({ showTime, showEn, showZh, search }: SubtitleListP
   }
 
   return (
-    <div ref={containerRef} className="lp-virtual-list">
+    <div ref={containerRef} className="lp-virtual-list lp-transcript-list">
+      {!following && !query && <button className="lp-return-current" onClick={() => setFollowing(true)}><Icon name="arrow-right" size={14} />{t('studio.returnCurrent')}</button>}
       {filtered.length === 0 ? (
         <div className="lp-subtitle-list-message">
           {t('subtitle.noMatch')}

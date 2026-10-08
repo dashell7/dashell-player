@@ -108,23 +108,25 @@ export class NoteService {
     source: MediaSource | null,
     showEn = true,
     showZh = true,
-  ): Promise<void> {
-    if (!source) return;
+  ): Promise<boolean> {
+    if (!source) return false;
 
     const line = this.formatCueLine(cue, source, showEn, showZh);
 
     try {
       const file = await this.findOrCreateNote(source);
-      if (!file) return;
+      if (!file) return false;
       await this.app.vault.process(file, (existing) =>
         existing.endsWith('\n')
           ? existing + line + '\n'
           : existing + '\n' + line + '\n',
       );
       new Notice(t('notice.noteSaved'));
+      return true;
     } catch (e) {
       logger.error('[NoteService] Failed to save to note:', e);
       new Notice(`${t('notice.noteSaveFailed')}: ${(e as Error).message}`);
+      return false;
     }
   }
 
