@@ -1,5 +1,5 @@
 import { useStoreApi } from '../../store/mediaSession';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { PlayerRef, SubtitleCue } from '../../types';
 import { usePlaybackStore } from '../../store/playbackStore';
@@ -25,6 +25,7 @@ interface SubtitleControlsProps {
 }
 
 export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
+  const controlLabelPrefix = useId();
   const useLoopStoreApi = useStoreApi(useLoopStore);
   const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
   const useDictationStoreApi = useStoreApi(useDictationStore);
@@ -153,26 +154,26 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
       {/* ── Controls Row ── */}
       <div className="lp-controls-row">
         {/* ── Group: Playback ── */}
-        <div className="lp-ctrl-group">
-          <button className="lp-ctrl-btn" onClick={prevSub} aria-label={t('player.prevSub')} title={t('player.prevSub')}>
+        <div className="lp-ctrl-group lp-control-group--transport">
+          <button className="lp-ctrl-btn lp-icon-button" onClick={prevSub} aria-labelledby={`${controlLabelPrefix}-previous`}>
             <Icon name="skip-back" size={ICON_MD} />
+            <span id={`${controlLabelPrefix}-previous`} className="lp-sr-only">{t('player.prevSub')}</span>
           </button>
-          <button className="lp-ctrl-btn lp-ctrl-btn--play" onClick={togglePlay} aria-label={playing ? t('player.pause') : t('player.play')} title={`${playing ? t('player.pause') : t('player.play')} (Space)`}>
+          <button className="lp-ctrl-btn lp-icon-button lp-ctrl-btn--play" onClick={togglePlay} aria-labelledby={`${controlLabelPrefix}-play`}>
             <Icon name={playing ? 'pause' : 'play'} size={ICON_PLAY} />
+            <span id={`${controlLabelPrefix}-play`} className="lp-sr-only">{playing ? t('player.pause') : t('player.play')}</span>
           </button>
-          <button className="lp-ctrl-btn" onClick={nextSub} aria-label={t('player.nextSub')} title={t('player.nextSub')}>
+          <button className="lp-ctrl-btn lp-icon-button" onClick={nextSub} aria-labelledby={`${controlLabelPrefix}-next`}>
             <Icon name="skip-forward" size={ICON_MD} />
+            <span id={`${controlLabelPrefix}-next`} className="lp-sr-only">{t('player.nextSub')}</span>
           </button>
+          <TimeDisplay />
         </div>
 
         <VolumeControl volume={volume} />
 
-        <TimeDisplay />
-
-        <div className="lp-ctrl-spacer" />
-
         {/* ── Group: Learning Tools ── */}
-        <div className="lp-ctrl-group">
+        <div className="lp-ctrl-group lp-control-group--practice">
           <LoopButton
             isLooping={isSegmentLooping}
             mode={mode}
@@ -186,33 +187,35 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
           />
 
           {mode.type === 'abRepeat' ? (
-            <button className="lp-ctrl-btn lp-ctrl-btn--active lp-ctrl-btn--label" onClick={handleClearAB} aria-label={t('mode.clearAB')} title={t('mode.clearAB')} aria-pressed={true} disabled={isPlaybackModeLocked}>
-              <Icon name="x" size={ICON_SM} /> AB
+            <button className="lp-ctrl-btn lp-icon-button lp-ctrl-btn--active" onClick={handleClearAB} aria-labelledby={`${controlLabelPrefix}-clear-ab`} aria-pressed={true} disabled={isPlaybackModeLocked}>
+              <Icon name="x" size={ICON_SM} />
+              <span id={`${controlLabelPrefix}-clear-ab`} className="lp-sr-only">{t('mode.clearAB')}</span>
             </button>
           ) : (
             <>
               <button
-                className={`lp-ctrl-btn lp-ctrl-btn--label${pointA !== null ? ' lp-ctrl-btn--accent' : ''}`}
+                className={`lp-ctrl-btn lp-ctrl-btn--label lp-ctrl-btn--point${pointA !== null ? ' lp-ctrl-btn--accent' : ''}`}
                 onClick={handleSetA}
-                aria-label={t('mode.setA')}
-                title={t('mode.setA')}
+                aria-labelledby={`${controlLabelPrefix}-set-a`}
                 disabled={isPlaybackModeLocked}
               >
-                {pointA !== null ? `A ${formatTime(pointA)}` : 'A'}
+                <span className="lp-ab-point-letter">A</span>
+                {pointA !== null && <span className="lp-ab-point-time">{formatTime(pointA)}</span>}
+                <span id={`${controlLabelPrefix}-set-a`} className="lp-sr-only">{t('mode.setA')}{pointA !== null ? ` ${formatTime(pointA)}` : ''}</span>
               </button>
               {pointA !== null && (
-                <button className="lp-ctrl-btn lp-ctrl-btn--label" onClick={handleSetB} aria-label={t('mode.setB')} title={t('mode.setB')} disabled={isPlaybackModeLocked}>B</button>
+                <button className="lp-ctrl-btn lp-ctrl-btn--label lp-ctrl-btn--point" onClick={handleSetB} aria-labelledby={`${controlLabelPrefix}-set-b`} disabled={isPlaybackModeLocked}>
+                  <span className="lp-ab-point-letter">B</span>
+                  <span id={`${controlLabelPrefix}-set-b`} className="lp-sr-only">{t('mode.setB')}</span>
+                </button>
               )}
             </>
           )}
 
-          <span className="lp-ctrl-sep" />
-
           <button
-            className={`lp-ctrl-btn${recorderState === 'recording' || recorderState === 'preparing' ? ' lp-ctrl-btn--recording' : ''}`}
+            className={`lp-ctrl-btn lp-icon-button${recorderState === 'recording' || recorderState === 'preparing' ? ' lp-ctrl-btn--recording' : ''}`}
             onClick={onMicClick}
-            aria-label={recorderState === 'recording' || recorderState === 'preparing' ? t('recording.stop') : t('recording.start')}
-            title={recorderState === 'recording' || recorderState === 'preparing' ? t('recording.stop') : t('recording.start')}
+            aria-labelledby={`${controlLabelPrefix}-record`}
             aria-pressed={recorderState === 'recording' || recorderState === 'preparing'}
             style={
               recorderState === 'recording'
@@ -220,25 +223,26 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
                 : undefined
             }
           >
-            <Icon name="mic" size={ICON_SM} />
+            <Icon name="mic" size={ICON_MD} />
+            <span id={`${controlLabelPrefix}-record`} className="lp-sr-only">{recorderState === 'recording' || recorderState === 'preparing' ? t('recording.stop') : t('recording.start')}</span>
             {(recorderState === 'recording' || recorderState === 'preparing') && <span className="lp-rec-dot" />}
           </button>
         </div>
 
-        <span className="lp-ctrl-sep" />
-
         {/* ── Group: View & Settings ── */}
-        <div className="lp-ctrl-group">
+        <div className="lp-ctrl-group lp-control-group--view">
           <PlaybackSpeedButton playbackRate={playbackRate} playerRef={playerRef} />
 
           <OverlayModeButton mode={overlayMode} onCycle={cycleOverlayMode} />
 
-          <button className="lp-ctrl-btn" onClick={openSubtitlePanel} aria-label={t('subtitle.openPanel')} title={t('subtitle.openPanel')}>
+          <button className="lp-ctrl-btn lp-icon-button" onClick={openSubtitlePanel} aria-labelledby={`${controlLabelPrefix}-subtitle-panel`}>
             <Icon name="panel-right" size={ICON_MD} />
+            <span id={`${controlLabelPrefix}-subtitle-panel`} className="lp-sr-only">{t('subtitle.panel')}</span>
           </button>
 
-          <button className="lp-ctrl-btn" onClick={onOpenNote} aria-label={t('player.openNote')} title={t('player.openNote')}>
+          <button className="lp-ctrl-btn lp-icon-button" onClick={onOpenNote} aria-labelledby={`${controlLabelPrefix}-note`}>
             <Icon name="file-text" size={ICON_MD} />
+            <span id={`${controlLabelPrefix}-note`} className="lp-sr-only">{t('player.openNote')}</span>
           </button>
 
           <FullscreenButton />
@@ -261,7 +265,9 @@ const PlaybackSpeedButton = React.memo(function PlaybackSpeedButton({
   playbackRate: number;
   playerRef: React.RefObject<PlayerRef | null>;
 }) {
+  const buttonLabelId = useId();
   const [isOpen, setIsOpen] = useState(false);
+  const speedLabelId = React.useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<number | null>(null);
 
@@ -309,16 +315,18 @@ const PlaybackSpeedButton = React.memo(function PlaybackSpeedButton({
     <div className="lp-speed-control" ref={rootRef}>
       <button
         type="button"
-        className={`lp-ctrl-btn lp-ctrl-btn--label${isOpen ? ' lp-ctrl-btn--active' : ''}`}
+        className={`lp-ctrl-btn lp-icon-button lp-icon-button--value${isOpen ? ' lp-ctrl-btn--active' : ''}`}
         onClick={() => { setIsOpen((open) => !open); clearCloseTimer(); }}
-        aria-label={t('player.speed')}
+        aria-labelledby={buttonLabelId}
         aria-expanded={isOpen}
-        title={t('player.speed')}
       >
-        {playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x
+        <Icon name="gauge" size={ICON_MD} />
+        <span className="lp-speed-value">{playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x</span>
+        <span id={buttonLabelId} className="lp-sr-only">{t('player.speed')}</span>
       </button>
       {isOpen && (
-        <div className="lp-speed-popover" role="dialog" aria-label={t('player.speed')}>
+        <div className="lp-speed-popover" role="dialog" aria-labelledby={speedLabelId}>
+          <span id={speedLabelId} className="lp-sr-only">{t('player.speed')}</span>
           <input
             type="range"
             min="0.5"
@@ -326,7 +334,7 @@ const PlaybackSpeedButton = React.memo(function PlaybackSpeedButton({
             step="0.05"
             value={playbackRate}
             onChange={(event) => setRate(Number(event.target.value))}
-            aria-label={t('player.speed')}
+            aria-labelledby={speedLabelId}
           />
           <output>{playbackRate.toFixed(2).replace(/0$/, '').replace(/\.0$/, '')}x</output>
         </div>
@@ -338,6 +346,7 @@ const PlaybackSpeedButton = React.memo(function PlaybackSpeedButton({
 /** Fullscreen toggle button. Hidden where element fullscreen is unavailable
  *  (iOS WKWebView) instead of rendering a button that silently does nothing. */
 function FullscreenButton() {
+  const labelId = useId();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const supported = typeof document !== 'undefined' && !!document.fullscreenEnabled;
 
@@ -361,8 +370,9 @@ function FullscreenButton() {
   if (!supported) return null;
 
   return (
-    <button className="lp-ctrl-btn" onClick={toggle} aria-label={isFullscreen ? t('player.exitFullscreen') : t('player.fullscreen')} title={isFullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}>
+    <button className="lp-ctrl-btn lp-icon-button" onClick={toggle} aria-labelledby={labelId}>
       <Icon name={isFullscreen ? 'minimize' : 'maximize'} size={ICON_MD} />
+      <span id={labelId} className="lp-sr-only">{isFullscreen ? t('player.exitFullscreen') : t('player.fullscreen')}</span>
     </button>
   );
 }
@@ -376,6 +386,8 @@ function LoopButton({ isLooping, mode, loopCount, disabled, onToggle, onSelectCo
   onToggle: () => void;
   onSelectCount: (count: number) => void;
 }) {
+  const loopLabelId = useId();
+  const loopSettingsLabelId = useId();
   const [showMenu, setShowMenu] = useState(false);
   const btnRef    = useRef<HTMLButtonElement>(null);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -403,21 +415,30 @@ function LoopButton({ isLooping, mode, loopCount, disabled, onToggle, onSelectCo
   const activeTotal = mode.type === 'segmentLoop' ? mode.total : loopCount;
 
   return (
-    <>
+    <div className="lp-loop-control">
       <button
         ref={btnRef}
-        className={`lp-ctrl-btn lp-ctrl-btn--label${isLooping ? ' lp-ctrl-btn--active' : ''}`}
+        className={`lp-ctrl-btn lp-icon-button lp-icon-button--value${isLooping ? ' lp-ctrl-btn--active' : ''}`}
         onClick={() => { if (!disabled) onToggle(); }}
         onContextMenu={handleContextMenu}
-        aria-label={`${t('mode.loopBtn')} (${t('mode.loopBtnHint')})`}
-        title={`${t('mode.loopBtn')} (${t('mode.loopBtnHint')})`}
+        aria-labelledby={loopLabelId}
         aria-pressed={isLooping}
         disabled={disabled}
       >
-        <Icon name="repeat" size={ICON_SM} />
-        {mode.type === 'segmentLoop' && (
-          <span className="lp-ctrl-badge">{mode.current + 1}/{mode.total}</span>
-        )}
+        <Icon name="repeat" size={ICON_MD} />
+        <span className="lp-ctrl-badge">{mode.type === 'segmentLoop' ? `${mode.current + 1}/${mode.total}` : activeTotal}</span>
+        <span id={loopLabelId} className="lp-sr-only">{t('mode.loopBtn')}</span>
+      </button>
+      <button
+        type="button"
+        className="lp-ctrl-btn lp-icon-button lp-loop-menu-btn"
+        onClick={() => setShowMenu((value) => !value)}
+        aria-labelledby={loopSettingsLabelId}
+        aria-expanded={showMenu}
+        disabled={disabled}
+      >
+        <Icon name="chevron-down" size={ICON_SM} />
+        <span id={loopSettingsLabelId} className="lp-sr-only">{t('mode.loopSettings')}</span>
       </button>
 
       {showMenu && menuPos && createPortal(
@@ -441,13 +462,14 @@ function LoopButton({ isLooping, mode, loopCount, disabled, onToggle, onSelectCo
         </>,
         document.body,
       )}
-    </>
+    </div>
   );
 }
 
 /** Inline horizontal volume control: icon + expandable pill slider (Media Extended style) */
 const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: number }) {
   const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
+  const volumeLabelId = React.useId();
   const [expanded, setExpanded] = useState(false);
   const prevVolume   = React.useRef(0.5);
   const collapseTimer = useRef<number | null>(null);
@@ -525,8 +547,9 @@ const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: nu
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
     >
-      <button className="lp-ctrl-btn" onClick={toggleMute} aria-label={t('player.volume')} aria-pressed={volume === 0}>
+      <button className="lp-ctrl-btn lp-icon-button" onClick={toggleMute} aria-labelledby={volumeLabelId} aria-pressed={volume === 0}>
         <Icon name={iconName} size={ICON_MD} />
+        <span id={volumeLabelId} className="lp-sr-only">{t('player.volume')}</span>
       </button>
       <div className={`lp-volume-inline${expanded ? ' lp-volume-inline--open' : ''}`}>
         <div
@@ -534,7 +557,7 @@ const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: nu
           className="lp-vol-track"
           onPointerDown={handlePointerDown}
           role="slider"
-          aria-label={t('player.volume')}
+          aria-labelledby={volumeLabelId}
           aria-valuenow={pct}
           aria-valuemin={0}
           aria-valuemax={100}
@@ -552,26 +575,31 @@ const VolumeControl = React.memo(function VolumeControl({ volume }: { volume: nu
 const OverlayModeButton = React.memo(function OverlayModeButton({
   mode, onCycle,
 }: { mode: OverlayMode; onCycle: () => void }) {
+  const modeLabelId = useId();
   const isOff  = mode === 'off';
-  const badge  =
-    mode === 'original'    ? t('subtitle.overlayOriginalBadge') :
-    mode === 'translation' ? t('subtitle.overlayTranslationBadge') : null;
-
   const label =
     mode === 'auto'        ? t('subtitle.overlayAuto') :
     mode === 'original'    ? t('subtitle.overlayOriginal') :
+    mode === 'bilingual'   ? t('subtitle.overlayBilingual') :
     mode === 'translation' ? t('subtitle.overlayTranslation') :
     t('subtitle.overlayOff');
+  const iconName =
+    mode === 'auto'        ? 'captions' :
+    mode === 'original'    ? 'captions-original' :
+    mode === 'bilingual'   ? 'captions-bilingual' :
+    mode === 'translation' ? 'languages' :
+    'eye-off';
 
   return (
     <button
-      className={`lp-ctrl-btn${isOff ? ' lp-ctrl-btn--dim' : ''}`}
+      className={`lp-ctrl-btn lp-icon-button lp-ctrl-btn--overlay${isOff ? ' lp-ctrl-btn--dim' : ''}`}
       onClick={onCycle}
-      aria-label={label}
-      title={label}
+      data-overlay-mode={mode}
+      aria-labelledby={modeLabelId}
+      aria-pressed={!isOff}
     >
-      <Icon name={isOff ? 'eye-off' : 'eye'} size={ICON_MD} />
-      {badge && <span className="lp-ctrl-badge">{badge}</span>}
+      <Icon name={iconName} size={ICON_MD} />
+      <span id={modeLabelId} className="lp-sr-only">{t('subtitle.inlineShort')}: {label}</span>
     </button>
   );
 });

@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useId } from 'react';
 import type { SubtitleCue } from '../../types';
 import { ClickableText } from './ClickableText';
 import { formatTime } from '../../utils';
@@ -17,6 +17,7 @@ function PlayIcon() {
 
 /** Circular save/star icon — accent-colored circle with star outline, absolutely positioned on right */
 function SaveIcon({ onActivate }: { onActivate: () => void }) {
+  const labelId = useId();
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onActivate();
@@ -35,8 +36,9 @@ function SaveIcon({ onActivate }: { onActivate: () => void }) {
       onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
-      aria-label={t('subtitle.saveToNote')}
+      aria-labelledby={labelId}
     >
+      <span id={labelId} className="lp-sr-only">{t('subtitle.saveToNote')}</span>
       {/* Star outline */}
       <svg viewBox="0 0 24 24" width={12} height={12}>
         <polygon
@@ -108,12 +110,12 @@ export const SubtitleItem = memo(function SubtitleItem({
       )}
       {showRaw && (
         <div className="lp-subtitle-line-en">
-          <span><ClickableText text={cue.text} isHighlighted={isActive} sentenceEn={cue.text} sentenceZh={cue.textZh} highlight={highlight} cueStart={cue.start} /></span>
+          <span><ClickableText text={cue.text} sentenceEn={cue.text} sentenceZh={cue.textZh} highlight={highlight} cueStart={cue.start} /></span>
         </div>
       )}
       {hasEn && (
         <div className="lp-subtitle-line-en">
-          <span><ClickableText text={cue.textEn!} isHighlighted={isActive} sentenceEn={cue.textEn} sentenceZh={cue.textZh} highlight={highlight} cueStart={cue.start} /></span>
+          <span><ClickableText text={cue.textEn!} sentenceEn={cue.textEn} sentenceZh={cue.textZh} highlight={highlight} cueStart={cue.start} /></span>
         </div>
       )}
       {hasZh && (

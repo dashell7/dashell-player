@@ -5,6 +5,8 @@ import { DEFAULT_DICTATION_HOTKEYS, type PlaybackBarDisplay, type PlaybackBarPos
 
 import { t } from '../i18n';
 import { getQiaomuReaderLookup } from '../services/QiaomuReaderLookup';
+import supportQrImage from '../assets/about/dashell-support-qr.jpg';
+import wechatQrImage from '../assets/about/dashell-wechat-qr.jpg';
 
 export class LangPlayerSettingTab extends PluginSettingTab {
   constructor(app: App, private plugin: LangPlayerPlugin) {
@@ -51,6 +53,7 @@ export class LangPlayerSettingTab extends PluginSettingTab {
       { id: 'general',   label: t('settings.general') },
       { id: 'subtitle',  label: t('settings.subtitle') },
       { id: 'vocab',     label: t('settings.vocabulary') },
+      { id: 'about',     label: t('settings.about') },
     ];
 
     const nav = containerEl.createDiv({ cls: 'lp-settings-tabs' });
@@ -79,6 +82,7 @@ export class LangPlayerSettingTab extends PluginSettingTab {
     this.renderGeneralTab(panes['general']!);
     this.renderSubtitleTab(panes['subtitle']!);
     this.renderVocabTab(panes['vocab']!);
+    this.renderAboutTab(panes['about']!);
 
     if (!tabs.some((tab) => tab.id === this._activeTab)) {
       this._activeTab = 'general';
@@ -92,7 +96,7 @@ export class LangPlayerSettingTab extends PluginSettingTab {
       .setDesc(t('settings.uiLanguageDesc'))
       .addDropdown((d) =>
         d
-          .addOption('en', 'English')
+          .addOption('en', this.plugin.settings.uiLanguage === 'zh' ? '英语' : 'English')
           .addOption('zh', '中文')
           .setValue(this.plugin.settings.uiLanguage)
           .onChange(async (v) => {
@@ -107,13 +111,16 @@ export class LangPlayerSettingTab extends PluginSettingTab {
       .setName(t('settings.targetLanguage'))
       .setDesc(t('settings.targetLanguageDesc'))
       .addDropdown((d) => {
-        const langs: [string, string][] = [
-          ['en', 'English'], ['zh', '中文'], ['ja', '日本語'], ['ko', '한국어'],
-          ['fr', 'Français'], ['es', 'Español'], ['de', 'Deutsch'], ['it', 'Italiano'],
-          ['pt', 'Português'], ['ru', 'Русский'], ['ar', 'العربية'], ['th', 'ไทย'],
-          ['vi', 'Tiếng Việt'],
+        const langs: [string, string, string][] = [
+          ['en', '英语', 'English'], ['zh', '中文', 'Chinese'], ['ja', '日语', 'Japanese'],
+          ['ko', '韩语', 'Korean'], ['fr', '法语', 'French'], ['es', '西班牙语', 'Spanish'],
+          ['de', '德语', 'German'], ['it', '意大利语', 'Italian'], ['pt', '葡萄牙语', 'Portuguese'],
+          ['ru', '俄语', 'Russian'], ['ar', '阿拉伯语', 'Arabic'], ['th', '泰语', 'Thai'],
+          ['vi', '越南语', 'Vietnamese'],
         ];
-        for (const [code, name] of langs) d.addOption(code, name);
+        for (const [code, zhName, enName] of langs) {
+          d.addOption(code, this.plugin.settings.uiLanguage === 'zh' ? zhName : enName);
+        }
         d.setValue(this.plugin.settings.targetLanguage)
           .onChange(async (v) => { this.plugin.settings.targetLanguage = v; await this.plugin.saveSettings(); });
       });
@@ -485,6 +492,107 @@ export class LangPlayerSettingTab extends PluginSettingTab {
           this.plugin.settings.noteTemplate = v; await this.plugin.saveSettings();
         });
       });
+  }
+
+  private renderAboutTab(el: HTMLElement): void {
+    const open = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
+
+    new Setting(el)
+      .setName(t('settings.aboutVersion'))
+      .setDesc(`v${this.plugin.manifest.version}`)
+      .addButton((button) => button
+        .setButtonText(t('settings.aboutReleases'))
+        .onClick(() => open('https://github.com/dashell7/dashell-player/releases')),
+      );
+
+    new Setting(el)
+      .setName(t('settings.aboutChangelog'))
+      .setDesc(t('settings.aboutChangelogDesc'))
+      .addButton((button) => button
+        .setButtonText(t('settings.aboutOpenChangelog'))
+        .onClick(() => open('https://github.com/dashell7/dashell-player/blob/master/CHANGELOG.md')),
+      );
+
+    new Setting(el)
+      .setName(t('settings.aboutFeedback'))
+      .setDesc(t('settings.aboutFeedbackDesc'))
+      .addButton((button) => button
+        .setCta()
+        .setButtonText(t('settings.aboutOpenIssues'))
+        .onClick(() => open('https://github.com/dashell7/dashell-player/issues')),
+      );
+
+    new Setting(el)
+      .setName(t('settings.aboutGuide'))
+      .setDesc(t('settings.aboutGuideDesc'))
+      .addButton((button) => button
+        .setButtonText(t('settings.aboutOpenGuide'))
+        .onClick(() => open('https://github.com/dashell7/dashell-player#readme')),
+      );
+
+    new Setting(el)
+      .setName(t('settings.aboutProject'))
+      .setDesc(t('settings.aboutProjectDesc'))
+      .addButton((button) => button
+        .setButtonText('GitHub @dashell7')
+        .onClick(() => open('https://github.com/dashell7')),
+      )
+      .addButton((button) => button
+        .setButtonText(t('settings.aboutLicense'))
+        .onClick(() => open('https://github.com/dashell7/dashell-player/blob/master/LICENSE')),
+      );
+
+    new Setting(el)
+      .setName(t('settings.aboutOtherPlugins'))
+      .setDesc('Dashell Reader · Dashell RSS')
+      .addButton((button) => button
+        .setButtonText('Dashell Reader')
+        .onClick(() => open('https://github.com/dashell7/dashell-reader')),
+      )
+      .addButton((button) => button
+        .setButtonText('Dashell RSS')
+        .onClick(() => open('https://github.com/dashell7/dashell-rss')),
+      );
+
+    const contacts = el.createDiv({ cls: 'lp-settings-about-contacts' });
+    const addContact = (name: string, value: string, href?: string): void => {
+      const row = contacts.createDiv({ cls: 'lp-settings-about-contact' });
+      row.createSpan({ text: name });
+      const valueEl = href
+        ? row.createEl('a', { text: value, href, cls: 'lp-settings-about-contact-value' })
+        : row.createSpan({ text: value, cls: 'lp-settings-about-contact-value' });
+      if (valueEl instanceof HTMLAnchorElement) {
+        valueEl.target = '_blank';
+        valueEl.rel = 'noopener noreferrer';
+      }
+    };
+    addContact(t('settings.aboutEmail'), 'dashell7@gmail.com', 'mailto:dashell7@gmail.com');
+    addContact('X', '@dashell77', 'https://x.com/dashell77');
+    addContact('GitHub', '@dashell7', 'https://github.com/dashell7');
+    addContact(t('settings.aboutWechat'), 'Adashell');
+
+    const addQrSection = (title: string, description: string, src: string, alt: string): void => {
+      const row = el.createDiv({ cls: 'lp-settings-about-qr' });
+      const copy = row.createDiv({ cls: 'lp-settings-about-qr-copy' });
+      copy.createEl('div', { text: title, cls: 'lp-settings-about-qr-title' });
+      copy.createDiv({ text: description, cls: 'lp-settings-about-qr-description' });
+      row.createEl('img', {
+        cls: 'lp-settings-about-qr-image',
+        attr: { src, alt, width: '160', height: '160', loading: 'lazy' },
+      });
+    };
+    addQrSection(
+      t('settings.aboutSupport'),
+      t('settings.aboutSupportDesc'),
+      supportQrImage,
+      t('settings.aboutSupportQrAlt'),
+    );
+    addQrSection(
+      t('settings.aboutFollowWechat'),
+      t('settings.aboutFollowWechatDesc'),
+      wechatQrImage,
+      t('settings.aboutWechatQrAlt'),
+    );
   }
 
   private getFolderOptions(currentValue?: string): Record<string, string> {

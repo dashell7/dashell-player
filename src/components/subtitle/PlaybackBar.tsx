@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Platform } from 'obsidian';
 import type { PlaybackBarDisplay, PlaybackBarPosition, PlaybackBarVisibility, PlayerRef } from '../../types';
 import { useMediaView } from '../../context';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useMediaSessionId } from '../../store/mediaSession';
 import { SubtitleControls } from './SubtitleControls';
+import { t } from '../../i18n';
 
 const SETTINGS_EVENT = 'langplayer-settings-changed';
 const ACTIVITY_EVENT = 'langplayer-playback-bar-activity';
@@ -50,6 +51,7 @@ interface PlaybackBarProps {
 export function PlaybackBar({ playerRef }: PlaybackBarProps) {
   const { settings } = useMediaView();
   const sessionId = useMediaSessionId();
+  const regionLabelId = useId();
   const playing = usePlaybackStore((state) => state.playing);
   const [, setSettingsRevision] = useState(0);
   const [floatingVisible, setFloatingVisible] = useState(true);
@@ -146,7 +148,7 @@ export function PlaybackBar({ playerRef }: PlaybackBarProps) {
       ref={barRef}
       className={className}
       role="region"
-      aria-label="Playback controls"
+      aria-labelledby={regionLabelId}
       aria-hidden={hidden}
       onClick={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
@@ -154,6 +156,7 @@ export function PlaybackBar({ playerRef }: PlaybackBarProps) {
       onFocusCapture={reveal}
       onTouchStart={reveal}
     >
+      <span id={regionLabelId} className="lp-sr-only">{t('player.controls')}</span>
       <SubtitleControls playerRef={playerRef} />
     </div>
   );

@@ -12,6 +12,7 @@ const ICONS: Record<string, string> = {
   'skip-back': 'M19 20L9 12l10-8v16zM5 19V5',
   'skip-forward': 'M5 4l10 8-10 8V4zM19 5v14',
   'repeat': 'M17 1l4 4-4 4M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 01-4 4H3',
+  'gauge': 'M12 14l4-4M3.34 19a10 10 0 1117.32 0M7 19h10M12 4v2',
   'mic': 'M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8',
   'volume-2': 'M11 5L6 9H2v6h4l5 4V5zM19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07',
 
@@ -94,6 +95,14 @@ const ICONS: Record<string, string> = {
   'check-circle': 'M22 11.08V12a10 10 0 11-5.93-9.14M22 4L12 14.01l-3-3',
   'credit-card': 'M21 4H3a2 2 0 00-2 2v12a2 2 0 002 2h18a2 2 0 002-2V6a2 2 0 00-2-2zM1 10h22',
   'type': 'M4 7V4h16v3M9 20h6M12 4v16',
+  'latin-a': 'M5 20L12 4l7 16M8 14h8',
+  'hanzi': 'M12 3v3M5 7h14M7 10l10 10M17 10L7 20M12 7v2',
+  'clock': 'M12 22a10 10 0 110-20 10 10 0 010 20zM12 6v6l4 2',
+  'languages': 'M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2v3M22 22l-5-10-5 10M14 18h6',
+  'captions': 'M3 4h18v16H3zM7 10h4M9 7v6M14 10h4M14 14h4',
+  'captions-original': 'M3 4h18v16H3zM7 16l3-9 3 9M8 13h4',
+  'captions-bilingual': 'M3 4h18v16H3zM6 10h5M8.5 7.5v5M6 15h5M14 9h4M14 14h4',
+  'keyboard': 'M2 5h20v14H2zM6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 15h8',
 };
 
 interface IconProps {
