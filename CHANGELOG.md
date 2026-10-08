@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.4
+
+- Add the redesigned responsive study workspace for audio, video, subtitles, vocabulary, and dictation.
+- Improve compact layouts, keyboard handling, subtitle navigation, recording state feedback, and practice controls.
+- Add the UI preview documentation and light/dark reference screenshots.
+
 ## 1.9.3
 
 - Refine the dictation workspace with a compact progress bar, horizontally scrolling sentence markers, and automatic positioning for the current sentence.

@@ -1,6 +1,6 @@
 # Dashell Player
 
-Maintained by [dashell](https://github.com/dashell7). [Source](https://github.com/dashell7/dashell-player) · [Issues](https://github.com/dashell7/dashell-player/issues) · [Latest release 1.9.3](https://github.com/dashell7/dashell-player/releases/latest).
+Maintained by [dashell](https://github.com/dashell7). [Source](https://github.com/dashell7/dashell-player) · [Issues](https://github.com/dashell7/dashell-player/issues) · [Latest release 1.9.4](https://github.com/dashell7/dashell-player/releases/latest).
 
 An Obsidian audio and video player for language study. Browse subtitles, practice dictation, record pronunciation, manage vocabulary, and send word lookups to Dashell Reader.
 
@@ -16,6 +16,7 @@ hotkeys remain compatible. Word lookup is provided by **Dashell Reader**
 
 ## Features
 
+- Use one responsive study workspace with listening, dictation, recording, and a collapsible transcript.
 - Open local media files from your vault.
 - Play remote `http/https` media links.
 - Automatically load a same-name subtitle beside local media, or keep a manual subtitle association.
