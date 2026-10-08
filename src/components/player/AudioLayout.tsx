@@ -10,7 +10,6 @@ import { usePlaybackModeEvents } from '../../hooks/usePlaybackModeEvents';
 import { usePlayerReady } from '../../hooks/usePlayerReady';
 import { usePlaybackStore } from '../../store/playbackStore';
 import { useSubtitleStore, selectCurrentSubtitle } from '../../store/subtitleStore';
-import { useRecordingStore } from '../../store/recordingStore';
 import { useUIStore } from '../../store/uiStore';
 
 interface AudioLayoutProps {
@@ -86,10 +85,8 @@ export function AudioLayout({ source }: AudioLayoutProps) {
 }
 
 function AudioVisualArea({ source }: { source: MediaSource }) {
-  const playing = usePlaybackStore((s) => s.playing);
   const cue = useSubtitleStore(selectCurrentSubtitle);
   const config = useSubtitleStore((s) => s.config);
-  const isRecording = useRecordingStore((s) => s.recorderState === 'recording');
   const overlayMode = useUIStore((s) => s.overlayMode);
 
   // Use same display logic as SubtitleOverlay
@@ -121,15 +118,8 @@ function AudioVisualArea({ source }: { source: MediaSource }) {
       {/* File name — pinned to top */}
       <h2 className="lp-audio-title">{source.displayName?.trim() || 'Audio'}</h2>
 
-      {/* Center area: bars + subtitle */}
+      {/* Center area: current subtitle */}
       <div className="lp-audio-center">
-        {/* Animated bars */}
-        <div className={`lp-audio-bars${playing ? ' lp-audio-bars--playing' : ''}${isRecording ? ' lp-audio-bars--recording' : ''}`}>
-          {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <div key={i} className="lp-audio-bar" />
-          ))}
-        </div>
-
         {/* Current subtitle — same logic as SubtitleOverlay */}
         <div className="lp-audio-subtitle-area">
           {showText && (

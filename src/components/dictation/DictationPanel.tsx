@@ -10,6 +10,7 @@ import { useUIStore } from '../../store/uiStore';
 import { useDictationStore } from '../../store/dictationStore';
 import { usePlugin, useSettings } from '../../context';
 import { RecordingPlayback } from '../recording/RecordingPlayback';
+import { Icon } from '../shared/Icon';
 import {
   buildDictationMediaKey,
   buildSubtitleFingerprint,
@@ -253,6 +254,43 @@ export function DictationPanel() {
     }
     return activeIndex >= 0 ? activeIndex + 1 : 0;
   }, [cue, dictationTotal, dictationRetryWrongOnly, dictationWrongSubtitles, activeIndex]);
+
+  const dotSubs = dictationRetryWrongOnly ? dictationWrongSubtitles : subtitles;
+  const dotRovingPos = Math.max(0, dotSubs.findIndex((s) => s.id === cue?.id));
+
+  useEffect(() => {
+    const container = dotsContainerRef.current;
+    const activeDot = container?.querySelector<HTMLElement>(`[data-dot-index="${dotRovingPos}"]`);
+    if (!container || !activeDot) return;
+
+    const scrollActiveDotIntoView = (behavior: ScrollBehavior) => {
+      const dotRect = activeDot.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const dotLeft = dotRect.left - containerRect.left + container.scrollLeft;
+      const dotRight = dotLeft + dotRect.width;
+      const visibleLeft = container.scrollLeft;
+      const visibleRight = visibleLeft + container.clientWidth;
+      let nextScrollLeft = visibleLeft;
+
+      if (dotLeft < visibleLeft + 4) {
+        nextScrollLeft = Math.max(0, dotLeft - 4);
+      } else if (dotRight > visibleRight - 4) {
+        nextScrollLeft = dotRight - container.clientWidth + 4;
+      }
+
+      if (nextScrollLeft !== visibleLeft) container.scrollTo({ left: nextScrollLeft, behavior });
+    };
+
+    scrollActiveDotIntoView('smooth');
+    let observedWidth = container.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (container.clientWidth === observedWidth) return;
+      observedWidth = container.clientWidth;
+      scrollActiveDotIntoView('auto');
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [dotRovingPos, dictationCurrent]);
 
   const allBoxesCorrect = useMemo(() => {
     if (targetChars.length === 0) return false;
@@ -1184,11 +1222,14 @@ export function DictationPanel() {
     targetChars.length > 80 ? 'lp-dictation-boxes--compact' : '',
   ].filter(Boolean).join(' ');
 
+  const enteredCharCount = boxInputs.filter(Boolean).length;
+  const enteredPercent = targetChars.length > 0
+    ? Math.min(100, Math.round((enteredCharCount / targetChars.length) * 100))
+    : 0;
+
   // Progress dots use a roving tabindex: only the current dot is a Tab stop;
   // ArrowLeft/Right/Up/Down + Home/End move focus among the rest. Avoids turning
   // a 200-sentence session into 200 separate Tab stops.
-  const dotSubs = dictationRetryWrongOnly ? dictationWrongSubtitles : subtitles;
-  const dotRovingPos = Math.max(0, dotSubs.findIndex((s) => s.id === cue?.id));
   const habitPercent = Math.min(
     100,
     Math.round((habitSummary.todaySentenceCount / Math.max(1, habitSummary.dailyGoal)) * 100),
@@ -1392,21 +1433,30 @@ export function DictationPanel() {
           </button>
         ) : (
           <button
-            className="lp-btn lp-action-grow"
+            className="lp-btn lp-dictation-progress-action"
             onClick={focusHidden}
             disabled={!cueAnswer}
+            aria-label={`${t('dictation.placeholder')} ${enteredCharCount}/${targetChars.length}`}
           >
-            {targetChars.length > 0 ? `${boxInputs.filter(Boolean).length}/${targetChars.length}` : '—'}
+            <span className="lp-dictation-progress-count">
+              {targetChars.length > 0 ? `${enteredCharCount}/${targetChars.length}` : '—'}
+            </span>
+            <span className="lp-dictation-progress-track" aria-hidden="true">
+              <span style={{ width: `${enteredPercent}%` }} />
+            </span>
           </button>
         )}
         <button
-          className="lp-btn lp-action-grow"
+          className="lp-btn lp-action-grow lp-dictation-replay-action"
           onClick={replayCurrentCue}
           disabled={!cue || isRecordingBusy}
           aria-label={`${t('dictation.replay')} — ${hotkeyReplayLabel}`}
         >
-          {t('dictation.replay')}
-          <span className="lp-dictation-kbd">{hotkeyReplayLabel}</span>
+          <Icon name="repeat" size={15} />
+          <span className="lp-dictation-replay-label">
+            {t('dictation.replay')}
+            <span className="lp-dictation-kbd">{hotkeyReplayLabel}</span>
+          </span>
         </button>
       </div>
 
@@ -1423,9 +1473,6 @@ export function DictationPanel() {
 
       {!isLocked && phase !== 'correct' && targetChars.length > 0 && (
         <div className="lp-dictation-shortcuts">
-          <span className="lp-dictation-kbd">{hotkeyReplayLabel}</span>
-          <span className="lp-dictation-shortcut-label">{t('dictation.replay')}</span>
-          <span className="lp-dictation-shortcut-sep">·</span>
           <span className="lp-dictation-kbd">{hotkeyHintLabel}</span>
           <span className="lp-dictation-shortcut-label">{t('dictation.hintWord')}</span>
         </div>

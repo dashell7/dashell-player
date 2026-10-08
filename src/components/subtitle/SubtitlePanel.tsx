@@ -1,5 +1,5 @@
 import { useStoreApi } from '../../store/mediaSession';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useId, useMemo, useState } from 'react';
 import { SubtitleList } from './SubtitleList';
 import { useSubtitleStore } from '../../store/subtitleStore';
 import { useUIStore } from '../../store/uiStore';
@@ -11,6 +11,7 @@ import { Icon } from '../shared/Icon';
 import { t } from '../../i18n';
 
 export function SubtitlePanel() {
+  const searchCloseLabelId = useId();
   const useUIStoreApi = useStoreApi(useUIStore);
   const useSubtitleStoreApi = useStoreApi(useSubtitleStore);
   const usePlaybackStoreApi = useStoreApi(usePlaybackStore);
@@ -25,7 +26,7 @@ export function SubtitlePanel() {
   const isRecordingBusy =
     recorderState === 'preparing' || recorderState === 'recording' || recorderState === 'stopping';
   const mediaCtx = useMediaViewOptional();
-  const [importing, setImporting] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -44,18 +45,18 @@ export function SubtitlePanel() {
     setSearchOpen(false);
   }, []);
 
-  const handleImportAll = useCallback(async () => {
-    if (!mediaCtx || importing) return;
+  const handleSaveAll = useCallback(async () => {
+    if (!mediaCtx || savingNote) return;
     const cues = useSubtitleStoreApi.getState().subtitles;
     const source = usePlaybackStoreApi.getState().source;
     if (cues.length === 0) return;
-    setImporting(true);
+    setSavingNote(true);
     try {
       await mediaCtx.plugin.noteService.saveAllSubtitlesToNote(cues, source, showEn, showZh);
     } finally {
-      setImporting(false);
+      setSavingNote(false);
     }
-  }, [mediaCtx, showEn, showZh, importing]);
+  }, [mediaCtx, showEn, showZh, savingNote]);
 
   const toggleDictation = useCallback(() => {
     if (isRecordingBusy) return;
@@ -64,18 +65,18 @@ export function SubtitlePanel() {
 
   return (
     <div className="lp-subtitle-panel">
-      {/* Compact toolbar */}
+      {/* File actions and display choices stay in separate groups at every width. */}
       <div className="lp-subtitle-toolbar">
         {/* Left: count + search + import icon buttons */}
         <div className="lp-subtitle-toolbar-group">
           <span className="lp-subtitle-count">
-            {subtitleCount > 0 ? subtitleCount : ''}
+            {t('subtitle.count', { n: subtitleCount })}
           </span>
           {mediaCtx && (
             <IconBtn
               icon="folder-open"
               onClick={() => mediaCtx.plugin.loadSubtitleFromVault()}
-              title={t('subtitle.loadFile')}
+              label={t('subtitle.loadFile')}
             />
           )}
           {subtitleCount > 0 && (
@@ -83,25 +84,26 @@ export function SubtitlePanel() {
               icon="search"
               active={searchOpen}
               onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
-              title={t('subtitle.search')}
+              label={t('subtitle.search')}
             />
           )}
           {mediaCtx && subtitleCount > 0 && (
-            <ImportBtn importing={importing} onClick={() => { void handleImportAll(); }} title={t('subtitle.importAll')} />
+            <SaveToNoteBtn saving={savingNote} onClick={() => { void handleSaveAll(); }} label={t('subtitle.importAll')} />
           )}
         </div>
 
         {/* Right: display toggles + dictation */}
         <div className="lp-subtitle-toolbar-group lp-subtitle-toolbar-group--end">
-          <ToggleBtn label={t('subtitle.showEn')} active={showEn} onClick={() => setSubtitleShowEn(!showEn)} />
-          <ToggleBtn label={t('subtitle.showZh')} active={showZh} onClick={() => setSubtitleShowZh(!showZh)} />
-          <ToggleBtn label={t('subtitle.showTime')} active={showTime} onClick={() => setSubtitleShowTime(!showTime)} />
-          <Divider />
+          <div className="lp-subtitle-display-toggles">
+            <ToggleBtn icon="latin-a" label={t('subtitle.showEn')} active={showEn} onClick={() => setSubtitleShowEn(!showEn)} />
+            <ToggleBtn icon="hanzi" label={t('subtitle.showZh')} active={showZh} onClick={() => setSubtitleShowZh(!showZh)} />
+            <ToggleBtn icon="clock" label={t('subtitle.showTime')} active={showTime} onClick={() => setSubtitleShowTime(!showTime)} />
+          </div>
           <DictationToggleBtn
             active={dictationOpen}
             disabled={isRecordingBusy || subtitleCount === 0 || !mediaCtx}
             onClick={toggleDictation}
-            title={t('dictation.toggle')}
+            label={t('dictation.short')}
           />
         </div>
       </div>
@@ -110,7 +112,9 @@ export function SubtitlePanel() {
       {searchOpen && (
         <div className="lp-subtitle-search-row">
           <Icon name="search" size={13} />
+          <label className="lp-sr-only" htmlFor="lp-subtitle-search">{t('subtitle.search')}</label>
           <input
+            id="lp-subtitle-search"
             autoFocus
             type="text"
             value={query}
@@ -127,10 +131,11 @@ export function SubtitlePanel() {
           )}
           <button
             onClick={closeSearch}
-            aria-label={t('subtitle.searchClose')}
             className="lp-subtitle-search-close"
+            aria-labelledby={searchCloseLabelId}
           >
             <Icon name="x" size={14} />
+            <span id={searchCloseLabelId} className="lp-sr-only">{t('subtitle.searchClose')}</span>
           </button>
         </div>
       )}
@@ -141,76 +146,76 @@ export function SubtitlePanel() {
   );
 }
 
-function IconBtn({ icon, active, onClick, title }: { icon: string; active?: boolean; onClick: () => void; title: string }) {
+function IconBtn({ icon, active, onClick, label }: { icon: string; active?: boolean; onClick: () => void; label: string }) {
+  const labelId = useId();
   return (
     <button
       type="button"
-      className={`lp-ctrl-btn${active ? ' lp-ctrl-btn--active' : ''}`}
+      className={`lp-ctrl-btn lp-icon-button${active ? ' lp-ctrl-btn--active' : ''}`}
       onClick={onClick}
-      aria-label={title}
-      title={title}
-      aria-pressed={active}
+      aria-labelledby={labelId}
+      aria-pressed={active === undefined ? undefined : active}
     >
-      <Icon name={icon} size={14} />
+      <Icon name={icon} size={16} />
+      <span id={labelId} className="lp-sr-only">{label}</span>
     </button>
   );
 }
 
-function ImportBtn({ importing, onClick, title }: { importing: boolean; onClick: () => void; title: string }) {
+function SaveToNoteBtn({ saving, onClick, label }: { saving: boolean; onClick: () => void; label: string }) {
+  const labelId = useId();
   return (
     <button
       type="button"
-      className="lp-ctrl-btn"
+      className="lp-ctrl-btn lp-icon-button"
       onClick={onClick}
-      disabled={importing}
-      aria-label={title}
-      title={title}
+      aria-labelledby={labelId}
+      disabled={saving}
     >
-      {importing
-        ? <Icon name="loader" size={12} className="lp-spin" />
-        : <Icon name="import" size={13} />}
+      {saving
+        ? <Icon name="loader" size={16} className="lp-spin" />
+        : <Icon name="file-text" size={16} />}
+      <span id={labelId} className="lp-sr-only">{label}</span>
     </button>
   );
 }
 
-function Divider() {
-  return <span className="lp-control-divider" />;
-}
-
-function ToggleBtn({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function ToggleBtn({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) {
+  const labelId = useId();
   return (
     <button
       type="button"
-      className={`lp-ctrl-btn lp-ctrl-btn--label${active ? ' lp-ctrl-btn--active' : ''}`}
+      className={`lp-ctrl-btn lp-icon-button${active ? ' lp-ctrl-btn--active' : ''}`}
       onClick={onClick}
-      aria-label={label}
-      title={label}
       aria-pressed={active}
+      aria-labelledby={labelId}
     >
-      {label}
+      <Icon name={icon} size={16} />
+      <span id={labelId} className="lp-sr-only">{label}</span>
     </button>
   );
 }
 
 function DictationToggleBtn({
-  active, disabled, onClick, title,
+  active, disabled, onClick, label,
 }: {
   active: boolean;
   disabled: boolean;
   onClick: () => void;
-  title: string;
+  label: string;
 }) {
+  const labelId = useId();
   return (
     <button
       type="button"
-      className={`lp-ctrl-btn${active ? ' lp-ctrl-btn--active' : ''}`}
+      className={`lp-ctrl-btn lp-icon-button${active ? ' lp-ctrl-btn--active' : ''}`}
       onClick={onClick}
+      aria-labelledby={labelId}
       disabled={disabled}
-      aria-label={title}
-      title={title}
       aria-pressed={active}
     >
-      <Icon name="type" size={13} />
+      <Icon name="keyboard" size={16} />
+      <span id={labelId} className="lp-sr-only">{label}</span>
     </button>
   );
 }

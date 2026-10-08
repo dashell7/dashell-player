@@ -19,6 +19,7 @@ const context = await esbuild.context({
 		".tsx": "tsx",
 		".ts": "ts",
 		".css": "css",
+		".jpg": "dataurl",
 	},
 	bundle: true,
 	jsx: "automatic",
