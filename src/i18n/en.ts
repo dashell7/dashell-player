@@ -119,6 +119,15 @@ export const en = {
   'recording.stop': 'Stop',
 
   // Dictation
+  'dictation.sentenceProgress': 'Sentence {current} / {total}',
+  'dictation.retryProgress': 'Wrong answers · {current}/{total}',
+  'dictation.practiceScope': 'Practice scope',
+  'dictation.allSentences': 'All sentences',
+  'dictation.continuePractice': 'Continue practice',
+  'dictation.sentencesUnit': 'sentences',
+  'dictation.daysUnit': 'days',
+  'dictation.filled': 'Filled {current}/{total}',
+  'dictation.answerShown': 'Answer shown',
   'dictation.toggle': 'Toggle Dictation Mode',
   'dictation.short': 'Dictation',
   'dictation.title': 'Sentence Dictation',

@@ -121,6 +121,15 @@ export const zh: Record<TranslationKey, string> = {
   'recording.stop': '停止录音',
 
   // Dictation
+  'dictation.sentenceProgress': '第 {current} / {total} 句',
+  'dictation.retryProgress': '错题重练 · {current}/{total}',
+  'dictation.practiceScope': '练习范围',
+  'dictation.allSentences': '全部句子',
+  'dictation.continuePractice': '继续练习',
+  'dictation.sentencesUnit': '句',
+  'dictation.daysUnit': '天',
+  'dictation.filled': '已填写 {current}/{total}',
+  'dictation.answerShown': '已显示答案',
   'dictation.toggle': '切换听写模式',
   'dictation.short': '听写',
   'dictation.title': '单句听写',
