@@ -88,20 +88,24 @@
 .lp-sentence-meta { display: flex; align-items: center; gap: 12px; color: var(--lp-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .lp-sentence-meta time { margin-left: auto; }
 .lp-focus-text { margin: 20px 0 12px; font-size: clamp(21px,2.5cqw,31px); line-height: 1.6; letter-spacing: -.015em; font-weight: 450; }
-.lp-focus-translation { min-height: 36px; color: var(--lp-muted); font-size: 13px; line-height: 1.8; }
+.lp-focus-translation { margin-bottom: 12px; color: var(--lp-muted); font-size: 13px; line-height: 1.8; }
 .lp-focus-translation p { margin: 0; }.lp-text-button { padding-left: 0; color: var(--lp-muted); font-size: 12px; }
-.lp-sentence-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
-.lp-sentence-actions .lp-btn { font-size: 12px; }
+.lp-sentence-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.lp-sentence-actions .lp-text-button { min-height: 30px; padding: 5px 8px; gap: 5px; }
+.lp-sentence-actions .lp-sentence-replay { color: var(--lp-accent); background: var(--lp-accent-soft); }
 .lp-sentence-wait { color: var(--lp-muted); margin: 36px 0; line-height: 1.8; }
 .lp-word { cursor: pointer; border-radius: 3px; transition: background .12s; }
 .lp-word:hover { background: var(--lp-accent-soft); color: var(--lp-accent); }.lp-word--match { background: #e8c46d40; text-decoration: underline; }
-.lp-shadow-studio { margin-top: 30px; padding-top: 23px; border-top: 1px solid var(--lp-line); }
+.lp-shadow-studio { margin-top: 22px; padding-top: 22px; border-top: 1px solid var(--lp-line); }
 .lp-shadow-heading { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; font-size: 11px; color: var(--lp-muted); }
-.lp-record-capture { display: flex; align-items: center; gap: 24px; margin: 20px 0 12px; }
-.lp-record-button { border: 1px solid var(--lp-line); background: var(--lp-surface); min-height: 42px; }
-.lp-record-button.is-recording { color: var(--lp-danger); border-color: var(--lp-danger); }
+.lp-record-capture { display: flex; flex-wrap: wrap; align-items: center; gap: 24px; margin: 16px 0 12px; }
+.lp-record-button { border: 1px solid var(--lp-accent); background: var(--lp-accent); color: var(--lp-paper); min-height: 46px; padding: 10px 18px; font-weight: 600; }
+.lp-record-button:hover:not(:disabled) { filter: brightness(.95); }
+.lp-record-button.is-recording { color: var(--lp-paper); background: var(--lp-danger); border-color: var(--lp-danger); }
 .lp-level-meter { display: flex; gap: 3px; height: 20px; align-items: center; }.lp-level-meter i { width: 3px; height: 16px; border-radius: 2px; background: var(--lp-line); }.lp-level-meter i.is-lit { background: var(--lp-accent); }
-.lp-record-help { color: var(--lp-muted); font-size: 12px; }
+.lp-record-help { margin: 0; color: var(--lp-muted); font-size: 12px; }
+.lp-shadow-studio .lp-rec-playback { padding: 12px; background: var(--lp-accent-soft); font-size: 12px; }
+.lp-shadow-studio .lp-rec-playback-btn { width: 36px; height: 36px; flex-shrink: 0; background: var(--lp-accent); color: var(--lp-paper); }
 
 /* Transcript */
 .lp-studio-transcript { min-height: 0; min-width: 0; border-left: 1px solid var(--lp-line); background: var(--lp-surface); }

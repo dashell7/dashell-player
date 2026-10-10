@@ -7,6 +7,8 @@ import {VocabularyPanel} from '../../src/components/vocabulary/VocabularyPanel';
 import {DEFAULT_SETTINGS} from '../../src/types';
 import {useSubtitleStore} from '../../src/store/subtitleStore';
 import {usePlaybackStore} from '../../src/store/playbackStore';
+import {useRecordingStore} from '../../src/store/recordingStore';
+import {useUIStore} from '../../src/store/uiStore';
 import {setLanguage} from '../../src/i18n';
 const params = new URLSearchParams(location.search);
 setLanguage(params.get('lang') === 'en' ? 'en' : 'zh');
@@ -29,4 +31,8 @@ const plugin={settings,saveSettings:noop,app:{workspace:{getLeavesOfType:()=>[]}
 useSubtitleStore.getState().setSubtitles(cues);
 useSubtitleStore.getState().setActiveIndex(1);
 usePlaybackStore.getState().setSource(source);
+if (params.has('recording')) {
+  useUIStore.getState().setStudyMode('shadow');
+  useRecordingStore.getState().setLastRecording({url:'/sample.wav',durationSec:180,filePath:'preview.wav',subtitleText:cues[1]!.text});
+}
 createRoot(document.getElementById('root')!).render(<MediaViewProvider plugin={plugin} source={source}>{params.has('vocab') ? <VocabularyPanel/> : <StudyWorkbench source={source}/>}</MediaViewProvider>);

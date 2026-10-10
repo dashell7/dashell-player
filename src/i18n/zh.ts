@@ -20,6 +20,8 @@ export const zh: Record<TranslationKey, string> = {
   'studio.addTranscriptHint': "载入字幕，即可逐句精听、听写和跟读。",
   'studio.currentSentence': "当前句",
   'studio.showTranslation': "查看译文",
+  'studio.hideTranslation': "隐藏译文",
+  'studio.sentenceActions': "句子工具栏",
   'studio.saved': "已存入笔记",
   'studio.betweenSentences': "播放媒体，或从右侧选择一句开始。",
   'studio.yourVoice': "我的录音",

@@ -18,6 +18,8 @@ export const en = {
   'studio.addTranscriptHint': "Load subtitles to listen, write and shadow each sentence.",
   'studio.currentSentence': "CURRENT SENTENCE",
   'studio.showTranslation': "Show translation",
+  'studio.hideTranslation': "Hide translation",
+  'studio.sentenceActions': "Sentence actions",
   'studio.saved': "Saved to note",
   'studio.betweenSentences': "Play the media or select a sentence to begin.",
   'studio.yourVoice': "Your recording",

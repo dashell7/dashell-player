@@ -161,10 +161,11 @@ function SentenceFocus({ shadow, audio }: { shadow: boolean; audio: boolean }) {
     <div className="lp-sentence-meta"><span className="lp-eyebrow">{t('studio.currentSentence')}</span><span>{activeIndex >= 0 ? String(activeIndex + 1).padStart(2, '0') : '—'} / {count}</span>{cue && <time>{formatTime(cue.start)}</time>}</div>
     {cue ? <>
       {showCurrentSentence && <div className="lp-focus-text"><ClickableText text={cue.textEn || cue.text} sentenceEn={cue.textEn || cue.text} sentenceZh={cue.textZh} cueStart={cue.start} /></div>}
-      {showCurrentSentence && cue.textZh && <div className="lp-focus-translation">{translation ? <p>{cue.textZh}</p> : <button className="lp-text-button" onClick={() => setTranslation(true)}><Icon name="languages" size={14} />{t('studio.showTranslation')}</button>}</div>}
-      <div className="lp-sentence-actions">
-        <button className="lp-btn" disabled={busy} onClick={() => { dispatchLpEvent('langplayer-stop-recording-playback'); playSegmentOnce(cue); }}><Icon name="repeat" size={15} />{t('dictation.replay')}</button>
-        <button className="lp-btn" disabled={saving} onClick={() => void save()}><Icon name={savedCue === cue.id ? 'check' : 'bookmark'} size={15} />{t(savedCue === cue.id ? 'studio.saved' : 'subtitle.saveToNote')}</button>
+      {showCurrentSentence && cue.textZh && translation && <div className="lp-focus-translation"><p>{cue.textZh}</p></div>}
+      <div className="lp-sentence-actions" role="group" aria-label={t('studio.sentenceActions')}>
+        <button className={`lp-text-button${shadow ? '' : ' lp-sentence-replay'}`} disabled={busy} onClick={() => { dispatchLpEvent('langplayer-stop-recording-playback'); playSegmentOnce(cue); }}><Icon name="repeat" size={14} />{t('dictation.replay')}</button>
+        {showCurrentSentence && cue.textZh && <button className="lp-text-button" aria-expanded={translation} onClick={() => setTranslation(visible => !visible)}><Icon name="languages" size={14} />{t(translation ? 'studio.hideTranslation' : 'studio.showTranslation')}</button>}
+        <button className="lp-text-button" disabled={saving} onClick={() => void save()}><Icon name={savedCue === cue.id ? 'check' : 'bookmark'} size={14} />{t(savedCue === cue.id ? 'studio.saved' : 'subtitle.saveToNote')}</button>
       </div>
     </> : <p className="lp-sentence-wait">{t('studio.betweenSentences')}</p>}
     {shadow && <div className="lp-shadow-studio">
