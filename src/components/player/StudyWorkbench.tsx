@@ -44,17 +44,18 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [mobilePage, setMobilePage] = useState<'study' | 'transcript'>('study');
+  const isVideo = detectMediaType(source.url) === 'video';
+  const defaultLayout = isVideo ? DEFAULT_WORKBENCH_LAYOUT : { ...DEFAULT_WORKBENCH_LAYOUT, media: 22 };
   const [layouts, setLayouts] = useState<WorkbenchLayouts>(() => {
     try { return readWorkbenchLayouts(window.localStorage); } catch { return {}; }
   });
-  const layout = layouts[mode] ?? DEFAULT_WORKBENCH_LAYOUT;
+  const layout = layouts[mode] ?? defaultLayout;
   const resize = (area: keyof WorkbenchLayout, value: number) => {
-    setLayouts(previous => ({ ...previous, [mode]: { ...(previous[mode] ?? DEFAULT_WORKBENCH_LAYOUT), [area]: clampLayoutSize(value) } }));
+    setLayouts(previous => ({ ...previous, [mode]: { ...(previous[mode] ?? defaultLayout), [area]: clampLayoutSize(value) } }));
   };
   useEffect(() => {
     try { window.localStorage.setItem(WORKBENCH_LAYOUT_KEY, JSON.stringify(layouts)); } catch { /* Resizing still works when local storage is unavailable. */ }
   }, [layouts]);
-  const isVideo = detectMediaType(source.url) === 'video';
 
   useEffect(() => {
     const element = rootRef.current;
