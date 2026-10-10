@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Notice } from 'obsidian';
-import { detectMediaType, VIEW_TYPE_DICTATION, type MediaSource, type PlayerRef } from '../../types';
+import { detectMediaType, VIEW_TYPE_DICTATION, VIEW_TYPE_SUBTITLE_PANEL, type MediaSource, type PlayerRef } from '../../types';
 import { useMediaView } from '../../context';
 import { useUIStore, type StudyMode } from '../../store/uiStore';
 import { useStoreApi } from '../../store/mediaSession';
@@ -98,12 +98,25 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
 }
 
 function SubtitleDisplayMenu() {
+  const { plugin } = useMediaView();
+  const workspace = plugin.app.workspace;
   const ui = useStoreApi(useUIStore);
   const overlayMode = useUIStore(s => s.overlayMode);
   const showCurrentSentence = useUIStore(s => s.showCurrentSentence);
   const transcriptOpen = useUIStore(s => s.transcriptOpen);
+  const [detachedOpen, setDetachedOpen] = useState(() => workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL).length > 0);
   const lastOverlayMode = useRef(overlayMode === 'off' ? 'original' as const : overlayMode);
   const menuRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const syncPanel = () => {
+      const open = workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL).length > 0;
+      setDetachedOpen(open);
+      if (open) ui.getState().setTranscriptOpen(false);
+    };
+    syncPanel();
+    const event = workspace.on('layout-change', syncPanel);
+    return () => workspace.offref(event);
+  }, [workspace, ui, transcriptOpen]);
   useEffect(() => {
     if (overlayMode !== 'off') lastOverlayMode.current = overlayMode;
   }, [overlayMode]);
@@ -127,7 +140,16 @@ function SubtitleDisplayMenu() {
     <div className="lp-subtitle-display-menu">
       <label><input type="checkbox" checked={overlayMode !== 'off'} onChange={event => ui.getState().setOverlayMode(event.target.checked ? lastOverlayMode.current : 'off')} />{t('studio.videoSubtitles')}</label>
       <label><input type="checkbox" checked={showCurrentSentence} onChange={event => ui.getState().setShowCurrentSentence(event.target.checked)} />{t('studio.sentenceSubtitles')}</label>
-      <label><input type="checkbox" checked={transcriptOpen} onChange={event => ui.getState().setTranscriptOpen(event.target.checked)} />{t('studio.sidebarSubtitles')}</label>
+      <label><input type="checkbox" checked={transcriptOpen} onChange={event => {
+        if (event.target.checked) {
+          for (const leaf of workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL)) leaf.detach();
+        }
+        ui.getState().setTranscriptOpen(event.target.checked);
+      }} />{t('studio.sidebarSubtitles')}</label>
+      <label><input type="checkbox" checked={detachedOpen} onChange={event => {
+        if (event.target.checked) void plugin.openSubtitlePanel();
+        else for (const leaf of workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL)) leaf.detach();
+      }} />{t('studio.detachTranscript')}</label>
     </div>
   </details>;
 }
