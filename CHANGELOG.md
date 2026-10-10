@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.9.5
+
+- Simplify the player to a single title row with study modes, vocabulary, notes, and subtitle options; hide the duplicate Obsidian view header.
+- Add independent video, current-sentence, and sidebar subtitle switches, plus an optional detached subtitle pane that stays in sync with the sidebar switch.
+- Consolidate sentence replay, translation, and saving into a compact toolbar. Refine dictation actions, hints, answer visibility, and collapsible statistics.
+- Keep subtitle visibility controls available during playback and pause, and move volume controls into the main playback toolbar.
+- Add draggable and keyboard-accessible media/transcript dividers. Remember each study mode's pane sizes and preserve minimum usable sizes.
+- Keep development builds in sync with an explicitly configured test vault; production builds and packages remain local.
+- Refresh the locked development SDK and its supporting dependencies; dependency audit reports no known vulnerabilities.
+
+Validation: 108 automated tests pass. Desktop playback, subtitles, pane resizing, dictation, and 320–1000 px layouts were checked in Obsidian 1.12.4. See [release verification](docs/releases/1.9.5-verification.md) for coverage and limitations.
+
 ## 1.9.4
 
 - Add the redesigned responsive study workspace for audio, video, subtitles, vocabulary, and dictation.

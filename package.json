@@ -1,6 +1,6 @@
 {
 	"name": "dashell-player",
-	"version": "1.9.4",
+	"version": "1.9.5",
 	"description": "Language-learning media player for Obsidian with subtitle browsing, sentence dictation, and vocabulary management.",
 	"author": "dashell",
 	"homepage": "https://github.com/dashell7/dashell-player",

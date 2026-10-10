@@ -1,7 +1,7 @@
 {
 	"id": "dashell-player",
 	"name": "Dashell Player",
-	"version": "1.9.4",
+	"version": "1.9.5",
 	"minAppVersion": "1.11.4",
 	"description": "Play local or web media with matching subtitles, sentence dictation, vocabulary lookup through Dashell Reader, and recordings.",
 	"author": "dashell",
