@@ -14,6 +14,8 @@
   --lp-muted: #a0aca3; --lp-line: #35413a; --lp-accent: #8ac8b5; --lp-accent-soft: #2b4037;
   --lp-danger: #e79389; --lp-shadow: 0 12px 36px #0003;
 }
+/* Hide Obsidian's title, navigation and menu row in the player pane. */
+.workspace-leaf-content[data-type="langplayer-view"] > .view-header { display: none; }
 .lp-view-content { padding: 0 !important; height: 100%; overflow: hidden; }
 .lp-view-root, .lp-view-media-shell { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .lp-view-content, .lp-settings, .lp-modal { color: var(--lp-ink); font-family: var(--font-interface, system-ui, sans-serif); font-size: 13px; }

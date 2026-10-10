@@ -15,7 +15,7 @@
 	"type": "module",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
-		"build": "node esbuild.config.mjs production && node -e \"const fs=require('fs');const base=fs.existsSync('styles-base.css')?fs.readFileSync('styles-base.css','utf8'):'';const compiled=fs.existsSync('main.css')?fs.readFileSync('main.css','utf8'):'';fs.writeFileSync('styles.css',base+'\\n\\n/* === Additional Compiled Styles === */\\n'+compiled)\"",
+		"build": "node esbuild.config.mjs production",
 		"package": "npm run build && node scripts/package-plugin.mjs",
 		"typecheck": "tsc -noEmit -skipLibCheck",
 		"test": "vitest run",

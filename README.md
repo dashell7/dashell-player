@@ -54,6 +54,35 @@ Install **Dashell Player** from its [latest GitHub release](https://github.com/d
   desktop and mobile; element fullscreen may be unavailable on some mobile
   platforms.
 
+## Live development in Obsidian
+
+Run `npm install` once, then `npm run dev`. The watcher rebuilds TypeScript,
+React components, imported CSS, `styles-base.css`, and `manifest.json` changes.
+After each successful build it generates `styles.css` and copies only
+`main.js`, `styles.css`, and `manifest.json` into the test vault's
+`.obsidian/plugins/dashell-player/` directory. Existing `data.json` settings
+are preserved. Failed builds are not copied.
+
+By default, the test vault is `../Obsidian-dashell-player-Dev` relative to the
+project root. To use another vault:
+
+```sh
+OBSIDIAN_VAULT="/absolute/path/to/test-vault" npm run dev
+```
+
+If the default vault is absent, dev builds stay local. An explicitly specified
+vault must already contain a `.obsidian` directory.
+
+Install and enable [Hot Reload](https://github.com/pjeby/hot-reload) in the test
+vault, and enable Dashell Player. The dev script creates the `.hotreload`
+marker automatically. Saving code then reloads the plugin in Obsidian; this is
+a full plugin restart, so playback and other temporary UI state can reset.
+If Hot Reload was just installed, reload Obsidian once and enable it in
+Community plugins. Stop the watcher with Ctrl+C.
+
+`npm run build` and `npm run package` produce release assets locally and never
+sync them to a vault.
+
 ## Build a release package
 
 For development or packaging from source, `npm run package` builds production assets and recreates `release/<version>/`
