@@ -34,7 +34,7 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
   const dictation = useDictationStore(s => s.dictationOpen);
   const overlay = useUIStore(s => s.overlayMode);
   const studyMode = useUIStore(s => s.studyMode);
-  const { plugin, settings, onMicClick } = useMediaView();
+  const { settings, onMicClick } = useMediaView();
   const { startSegmentLoop, startInfiniteLoop, startABRepeat, exitMode } = usePlaybackMode();
   const menuRef = useRef<HTMLDetailsElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -99,10 +99,13 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
     }
   };
   const toggleFullscreen = () => {
-    const root = rootRef.current?.closest('.lp-studio') ?? rootRef.current?.closest('.lp-player-card');
-    const doc = rootRef.current?.ownerDocument ?? document;
-    if (doc.fullscreenElement) void doc.exitFullscreen();
-    else if (root instanceof HTMLElement) void root.requestFullscreen();
+    const video = playerRef.current?.getInternalPlayer?.();
+    const area = video?.closest<HTMLElement>('.lp-video-area');
+    if (!area) return;
+    const doc = area.ownerDocument;
+    menuRef.current?.removeAttribute('open');
+    if (doc.fullscreenElement) void doc.exitFullscreen().catch(() => {});
+    else void area.requestFullscreen().catch(() => {});
   };
 
   return <div className="lp-controls" ref={rootRef}>
@@ -132,8 +135,7 @@ export function SubtitleControls({ playerRef }: SubtitleControlsProps) {
             {!dictation && pointA !== null && mode.type !== 'abRepeat' && <button className="lp-menu-action" onClick={() => loop.getState().clearPoints()}>{t('mode.clearAB')}</button>}
             {dictation && <div className="lp-popover-title lp-popover-section">{t('studio.more')}</div>}
             <button className="lp-menu-action" onClick={onMicClick} disabled={recorder === 'preparing' || recorder === 'stopping'}><Icon name="mic" size={16} />{t(recorder === 'recording' ? 'recording.stop' : 'recording.start')}</button>
-            {!dictation && <button className="lp-menu-action" onClick={() => void plugin.openSubtitlePanel()}><Icon name="external-link" size={16} />{t('studio.detachTranscript')}</button>}
-            {document.fullscreenEnabled && <button className="lp-menu-action" onClick={toggleFullscreen}><Icon name={fullscreen ? 'minimize' : 'maximize'} size={16} />{t(fullscreen ? 'player.exitFullscreen' : 'player.fullscreen')}</button>}
+            {document.fullscreenEnabled && <button className="lp-menu-action" disabled={!playerRef.current?.getInternalPlayer?.()?.closest('.lp-video-area')} onClick={toggleFullscreen}><Icon name={fullscreen ? 'minimize' : 'maximize'} size={16} />{t(fullscreen ? 'player.exitFullscreen' : 'player.fullscreen')}</button>}
           </div>
         </details>
       </div>

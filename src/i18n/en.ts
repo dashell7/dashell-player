@@ -1,5 +1,7 @@
 export const en = {
   'studio.recording': 'Recording',
+  'studio.resizeMedia': 'Drag to resize media and practice areas (or use up/down arrows)',
+  'studio.resizeTranscript': 'Drag to resize transcript width (or use left/right arrows)',
   'studio.listen': "Listen",
   'studio.dictation': "Dictation",
   'studio.shadow': "Shadow",

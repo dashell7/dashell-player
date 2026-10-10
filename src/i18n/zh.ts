@@ -2,6 +2,8 @@ import type { TranslationKey } from './en';
 
 export const zh: Record<TranslationKey, string> = {
   'studio.recording': '正在录音',
+  'studio.resizeMedia': '拖动调整媒体与练习区域高度（也可使用上下方向键）',
+  'studio.resizeTranscript': '拖动调整字幕栏宽度（也可使用左右方向键）',
   'studio.listen': "精听",
   'studio.dictation': "听写",
   'studio.shadow': "跟读",

@@ -20,6 +20,8 @@ import { Icon } from '../shared/Icon';
 import { t } from '../../i18n';
 import { dispatchLpEvent } from '../../constants/events';
 import { formatTime } from '../../utils';
+import { LayoutDivider } from './LayoutDivider';
+import { clampLayoutSize, DEFAULT_WORKBENCH_LAYOUT, readWorkbenchLayouts, WORKBENCH_LAYOUT_KEY, type WorkbenchLayout, type WorkbenchLayouts } from '../../utils/workbenchLayout';
 
 const modes: { id: StudyMode; icon: string; label: 'studio.listen' | 'studio.dictation' | 'studio.shadow' }[] = [
   { id: 'listen', icon: 'headphones', label: 'studio.listen' },
@@ -42,6 +44,16 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
   const [mobilePage, setMobilePage] = useState<'study' | 'transcript'>('study');
+  const [layouts, setLayouts] = useState<WorkbenchLayouts>(() => {
+    try { return readWorkbenchLayouts(window.localStorage); } catch { return {}; }
+  });
+  const layout = layouts[mode] ?? DEFAULT_WORKBENCH_LAYOUT;
+  const resize = (area: keyof WorkbenchLayout, value: number) => {
+    setLayouts(previous => ({ ...previous, [mode]: { ...(previous[mode] ?? DEFAULT_WORKBENCH_LAYOUT), [area]: clampLayoutSize(value) } }));
+  };
+  useEffect(() => {
+    try { window.localStorage.setItem(WORKBENCH_LAYOUT_KEY, JSON.stringify(layouts)); } catch { /* Resizing still works when local storage is unavailable. */ }
+  }, [layouts]);
   const isVideo = detectMediaType(source.url) === 'video';
 
   useEffect(() => {
@@ -62,7 +74,7 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
   };
 
   return (
-    <div ref={rootRef} className={`lp-view-root lp-studio lp-studio--${mode}${compact ? ' lp-studio--compact' : ''}`} data-mobile-page={mobilePage}>
+    <div ref={rootRef} className={`lp-view-root lp-studio lp-studio--${mode}${compact ? ' lp-studio--compact' : ''}`} data-mobile-page={mobilePage} style={{ '--lp-media-size': `${layout.media}%`, '--lp-transcript-size': `${layout.transcript}%` } as React.CSSProperties}>
       <header className="lp-studio-header">
         <button className="lp-brand-mark" onClick={plugin.openMediaPicker} aria-label={t('empty.openMedia')} title={t('empty.openMedia')}><Icon name="headphones" size={21} /></button>
         <div className="lp-studio-heading"><h1 title={source.displayName}>{source.displayName || t('app.name')}</h1></div>
@@ -84,10 +96,12 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
           <div className={`lp-studio-media${isVideo ? '' : ' lp-studio-media--audio'}`}>
             {isVideo ? <VideoLayout source={source} /> : <AudioLayout source={source} />}
           </div>
+          <LayoutDivider axis="horizontal" label={t('studio.resizeMedia')} value={layout.media} onChange={value => resize('media', value)} />
           <div className="lp-study-surface">
             {mode === 'dictation' ? <DictationPanel /> : <SentenceFocus shadow={mode === 'shadow'} audio={!isVideo} />}
           </div>
         </main>
+        {transcriptOpen && !compact && <LayoutDivider axis="vertical" label={t('studio.resizeTranscript')} value={layout.transcript} onChange={value => resize('transcript', value)} />}
         {transcriptOpen && <aside className="lp-studio-transcript" {...{ inert: compact && mobilePage === 'study' ? '' : undefined }}>
           <SubtitlePanel />
         </aside>}
