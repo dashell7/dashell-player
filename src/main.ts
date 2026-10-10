@@ -674,6 +674,7 @@ export default class LangPlayerPlugin extends Plugin {
         leaf.detach();
       } else {
         await this.app.workspace.revealLeaf(leaf);
+        useUIStore.getState().setTranscriptOpen(false);
       }
       return;
     }
@@ -681,11 +682,14 @@ export default class LangPlayerPlugin extends Plugin {
     const newLeaf = await this.getOrCreateSubtitlePanelLeaf();
     if (focusPanel) await newLeaf.setViewState({ type: VIEW_TYPE_SUBTITLE_PANEL, active: true });
     await this.app.workspace.revealLeaf(newLeaf);
+    useUIStore.getState().setTranscriptOpen(false);
   }
 
   private async ensureSubtitlePanelVisible(playerLeaf?: WorkspaceLeaf): Promise<void> {
     const player = playerLeaf?.view instanceof LangPlayerView ? playerLeaf.view : this.getActivePlayerView();
-    if (player) useUIStore.forSession(player.sessionId).getState().setTranscriptOpen(true);
+    if (player) useUIStore.forSession(player.sessionId).getState().setTranscriptOpen(
+      this.app.workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL).length === 0,
+    );
   }
 
   private async getOrCreateSubtitlePanelLeaf(): Promise<WorkspaceLeaf> {

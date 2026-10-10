@@ -128,6 +128,7 @@ export function DictationPanel() {
   const hotkeyReplayLabel = formatHotkeyLabel(dictationHotkeys.replay);
   const hotkeyHintLabel = formatHotkeyLabel(dictationHotkeys.hint);
   const hotkeyRevealLabel = formatHotkeyLabel(dictationHotkeys.revealAnswer);
+  const hotkeyNextLabel = formatHotkeyLabel(dictationHotkeys.next);
 
   const cueAnswerRaw = (cue?.textEn?.trim() || cue?.text?.trim() || '');
   const cueAnswer = useMemo(
@@ -1256,26 +1257,31 @@ export function DictationPanel() {
           </div>
           <div className="lp-habit-recovery-actions">
             <button className="lp-btn lp-btn-primary" onClick={dismissRecoveryPrompt}>
-              {t('habit.startSmallPrefix')}{habitSummary.dailyGoal}{t('habit.startSmallSuffix')}
+              {t('dictation.continuePractice')}
             </button>
-            <button
-              className="lp-btn"
-              onClick={handleRecoveryRetryWrong}
-              disabled={dictationWrongSubtitles.length === 0}
-            >
-              {t('habit.retryWrongSmall')}
-            </button>
-            <button className="lp-btn" onClick={handleRecoveryListenOnce}>
-              {t('habit.listenOnce')}
-            </button>
-            <button className="lp-btn lp-btn-muted" onClick={dismissRecoveryPrompt}>
-              {t('habit.dismissToday')}
-            </button>
+            <details className="lp-recovery-options">
+              <summary className="lp-text-button">{t('studio.more')}<Icon name="chevron-down" size={12} /></summary>
+              <div className="lp-recovery-options-body">
+                <button
+                  className="lp-btn"
+                  onClick={handleRecoveryRetryWrong}
+                  disabled={dictationWrongSubtitles.length === 0}
+                >
+                  {t('habit.retryWrongSmall')}
+                </button>
+                <button className="lp-btn" onClick={handleRecoveryListenOnce}>
+                  {t('habit.listenOnce')}
+                </button>
+                <button className="lp-btn lp-btn-muted" onClick={dismissRecoveryPrompt}>
+                  {t('habit.dismissToday')}
+                </button>
+              </div>
+            </details>
           </div>
         </div>
       )}
       <div className="lp-dictation-headline">
-        <details className="lp-dictation-map"><summary>{t('studio.progressMap')}<Icon name="chevron-down" size={14} /></summary><div className="lp-dictation-progress-dots" ref={dotsContainerRef} role="group" aria-label={t('dictation.progress')}>
+        <details className="lp-dictation-map"><summary aria-label={t('studio.progressMap')}>{dictationRetryWrongOnly ? t('dictation.retryProgress', {current: dictationCurrent, total: dictationTotal}) : t('dictation.sentenceProgress', {current: dictationCurrent, total: dictationTotal})}<Icon name="chevron-down" size={14} /></summary><div className="lp-dictation-progress-dots" ref={dotsContainerRef} role="group" aria-label={t('dictation.progress')}>
           {dotSubs.map((sub, i) => {
             const isActive = cue?.id === sub.id;
             const isWrong = wrongCueIdSet.has(sub.id);
@@ -1336,54 +1342,59 @@ export function DictationPanel() {
           })}
         </div>
         </details>
-        <div className="lp-dictation-headline-right">
-          <span className="lp-dictation-chip">{dictationCurrent}/{dictationTotal}</span>
-          <button
-            className={`lp-dictation-badge-btn${dictationRetryWrongOnly ? ' lp-dictation-badge-btn--on' : ''}`}
-            onClick={toggleRetryWrongOnly}
-            disabled={!dictationRetryWrongOnly && dictationWrongSubtitles.length === 0}
-            aria-pressed={dictationRetryWrongOnly}
-          >
-            {dictationRetryWrongOnly ? '✓ ' : ''}{t('dictation.retryWrong')}
-          </button>
-        </div>
+        <label className="lp-dictation-scope">
+          <span className="lp-sr-only">{t('dictation.practiceScope')}</span>
+          <select value={dictationRetryWrongOnly ? 'wrong' : 'all'} onChange={toggleRetryWrongOnly}>
+            <option value="all">{t('dictation.allSentences')}</option>
+            <option value="wrong" disabled={dictationWrongSubtitles.length === 0}>
+              {t('dictation.retryWrong')} · {dictationWrongSubtitles.length}
+            </option>
+          </select>
+        </label>
       </div>
 
       {settings.studyHabit.enabled && (
-        <div
+        <details
           className={`lp-habit-card${habitSummary.completedToday ? ' lp-habit-card--done' : ''}`}
           style={habitCardStyle}
         >
-          <div className="lp-habit-goal">
-            <span className="lp-habit-goal-value">
-              {habitSummary.todaySentenceCount}<span>/{habitSummary.dailyGoal}</span>
-            </span>
-            <span className="lp-habit-goal-label">{t('habit.today')}</span>
-          </div>
-          <div className="lp-habit-main">
-            <div className="lp-habit-status-row">
-              <span className="lp-habit-status">
-                {habitSummary.completedToday
-                  ? t('habit.goalDone')
-                  : `${t('habit.remainingPrefix')}${habitSummary.remainingToday}${t('habit.remainingSuffix')}`}
+          <summary>
+            <span>{t('habit.today')} {habitSummary.todaySentenceCount}/{habitSummary.dailyGoal} {t('dictation.sentencesUnit')}</span>
+            <span>{t('habit.streak')} {habitSummary.effectiveStreak} {t('dictation.daysUnit')}</span>
+            <Icon name="chevron-down" size={12} />
+          </summary>
+          <div className="lp-habit-details">
+            <div className="lp-habit-goal">
+              <span className="lp-habit-goal-value">
+                {habitSummary.todaySentenceCount}<span>/{habitSummary.dailyGoal}</span>
               </span>
-              <span className="lp-habit-percent">{habitPercent}%</span>
+              <span className="lp-habit-goal-label">{t('habit.today')}</span>
             </div>
-            <div className="lp-habit-meter" aria-hidden="true">
-              <span />
+            <div className="lp-habit-main">
+              <div className="lp-habit-status-row">
+                <span className="lp-habit-status">
+                  {habitSummary.completedToday
+                    ? t('habit.goalDone')
+                    : `${t('habit.remainingPrefix')}${habitSummary.remainingToday}${t('habit.remainingSuffix')}`}
+                </span>
+                <span className="lp-habit-percent">{habitPercent}%</span>
+              </div>
+              <div className="lp-habit-meter" aria-hidden="true">
+                <span />
+              </div>
+            </div>
+            <div className="lp-habit-stats">
+              <span className="lp-habit-stat">
+                <span>{t('habit.streak')}</span>
+                <strong>{habitSummary.effectiveStreak}</strong>
+              </span>
+              <span className="lp-habit-stat">
+                <span>{t('habit.bestStreak')}</span>
+                <strong>{habitSummary.longestStreak}</strong>
+              </span>
             </div>
           </div>
-          <div className="lp-habit-stats">
-            <span className="lp-habit-stat">
-              <span>{t('habit.streak')}</span>
-              <strong>{habitSummary.effectiveStreak}</strong>
-            </span>
-            <span className="lp-habit-stat">
-              <span>{t('habit.bestStreak')}</span>
-              <strong>{habitSummary.longestStreak}</strong>
-            </span>
-          </div>
-        </div>
+        </details>
       )}
 
       {/* Listen-back sits right above the input boxes — the user looks up from
@@ -1426,62 +1437,52 @@ export function DictationPanel() {
         />
       </div>
 
-      <div className="lp-dictation-actions">
-        {isLocked || phase === 'correct' ? (
-          <button
-            className="lp-btn lp-btn-primary lp-action-grow"
-            onClick={(e) => (e.shiftKey ? goToPrevDictationCue() : goToNextDictationCue())}
-            disabled={subtitles.length === 0}
-            aria-label={`${t('dictation.next')} (${formatHotkeyLabel(dictationHotkeys.next)}) · ${t('dictation.prev')} (Shift)`}
-          >
-            {t('dictation.next')}
-          </button>
-        ) : (
-          <button
-            className="lp-btn lp-dictation-progress-action"
-            onClick={focusHidden}
-            disabled={!cueAnswer}
-            aria-label={`${t('dictation.placeholder')} ${enteredCharCount}/${targetChars.length}`}
-          >
-            <span className="lp-dictation-progress-count">
-              {targetChars.length > 0 ? `${enteredCharCount}/${targetChars.length}` : '—'}
-            </span>
-            <span className="lp-dictation-progress-track" aria-hidden="true">
-              <span style={{ width: `${enteredPercent}%` }} />
-            </span>
-          </button>
-        )}
-        <button
-          className="lp-btn lp-action-grow lp-dictation-replay-action"
-          onClick={replayCurrentCue}
-          disabled={!cue || isRecordingBusy}
-          aria-label={`${t('dictation.replay')} — ${hotkeyReplayLabel}`}
-        >
-          <Icon name="repeat" size={15} />
-          <span className="lp-dictation-replay-label">
-            {t('dictation.replay')}
-            <span className="lp-dictation-kbd">{hotkeyReplayLabel}</span>
-          </span>
-        </button>
-      </div>
-
-      {canUnlock && (
-        <div className="lp-dictation-unlock">
-          <button
-            className="lp-dictation-unlock-link"
-            onClick={handleRevealAnswer}
-          >
-            {t('dictation.unlockHint')} <span className="lp-dictation-unlock-esc">({hotkeyRevealLabel})</span>
-          </button>
+      <div className="lp-dictation-toolbar">
+        <div className="lp-dictation-status" role="status">
+          {isLocked || phase === 'correct' ? (
+            <span>{t(isLocked ? 'dictation.answerShown' : 'dictation.correct')}</span>
+          ) : (
+            <>
+              <span>{t('dictation.filled', {current: enteredCharCount, total: targetChars.length})}</span>
+              <span className="lp-dictation-progress-track" aria-hidden="true">
+                <span style={{ width: `${enteredPercent}%` }} />
+              </span>
+            </>
+          )}
         </div>
-      )}
-
-      {!isLocked && phase !== 'correct' && targetChars.length > 0 && (
-        <button className="lp-dictation-shortcuts lp-text-button" onClick={() => { revealCurrentLetter(); focusHidden(); }}>
-          <span className="lp-dictation-kbd">{hotkeyHintLabel}</span>
-          <span className="lp-dictation-shortcut-label">{t('dictation.hintWord')}</span>
-        </button>
-      )}
+        <div className="lp-dictation-action-row" role="group" aria-label={t('studio.sentenceActions')}>
+          <div className="lp-dictation-help-actions">
+            <button className="lp-text-button" disabled={isLocked || phase === 'correct' || !targetChars.length}
+              onClick={() => { revealCurrentLetter(); focusHidden(); }}>
+              {t('dictation.hintWord')}<span className="lp-dictation-kbd">{hotkeyHintLabel}</span>
+            </button>
+            {canUnlock && (
+              <button className="lp-text-button" onClick={handleRevealAnswer}>
+                {t('dictation.showAnswer')}<span className="lp-dictation-kbd">{hotkeyRevealLabel}</span>
+              </button>
+            )}
+          </div>
+          <div className="lp-dictation-main-actions">
+            <button
+              className={`lp-btn lp-dictation-replay-action${isLocked || phase === 'correct' ? '' : ' lp-btn-primary'}`}
+              onClick={replayCurrentCue}
+              disabled={!cue || isRecordingBusy}
+              aria-label={`${t('dictation.replay')} — ${hotkeyReplayLabel}`}
+            >
+              <Icon name="repeat" size={15} />
+              {t('dictation.replay')}<span className="lp-dictation-kbd">{hotkeyReplayLabel}</span>
+            </button>
+            <button
+              className={`lp-btn lp-dictation-next-action${isLocked || phase === 'correct' ? ' lp-btn-primary' : ''}`}
+              onClick={(e) => (e.shiftKey ? goToPrevDictationCue() : goToNextDictationCue())}
+              disabled={!(isLocked || phase === 'correct') || subtitles.length === 0}
+              aria-label={`${t('dictation.next')} (${hotkeyNextLabel}) · ${t('dictation.prev')} (Shift)`}
+            >
+              {t('dictation.next')}<span className="lp-dictation-kbd">{hotkeyNextLabel}</span>
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

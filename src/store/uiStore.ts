@@ -9,6 +9,8 @@ const OVERLAY_CYCLE: OverlayMode[] = ['original', 'bilingual', 'off'];
 interface UIState {
   studyMode: StudyMode;
   transcriptOpen: boolean;
+  showCurrentSentence: boolean;
+  setShowCurrentSentence: (show: boolean) => void;
   setStudyMode: (mode: StudyMode) => void;
   setTranscriptOpen: (open: boolean) => void;
   overlayMode: OverlayMode;
@@ -29,6 +31,7 @@ interface UIState {
 const initialUIState = {
   studyMode: 'listen' as StudyMode,
   transcriptOpen: true,
+  showCurrentSentence: true,
   overlayMode: 'original' as OverlayMode,
   subtitleShowTime: false,
   subtitleShowEn: true,
@@ -39,6 +42,7 @@ export const useUIStore = create<UIState>((set) => ({
   ...initialUIState,
   setStudyMode: (studyMode) => set({ studyMode }),
   setTranscriptOpen: (transcriptOpen) => set({ transcriptOpen }),
+  setShowCurrentSentence: (showCurrentSentence) => set({ showCurrentSentence }),
 
   setOverlayMode: (overlayMode) => set({ overlayMode }),
   cycleOverlayMode: () => set((s) => {

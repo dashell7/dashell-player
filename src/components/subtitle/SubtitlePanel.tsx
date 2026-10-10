@@ -43,6 +43,7 @@ export function SubtitlePanel() {
         <button className="lp-menu-action" disabled={!subtitles.length || saving} onClick={() => void save()}><Icon name={saving ? 'loader' : 'file-text'} size={15} />{t('subtitle.importAll')}</button>
       </div></details>
     </header>
+    {dictation && revealed && <div className="lp-transcript-reference-actions"><button className="lp-btn" onClick={() => setRevealed(false)}><Icon name="eye-off" size={15} />{t('studio.hideReference')}</button></div>}
     {!locked && subtitles.length > 0 && <div className="lp-subtitle-search-row"><Icon name="search" size={15} /><input id={id} aria-label={t('subtitle.search')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setQuery(''); }} placeholder={t('subtitle.searchPlaceholder')} />{query && <><span>{matches}</span><button className="lp-ctrl-btn" aria-label={t('subtitle.searchClose')} onClick={() => setQuery('')}><Icon name="x" size={14} /></button></>}</div>}
     {locked ? <div className="lp-transcript-locked"><Icon name="headphones" size={30} /><h3>{t('studio.listenFirst')}</h3><p>{t('studio.hiddenTranscript')}</p><button className="lp-btn" onClick={() => setRevealed(true)}><Icon name="eye" size={15} />{t('studio.viewReference')}</button></div>
       : subtitles.length ? <SubtitleList showTime={showTime} showEn={showEn} showZh={showZh} search={query} />

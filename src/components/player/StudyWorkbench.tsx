@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Notice } from 'obsidian';
-import { detectMediaType, VIEW_TYPE_DICTATION, type MediaSource, type PlayerRef } from '../../types';
+import { detectMediaType, VIEW_TYPE_DICTATION, VIEW_TYPE_SUBTITLE_PANEL, type MediaSource, type PlayerRef } from '../../types';
 import { useMediaView } from '../../context';
 import { useUIStore, type StudyMode } from '../../store/uiStore';
 import { useStoreApi } from '../../store/mediaSession';
@@ -20,6 +20,8 @@ import { Icon } from '../shared/Icon';
 import { t } from '../../i18n';
 import { dispatchLpEvent } from '../../constants/events';
 import { formatTime } from '../../utils';
+import { LayoutDivider } from './LayoutDivider';
+import { clampLayoutSize, DEFAULT_WORKBENCH_LAYOUT, readWorkbenchLayouts, WORKBENCH_LAYOUT_KEY, type WorkbenchLayout, type WorkbenchLayouts } from '../../utils/workbenchLayout';
 
 const modes: { id: StudyMode; icon: string; label: 'studio.listen' | 'studio.dictation' | 'studio.shadow' }[] = [
   { id: 'listen', icon: 'headphones', label: 'studio.listen' },
@@ -43,6 +45,17 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
   const [compact, setCompact] = useState(false);
   const [mobilePage, setMobilePage] = useState<'study' | 'transcript'>('study');
   const isVideo = detectMediaType(source.url) === 'video';
+  const defaultLayout = isVideo ? DEFAULT_WORKBENCH_LAYOUT : { ...DEFAULT_WORKBENCH_LAYOUT, media: 22 };
+  const [layouts, setLayouts] = useState<WorkbenchLayouts>(() => {
+    try { return readWorkbenchLayouts(window.localStorage); } catch { return {}; }
+  });
+  const layout = layouts[mode] ?? defaultLayout;
+  const resize = (area: keyof WorkbenchLayout, value: number) => {
+    setLayouts(previous => ({ ...previous, [mode]: { ...(previous[mode] ?? defaultLayout), [area]: clampLayoutSize(value) } }));
+  };
+  useEffect(() => {
+    try { window.localStorage.setItem(WORKBENCH_LAYOUT_KEY, JSON.stringify(layouts)); } catch { /* Resizing still works when local storage is unavailable. */ }
+  }, [layouts]);
 
   useEffect(() => {
     const element = rootRef.current;
@@ -62,22 +75,19 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
   };
 
   return (
-    <div ref={rootRef} className={`lp-view-root lp-studio lp-studio--${mode}${compact ? ' lp-studio--compact' : ''}`} data-mobile-page={mobilePage}>
+    <div ref={rootRef} className={`lp-view-root lp-studio lp-studio--${mode}${compact ? ' lp-studio--compact' : ''}`} data-mobile-page={mobilePage} style={{ '--lp-media-size': `${layout.media}%`, '--lp-transcript-size': `${layout.transcript}%` } as React.CSSProperties}>
       <header className="lp-studio-header">
         <button className="lp-brand-mark" onClick={plugin.openMediaPicker} aria-label={t('empty.openMedia')} title={t('empty.openMedia')}><Icon name="headphones" size={21} /></button>
-        <div className="lp-studio-heading"><span className="lp-eyebrow">DASHELL / {t('studio.workspace')}</span><h1 title={source.displayName}>{source.displayName || t('app.name')}</h1></div>
+        <div className="lp-studio-heading"><h1 title={source.displayName}>{source.displayName || t('app.name')}</h1></div>
+        <div className="lp-mode-switch" role="group" aria-label={t('studio.mode')}>
+          {modes.map(item => <button key={item.id} aria-label={t(item.label)} title={t(item.label)} aria-pressed={mode === item.id} disabled={busy || (item.id !== 'listen' && subtitles.length === 0)} onClick={() => changeMode(item.id)}><Icon name={item.icon} size={15} /><span>{t(item.label)}</span></button>)}
+        </div>
         <div className="lp-studio-header-actions">
           <button className="lp-btn" onClick={() => void plugin.openVocabulary()} title={t('vocab.title')}><Icon name="book-open" /><span>{t('studio.words')}</span></button>
           <button className="lp-btn" onClick={onOpenNote} title={t('player.openNote')}><Icon name="file-text" /><span>{t('player.openNote')}</span></button>
         </div>
+        <SubtitleDisplayMenu />
       </header>
-      <div className="lp-studio-modebar">
-        <div className="lp-mode-switch" role="group" aria-label={t('studio.mode')}>
-          {modes.map(item => <button key={item.id} aria-pressed={mode === item.id} disabled={busy || (item.id !== 'listen' && subtitles.length === 0)} onClick={() => changeMode(item.id)}><Icon name={item.icon} size={15} />{t(item.label)}</button>)}
-        </div>
-        <span className="lp-studio-modehint">{t(mode === 'listen' ? 'studio.listenHint' : mode === 'dictation' ? 'studio.dictationHint' : 'studio.shadowHint')}</span>
-        <button className="lp-btn lp-transcript-toggle" aria-label={t('subtitle.panel')} aria-pressed={transcriptOpen} onClick={() => ui.getState().setTranscriptOpen(!transcriptOpen)}><Icon name="panel-right" size={16} /><span>{t('subtitle.panel')}</span></button>
-      </div>
       {compact && transcriptOpen && <div className="lp-mobile-switch" role="group" aria-label={t('studio.workspace')}>
         <button aria-pressed={mobilePage === 'study'} onClick={() => setMobilePage('study')}>{t('studio.study')}</button>
         <button aria-pressed={mobilePage === 'transcript'} onClick={() => setMobilePage('transcript')}>{t('studio.transcript')}</button>
@@ -87,10 +97,12 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
           <div className={`lp-studio-media${isVideo ? '' : ' lp-studio-media--audio'}`}>
             {isVideo ? <VideoLayout source={source} /> : <AudioLayout source={source} />}
           </div>
+          <LayoutDivider axis="horizontal" label={t('studio.resizeMedia')} value={layout.media} onChange={value => resize('media', value)} />
           <div className="lp-study-surface">
             {mode === 'dictation' ? <DictationPanel /> : <SentenceFocus shadow={mode === 'shadow'} audio={!isVideo} />}
           </div>
         </main>
+        {transcriptOpen && !compact && <LayoutDivider axis="vertical" label={t('studio.resizeTranscript')} value={layout.transcript} onChange={value => resize('transcript', value)} />}
         {transcriptOpen && <aside className="lp-studio-transcript" {...{ inert: compact && mobilePage === 'study' ? '' : undefined }}>
           <SubtitlePanel />
         </aside>}
@@ -100,7 +112,65 @@ export function StudyWorkbench({ source }: { source: MediaSource }) {
   );
 }
 
+function SubtitleDisplayMenu() {
+  const { plugin } = useMediaView();
+  const workspace = plugin.app.workspace;
+  const ui = useStoreApi(useUIStore);
+  const overlayMode = useUIStore(s => s.overlayMode);
+  const showCurrentSentence = useUIStore(s => s.showCurrentSentence);
+  const transcriptOpen = useUIStore(s => s.transcriptOpen);
+  const [detachedOpen, setDetachedOpen] = useState(() => workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL).length > 0);
+  const lastOverlayMode = useRef(overlayMode === 'off' ? 'original' as const : overlayMode);
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const syncPanel = () => {
+      const open = workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL).length > 0;
+      setDetachedOpen(open);
+      if (open) ui.getState().setTranscriptOpen(false);
+    };
+    syncPanel();
+    const event = workspace.on('layout-change', syncPanel);
+    return () => workspace.offref(event);
+  }, [workspace, ui, transcriptOpen]);
+  useEffect(() => {
+    if (overlayMode !== 'off') lastOverlayMode.current = overlayMode;
+  }, [overlayMode]);
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target) && menuRef.current) menuRef.current.open = false;
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, []);
+  return <details ref={menuRef} className="lp-subtitle-display" onBlur={event => {
+    // Clicking label text briefly clears focus before it activates the checkbox.
+    if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false;
+  }} onKeyDown={event => {
+    if (event.key === 'Escape') {
+      event.currentTarget.open = false;
+      event.currentTarget.querySelector('summary')?.focus();
+    }
+  }}>
+    <summary className="lp-btn" aria-label={t('subtitle.toggleInline')} title={t('subtitle.toggleInline')}><Icon name="captions" size={16} /><span>{t('subtitle.toggleInline')}</span><Icon name="chevron-down" size={12} /></summary>
+    <div className="lp-subtitle-display-menu">
+      <label><input type="checkbox" checked={overlayMode !== 'off'} onChange={event => ui.getState().setOverlayMode(event.target.checked ? lastOverlayMode.current : 'off')} />{t('studio.videoSubtitles')}</label>
+      <label><input type="checkbox" checked={showCurrentSentence} onChange={event => ui.getState().setShowCurrentSentence(event.target.checked)} />{t('studio.sentenceSubtitles')}</label>
+      <label><input type="checkbox" checked={transcriptOpen} onChange={event => {
+        if (event.target.checked) {
+          for (const leaf of workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL)) leaf.detach();
+        }
+        ui.getState().setTranscriptOpen(event.target.checked);
+      }} />{t('studio.sidebarSubtitles')}</label>
+      <label><input type="checkbox" checked={detachedOpen} onChange={event => {
+        if (event.target.checked) void plugin.openSubtitlePanel();
+        else for (const leaf of workspace.getLeavesOfType(VIEW_TYPE_SUBTITLE_PANEL)) leaf.detach();
+      }} />{t('studio.detachTranscript')}</label>
+    </div>
+  </details>;
+}
+
 function SentenceFocus({ shadow, audio }: { shadow: boolean; audio: boolean }) {
+  const showCurrentSentence = useUIStore(s => s.showCurrentSentence);
   const cue = useSubtitleStore(selectCurrentSubtitle);
   const count = useSubtitleStore(s => s.subtitles.length);
   const activeIndex = useSubtitleStore(s => s.activeIndex);
@@ -127,11 +197,12 @@ function SentenceFocus({ shadow, audio }: { shadow: boolean; audio: boolean }) {
   return <section className={`lp-sentence-focus${audio ? ' lp-sentence-focus--audio' : ''}`}>
     <div className="lp-sentence-meta"><span className="lp-eyebrow">{t('studio.currentSentence')}</span><span>{activeIndex >= 0 ? String(activeIndex + 1).padStart(2, '0') : '—'} / {count}</span>{cue && <time>{formatTime(cue.start)}</time>}</div>
     {cue ? <>
-      <div className="lp-focus-text"><ClickableText text={cue.textEn || cue.text} sentenceEn={cue.textEn || cue.text} sentenceZh={cue.textZh} cueStart={cue.start} /></div>
-      {cue.textZh && <div className="lp-focus-translation">{translation ? <p>{cue.textZh}</p> : <button className="lp-text-button" onClick={() => setTranslation(true)}><Icon name="languages" size={14} />{t('studio.showTranslation')}</button>}</div>}
-      <div className="lp-sentence-actions">
-        <button className="lp-btn" disabled={busy} onClick={() => { dispatchLpEvent('langplayer-stop-recording-playback'); playSegmentOnce(cue); }}><Icon name="repeat" size={15} />{t('dictation.replay')}</button>
-        <button className="lp-btn" disabled={saving} onClick={() => void save()}><Icon name={savedCue === cue.id ? 'check' : 'bookmark'} size={15} />{t(savedCue === cue.id ? 'studio.saved' : 'subtitle.saveToNote')}</button>
+      {showCurrentSentence && <div className="lp-focus-text"><ClickableText text={cue.textEn || cue.text} sentenceEn={cue.textEn || cue.text} sentenceZh={cue.textZh} cueStart={cue.start} /></div>}
+      {showCurrentSentence && cue.textZh && translation && <div className="lp-focus-translation"><p>{cue.textZh}</p></div>}
+      <div className="lp-sentence-actions" role="group" aria-label={t('studio.sentenceActions')}>
+        <button className={`lp-text-button${shadow ? '' : ' lp-sentence-replay'}`} disabled={busy} onClick={() => { dispatchLpEvent('langplayer-stop-recording-playback'); playSegmentOnce(cue); }}><Icon name="repeat" size={14} />{t('dictation.replay')}</button>
+        {showCurrentSentence && cue.textZh && <button className="lp-text-button" aria-expanded={translation} onClick={() => setTranslation(visible => !visible)}><Icon name="languages" size={14} />{t(translation ? 'studio.hideTranslation' : 'studio.showTranslation')}</button>}
+        <button className="lp-text-button" disabled={saving} onClick={() => void save()}><Icon name={savedCue === cue.id ? 'check' : 'bookmark'} size={14} />{t(savedCue === cue.id ? 'studio.saved' : 'subtitle.saveToNote')}</button>
       </div>
     </> : <p className="lp-sentence-wait">{t('studio.betweenSentences')}</p>}
     {shadow && <div className="lp-shadow-studio">

@@ -189,12 +189,14 @@ export function registerPlayerCommands(plugin: PlayerCommandHost): void {
   // so the palette doesn't offer a dead action.
   if (typeof document !== 'undefined' && document.fullscreenEnabled) {
     playerCmd('player-fullscreen', t('cmd.fullscreen'), () => {
-      const card = document.querySelector('.lp-player-card');
-      if (!card) return;
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
+      const video = usePlaybackStore.getState().playerRef?.getInternalPlayer?.();
+      const area = video?.closest<HTMLElement>('.lp-video-area');
+      if (!area) return;
+      const doc = area.ownerDocument;
+      if (doc.fullscreenElement) {
+        doc.exitFullscreen().catch(() => {});
       } else {
-        card.requestFullscreen().catch(() => {});
+        area.requestFullscreen().catch(() => {});
       }
     });
   }

@@ -7,6 +7,8 @@ import {VocabularyPanel} from '../../src/components/vocabulary/VocabularyPanel';
 import {DEFAULT_SETTINGS} from '../../src/types';
 import {useSubtitleStore} from '../../src/store/subtitleStore';
 import {usePlaybackStore} from '../../src/store/playbackStore';
+import {useRecordingStore} from '../../src/store/recordingStore';
+import {useUIStore} from '../../src/store/uiStore';
 import {setLanguage} from '../../src/i18n';
 const params = new URLSearchParams(location.search);
 setLanguage(params.get('lang') === 'en' ? 'en' : 'zh');
@@ -25,8 +27,12 @@ const noop = async()=>{};
 const settings=structuredClone(DEFAULT_SETTINGS);
 settings.studyHabit.enabled=true;
 const source={type:'url' as const,url:'/sample.wav',displayName:'The art of staying curious'};
-const plugin={settings,saveSettings:noop,app:{workspace:{getLeavesOfType:()=>[]},vault:{getName:()=> 'Preview'},plugins:{plugins:{}}},noteService:{saveToNote:async()=>true,openStudyNote:noop,saveAllSubtitlesToNote:noop},vocabDb:{getAll:async()=>entries,updateWord:noop},flashcardService:{startReview:()=>{},refreshWordDb:noop,refreshReviewDb:noop},openMediaPicker:()=>{},openVocabulary:()=>{location.search='?vocab'},openSubtitlePanel:noop,openMediaAt:noop,loadSubtitleFromVault:()=>{},getPlaybackProgress:()=>6,setPlaybackProgress:()=>{},getDictationProgress:()=>undefined,setDictationProgress:noop,clearDictationProgress:noop,recordStudyActivity:async()=>settings.studyHabitProgress,dismissStudyRecoveryPrompt:async()=>settings.studyHabitProgress} as unknown as LangPlayerPluginRef;
+const plugin={settings,saveSettings:noop,app:{workspace:{getLeavesOfType:()=>[],on:()=>({}),offref:()=>{}},vault:{getName:()=> 'Preview'},plugins:{plugins:{}}},noteService:{saveToNote:async()=>true,openStudyNote:noop,saveAllSubtitlesToNote:noop},vocabDb:{getAll:async()=>entries,updateWord:noop},flashcardService:{startReview:()=>{},refreshWordDb:noop,refreshReviewDb:noop},openMediaPicker:()=>{},openVocabulary:()=>{location.search='?vocab'},openSubtitlePanel:noop,openMediaAt:noop,loadSubtitleFromVault:()=>{},getPlaybackProgress:()=>6,setPlaybackProgress:()=>{},getDictationProgress:()=>undefined,setDictationProgress:noop,clearDictationProgress:noop,recordStudyActivity:async()=>settings.studyHabitProgress,dismissStudyRecoveryPrompt:async()=>settings.studyHabitProgress} as unknown as LangPlayerPluginRef;
 useSubtitleStore.getState().setSubtitles(cues);
 useSubtitleStore.getState().setActiveIndex(1);
 usePlaybackStore.getState().setSource(source);
+if (params.has('recording')) {
+  useUIStore.getState().setStudyMode('shadow');
+  useRecordingStore.getState().setLastRecording({url:'/sample.wav',durationSec:180,filePath:'preview.wav',subtitleText:cues[1]!.text});
+}
 createRoot(document.getElementById('root')!).render(<MediaViewProvider plugin={plugin} source={source}>{params.has('vocab') ? <VocabularyPanel/> : <StudyWorkbench source={source}/>}</MediaViewProvider>);
