@@ -34,6 +34,7 @@ export const en = {
   'studio.listenFirst': "Make room for listening",
   'studio.hiddenTranscript': "The transcript is hidden during dictation. Reveal it whenever you need a reference.",
   'studio.viewReference': "Reveal transcript",
+  'studio.hideReference': "Hide transcript",
   'studio.subtitleHint': "Load an SRT, VTT or ASS subtitle file.",
   'studio.practiceActive': "Dictation · Listen, then write",
   'studio.wordHint': "Click to look up · Right-click to save",

@@ -36,6 +36,7 @@ export const zh: Record<TranslationKey, string> = {
   'studio.listenFirst': "给耳朵一点空间",
   'studio.hiddenTranscript': "听写时隐藏全文。需要参考时，你可以主动查看。",
   'studio.viewReference': "查看参考字幕",
+  'studio.hideReference': "隐藏参考字幕",
   'studio.subtitleHint': "支持 SRT、VTT 与 ASS 字幕。",
   'studio.practiceActive': "听写中 · 先听，再写",
   'studio.wordHint': "点击单词查词 · 右键收藏",
