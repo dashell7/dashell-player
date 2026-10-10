@@ -115,7 +115,8 @@ function SubtitleDisplayMenu() {
     return () => document.removeEventListener('pointerdown', closeOutside);
   }, []);
   return <details ref={menuRef} className="lp-subtitle-display" onBlur={event => {
-    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) event.currentTarget.open = false;
+    // Clicking label text briefly clears focus before it activates the checkbox.
+    if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) event.currentTarget.open = false;
   }} onKeyDown={event => {
     if (event.key === 'Escape') {
       event.currentTarget.open = false;
